@@ -1,0 +1,7 @@
+# On-disk row cache (irs_pricer/rows_cache.py) -- derived from the source
+# xlsx/xls files, safe to delete/regenerate at any time.
+.cache/
+
+__pycache__/
+*.pyc
+.pytest_cache/
