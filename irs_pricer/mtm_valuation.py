@@ -107,15 +107,22 @@ def _price_fixed_leg(remaining: list[_Period], curve: CurveBundle, notional: flo
 
 
 def forward_rate(curve: CurveBundle, d1: ql.Date, d2: ql.Date) -> float:
-    """Simple forward rate implied by the curve over [d1, d2], flat-forward / CD91 day count.
+    """Implied forward rate from the curve over [d1, d2].
 
-    Single reusable spot for the (df(d1)/df(d2) - 1) / dcf expression, used both
-    for per-period floating cashflow estimation and for the current-period
-    accrued-interest estimate.
+    If d1 is before the curve's reference date (e.g. an in-progress coupon whose
+    reset date has already passed but no historical fixing is available), d1 is
+    clamped to the reference date.  The approximation: treat the unobserved fixing
+    as today's forward rate over the remaining sub-period [ref, d2].
     """
+    ref = curve.valuation_date
+    d1_eff = d1 if d1 >= ref else ref
+    if d1_eff >= d2:
+        return 0.0
     df = curve.yield_curve_handle.discount
-    dcf = DAY_COUNT.yearFraction(d1, d2)
-    return (df(d1) / df(d2) - 1.0) / dcf
+    dcf = DAY_COUNT.yearFraction(d1_eff, d2)
+    if dcf <= 0.0:
+        return 0.0
+    return (df(d1_eff) / df(d2) - 1.0) / dcf
 
 
 def _price_floating_telescoped(rest: list[_Period], curve: CurveBundle, notional: float):
@@ -130,9 +137,13 @@ def _price_floating_telescoped(rest: list[_Period], curve: CurveBundle, notional
     DF(last)) when summed) -- see test_mtm_valuation.py for the equivalence check.
     """
     df = curve.yield_curve_handle.discount
+    ref = curve.valuation_date
     next_reset_ql = rest[0].accrual_start_ql
+    # In-progress period: accrual_start is before the reference date.
+    # df(ref) == 1.0 by definition, so the formula becomes notional*(1 - df(maturity)).
+    next_reset_eff = next_reset_ql if next_reset_ql >= ref else ref
     maturity_ql = rest[-1].accrual_end_ql
-    pv = notional * (df(next_reset_ql) - df(maturity_ql))
+    pv = notional * (df(next_reset_eff) - df(maturity_ql))
     detail = CashFlowDetail(rest[0].accrual_start, rest[-1].accrual_end, rest[-1].payment_date, "floating", None, False, None, pv)
     return pv, [detail]
 

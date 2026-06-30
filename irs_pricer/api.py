@@ -6,13 +6,24 @@ returns price_swap/dv01 results. No pricing logic lives here.
 Run with: uvicorn irs_pricer.api:app --reload --port 8000
 """
 
-# verification-reload-marker-1
-
 from __future__ import annotations
 
+import logging
+import logging.config
 from datetime import date
 from pathlib import Path
 from typing import Literal
+
+logging.config.dictConfig({
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"default": {"format": "%(levelname)s %(name)s: %(message)s"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "default"}},
+    "root": {"level": "INFO", "handlers": ["console"]},
+    "loggers": {
+        "irs_pricer": {"level": "DEBUG"},
+    },
+})
 
 import QuantLib as ql
 from dateutil.relativedelta import relativedelta
@@ -74,11 +85,15 @@ def _load_snapshot(valuation_date: date) -> MarketSnapshot:
             raise
         except ValueError:
             pass
-    # TODO: this final CSV fallback currently fails for every date -- CD_AAA_91D.csv
-    # is not present on disk in this environment (only the xlsx files are kept up to
-    # date). Out of scope for the cold-start performance work; only matters for dates
-    # outside True/Total Data.xlsx's coverage, which neither file serves anyway.
-    return load_market_snapshot(DATA_DIR, valuation_date)
+    # Final CSV fallback -- only reached for dates outside both xlsx files' coverage.
+    # CD_AAA_91D.csv is not present, so this raises FileNotFoundError; convert it to
+    # ValueError so the route handler returns HTTP 404 instead of HTTP 500.
+    try:
+        return load_market_snapshot(DATA_DIR, valuation_date)
+    except NonBusinessDayError:
+        raise
+    except Exception:
+        raise ValueError(f"{valuation_date}의 시장 데이터를 찾을 수 없습니다.")
 
 
 def _all_dates() -> list[date]:

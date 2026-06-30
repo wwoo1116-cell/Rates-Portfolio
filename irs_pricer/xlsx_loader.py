@@ -12,6 +12,7 @@ Rates are percentage (e.g. 2.92 = 2.92%); divided by 100 for QuantLib.
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from pathlib import Path
 
@@ -20,6 +21,8 @@ import openpyxl
 from .csv_loader import NonBusinessDayError, _check_business_day
 from .market_data import MarketSnapshot, RateQuote
 from .rows_cache import get_cached
+
+logger = logging.getLogger(__name__)
 
 XLSX_NAME = "True Data.xlsx"
 _HEADER_ROWS = 3
@@ -59,6 +62,7 @@ def _parse_rows(path: Path) -> list[tuple]:
     of thousands of empty padding rows -- without this early break,
     openpyxl's read-only row iterator still walks every one of those padding
     rows, which is the dominant cost of a cold parse (~5s for this file)."""
+    logger.info("opening %s for parsing…", path.name)
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     try:
         ws = wb.worksheets[0]
@@ -69,12 +73,17 @@ def _parse_rows(path: Path) -> list[tuple]:
                 continue
             if _row_date(row) is None:
                 if seen_data:
+                    logger.debug("early break at physical row %d — %d data rows collected", i + 1, len(rows))
                     break  # contiguous data block ended -- skip the padding rows
                 continue
             seen_data = True
             rows.append(row)
     finally:
         wb.close()
+    if not rows:
+        logger.error("_parse_rows returned 0 rows from %s — check _HEADER_ROWS and column layout", path.name)
+    else:
+        logger.info("parsed %d rows from %s", len(rows), path.name)
     return rows
 
 

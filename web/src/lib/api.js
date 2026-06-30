@@ -1,4 +1,7 @@
-export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+// In dev, requests go to '' (same-origin) and Vite's proxy forwards /api/* to
+// the FastAPI backend. Set VITE_API_BASE_URL for production deployments where
+// the frontend and backend are on different origins.
+export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
 
 const NETWORK_ERROR_MESSAGE = '백엔드 서버에 연결할 수 없습니다 — 서버가 실행 중인지 확인하세요.'
 

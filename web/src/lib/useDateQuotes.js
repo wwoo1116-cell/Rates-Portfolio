@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiGet } from '@/lib/api'
 
 /**
@@ -8,12 +8,20 @@ import { apiGet } from '@/lib/api'
  * live valuation-date quotes, so no second curve-build path is introduced.
  * Cached per date so repeated lookups for the same date (e.g. switching
  * tenor) never refetch. Pass an empty/null date to skip fetching.
+ *
+ * IMPORTANT: `cache` is intentionally excluded from the dependency array.
+ * Including it causes the cleanup to fire the moment `setCache(loading)` is
+ * called, which sets `cancelled = true` and discards every fetch result,
+ * leaving the UI permanently stuck in 'loading'. The ref guards against
+ * duplicate requests instead.
  */
 export function useDateQuotes(date) {
   const [cache, setCache] = useState({})
+  const requestedRef = useRef(new Set())
 
   useEffect(() => {
-    if (!date || cache[date]) return
+    if (!date || requestedRef.current.has(date)) return
+    requestedRef.current.add(date)
     let cancelled = false
     setCache((c) => ({ ...c, [date]: { status: 'loading' } }))
     apiGet(`/api/market-data/${date}`)
@@ -25,11 +33,13 @@ export function useDateQuotes(date) {
       .catch((err) => {
         if (cancelled) return
         setCache((c) => ({ ...c, [date]: { status: 'error', message: err.message } }))
+        // Allow a retry if the user re-selects the same date after an error
+        requestedRef.current.delete(date)
       })
     return () => {
       cancelled = true
     }
-  }, [date, cache])
+  }, [date]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return cache[date] ?? null
 }

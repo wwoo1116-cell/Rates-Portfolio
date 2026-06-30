@@ -13,11 +13,14 @@ so a stale cache from a previous version of the source file is never served
 
 from __future__ import annotations
 
+import logging
 import os
 import pickle
 import tempfile
 from pathlib import Path
 from typing import Callable, TypeVar
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -39,6 +42,7 @@ def get_cached(source_path: Path, parse_fn: Callable[[Path], T]) -> T:
 
     cached = _memory_cache.get(source_path)
     if cached is not None and cached[0] == mtime:
+        logger.debug("memory cache hit: %s", source_path.name)
         return cached[1]
 
     disk_path = _disk_cache_path(source_path)
@@ -47,29 +51,47 @@ def get_cached(source_path: Path, parse_fn: Callable[[Path], T]) -> T:
             with disk_path.open("rb") as f:
                 disk_mtime, value = pickle.load(f)
             if disk_mtime == mtime:
+                logger.debug("disk cache hit: %s", source_path.name)
                 _memory_cache[source_path] = (mtime, value)
                 return value
-        except (pickle.PickleError, EOFError, OSError, ValueError):
-            pass  # corrupt/unreadable disk cache -- fall through and reparse
+            logger.debug("disk cache stale (mtime mismatch): %s", source_path.name)
+        except Exception as exc:
+            logger.warning("disk cache unreadable (%s), will reparse: %s", exc, source_path.name)
 
+    logger.info("parsing %s (no valid cache)…", source_path.name)
     value = parse_fn(source_path)
+    logger.info("parsed %s successfully", source_path.name)
     _memory_cache[source_path] = (mtime, value)
     _write_disk_cache(disk_path, mtime, value)
     return value
 
 
 def _write_disk_cache(disk_path: Path, mtime: float, value: object) -> None:
-    disk_path.parent.mkdir(parents=True, exist_ok=True)
-    # Write to a temp file then atomically rename, so a concurrent reader
-    # (FastAPI's sync routes run in a thread pool -- a cache-miss race
-    # between two requests is possible) never sees a partially-written file.
-    fd, tmp_name = tempfile.mkstemp(dir=disk_path.parent, suffix=".tmp")
+    """Write value to disk cache atomically. All failures are logged and swallowed --
+    a disk write failure is non-fatal because the in-memory cache is still valid."""
+    fd: int | None = None
+    tmp_name: str | None = None
     try:
+        disk_path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(dir=disk_path.parent, suffix=".tmp")
         with os.fdopen(fd, "wb") as f:
+            fd = None  # fdopen took ownership; do not double-close on error
             pickle.dump((mtime, value), f)
+        # Atomic replace: concurrent readers never see a partial file.
+        # On Windows this can raise PermissionError if another process has the
+        # destination open; we catch it below and fall back to in-memory only.
         os.replace(tmp_name, disk_path)
-    except OSError:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
+        tmp_name = None  # replace succeeded; nothing left to clean up
+        logger.debug("disk cache written: %s", disk_path.name)
+    except Exception as exc:
+        logger.warning("disk cache write failed (%s): %s — using in-memory cache only", type(exc).__name__, exc)
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        if tmp_name is not None:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
