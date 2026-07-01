@@ -15,28 +15,8 @@ import csv
 from datetime import date, datetime
 from pathlib import Path
 
-import QuantLib as ql
-
-from .conventions import CALENDAR, to_ql_date
-from .market_data import MarketSnapshot, RateQuote
-
-
-class NonBusinessDayError(ValueError):
-    """Raised when the requested date is a weekend or public holiday."""
-
-    def __init__(self, d: date, reason: str) -> None:
-        self.date = d
-        self.reason = reason
-        super().__init__(f"{d}은(는) 영업일이 아닙니다 ({reason})")
-
-
-def _check_business_day(d: date) -> None:
-    """Raise NonBusinessDayError if d is a weekend or KRX holiday."""
-    if d.weekday() >= 5:
-        day_name = "토요일" if d.weekday() == 5 else "일요일"
-        raise NonBusinessDayError(d, day_name)
-    if not CALENDAR.isBusinessDay(to_ql_date(d)):
-        raise NonBusinessDayError(d, "공휴일")
+from ..core.errors import NonBusinessDayError, _check_business_day  # re-exported for backwards compat
+from ..core.market_data import MarketSnapshot, RateQuote
 
 _IRS_FILES: dict[str, int] = {
     "IRS_1Y.csv": 1,
@@ -125,15 +105,8 @@ def common_dates(data_dir: Path | str) -> list[date]:
         raise ValueError("모든 CSV 파일에 공통된 날짜가 없습니다.")
     return sorted(common)
 
-
 def latest_common_date(source: Path | str) -> date:
-    """Return the most recent date present in ALL data files, auto-detecting
-    whether `source` is an Excel file or a CSV directory."""
-    source = Path(source)
-    if source.suffix.lower() in (".xlsx", ".xls"):
-        from .excel_loader import latest_common_date_xl
-
-        return latest_common_date_xl(source)
+    """Return the most recent date present in ALL data files."""
     return common_dates(source)[-1]
 
 
@@ -168,17 +141,3 @@ def load_market_snapshot_csv(data_dir: Path | str, valuation_date: date) -> Mark
         cd_rate=cd_rate,
         swap_quotes=swap_quotes,
     )
-
-
-def load_market_snapshot(source: Path | str, valuation_date: date) -> MarketSnapshot:
-    """
-    Build a MarketSnapshot from `source`, auto-detecting the data format:
-    an Excel file (.xlsx/.xls) is read directly via excel_loader; anything
-    else is treated as a CSV directory using the existing CSV logic.
-    """
-    source = Path(source)
-    if source.suffix.lower() in (".xlsx", ".xls"):
-        from .excel_loader import load_market_snapshot_xl
-
-        return load_market_snapshot_xl(source, valuation_date)
-    return load_market_snapshot_csv(source, valuation_date)

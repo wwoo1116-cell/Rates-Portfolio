@@ -2,10 +2,10 @@
 KRW IRS Pricer -- CSV-based NPV calculator.
 
 Usage examples:
-  python run_pricer.py                              # latest date, show par table
-  python run_pricer.py --date 2026-06-26            # specific date
-  python run_pricer.py --date 2026-06-26 --tenor 3 --notional 10000000000 --fixed-rate 3.51
-  python run_pricer.py --date 2026-06-26 --tenor 5 --notional 10000000000 --receiver
+  python scripts/run_pricer.py                              # latest date, show par table
+  python scripts/run_pricer.py --date 2026-06-26            # specific date
+  python scripts/run_pricer.py --date 2026-06-26 --tenor 3 --notional 10000000000 --fixed-rate 3.51
+  python scripts/run_pricer.py --date 2026-06-26 --tenor 5 --notional 10000000000 --receiver
 
 The --fixed-rate flag accepts a percentage (e.g. 3.51 means 3.51%).
 Omitting --fixed-rate prices the swap at the market par rate (NPV = 0 by construction).
@@ -19,9 +19,10 @@ from pathlib import Path
 
 from dateutil.relativedelta import relativedelta
 
-from irs_pricer import MarketSnapshot, RateQuote, build_curve, price_swap
-from irs_pricer.csv_loader import NonBusinessDayError, latest_common_date, load_market_snapshot
-from irs_pricer.instruments import VanillaSwap
+from irs_pricer import MarketSnapshot, RateQuote
+from irs_pricer.core.errors import NonBusinessDayError
+from irs_pricer.engine.instruments import VanillaSwap
+from irs_pricer.loaders.factory import latest_common_date, load_market_snapshot
 
 DATA_DIR = Path(__file__).resolve().parent.parent
 
@@ -56,11 +57,7 @@ def print_market_data(snapshot: MarketSnapshot) -> None:
 
 
 def print_par_table(snapshot: MarketSnapshot) -> None:
-    from irs_pricer.curve import build_curve
-    from irs_pricer.instruments import VanillaSwap
-    from irs_pricer.pricing import price_swap
-
-    curve = build_curve(snapshot)
+    from irs_pricer.services.pricing_service import price
 
     print(f"\n  {'Tenor':>5}  {'Par Rate':>10}  {'DV01 (KRW 1bn)':>16}")
     print(f"  {'-'*5}  {'-'*10}  {'-'*16}")
@@ -71,9 +68,8 @@ def print_par_table(snapshot: MarketSnapshot) -> None:
             fixed_rate=q.rate,
             pay_fixed=True,
         )
-        result = price_swap(swap, curve)
-        from irs_pricer.risk import dv01 as _dv01
-        d = _dv01(swap, curve)
+        result = price(snapshot, swap)
+        d = result["dv01"]
         print(f"  {q.tenor_years:>4}Y  {_fmt_rate(result['par_rate']):>10}  {d:>16,.0f}")
 
 
@@ -84,32 +80,18 @@ def price_single(
     fixed_rate: float | None,
     pay_fixed: bool,
 ) -> dict:
-    curve = build_curve(snapshot)
+    from irs_pricer.services.pricing_service import price
 
-    # If no fixed rate supplied, use the market par rate
     if fixed_rate is None:
-        par_swap = VanillaSwap(
-            tenor_years=tenor,
-            notional=notional,
-            fixed_rate=0.0,
-            pay_fixed=pay_fixed,
-        )
-        fixed_rate = price_swap(par_swap, curve)["par_rate"]
+        par_swap = VanillaSwap(tenor_years=tenor, notional=notional, fixed_rate=0.0, pay_fixed=pay_fixed)
+        fixed_rate = price(snapshot, par_swap)["par_rate"]
         print(f"\n  --fixed-rate not supplied; using market par rate {_fmt_rate(fixed_rate)}")
 
-    swap = VanillaSwap(
-        tenor_years=tenor,
-        notional=notional,
-        fixed_rate=fixed_rate,
-        pay_fixed=pay_fixed,
-    )
-    result = price_swap(swap, curve)
-
-    from irs_pricer.risk import dv01 as _dv01
-    d = _dv01(swap, curve)
+    swap = VanillaSwap(tenor_years=tenor, notional=notional, fixed_rate=fixed_rate, pay_fixed=pay_fixed)
+    result = price(snapshot, swap)
+    d = result["dv01"]
 
     direction = "Pay Fixed / Receive Float" if pay_fixed else "Receive Fixed / Pay Float"
-
     print(f"\n{'=' * 52}")
     print(f"  Swap details")
     print(f"{'-' * 52}")
@@ -152,10 +134,11 @@ def price_mtm(
     pay_fixed: bool,
 ) -> dict:
     """Reprice an existing swap (contracted on trade_date at fixed_rate) against today's curve."""
+    from irs_pricer.services.pricing_service import price
+
     maturity_date = trade_date + relativedelta(years=tenor)
     remaining_tenor = (maturity_date - snapshot.valuation_date).days / 365
 
-    curve = build_curve(snapshot)
     swap = VanillaSwap(
         tenor_years=tenor,
         notional=notional,
@@ -164,12 +147,10 @@ def price_mtm(
         trade_date=trade_date,
         maturity_date=maturity_date,
     )
-    result = price_swap(swap, curve)
-    from irs_pricer.risk import dv01 as _dv01
-    d = _dv01(swap, curve)
+    result = price(snapshot, swap)
+    d = result["dv01"]
 
     direction = "Pay Fixed / Receive Float" if pay_fixed else "Receive Fixed / Pay Float"
-
     print(f"\n{'=' * 52}")
     print(f"  MTM repricing")
     print(f"{'-' * 52}")
@@ -205,7 +186,7 @@ def price_mtm(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="KRW IRS NPV Calculator")
-    parser.add_argument("--date", help="Valuation date YYYY-MM-DD (default: latest in CSV)")
+    parser.add_argument("--date", help="Valuation date YYYY-MM-DD (default: latest available)")
     parser.add_argument("--tenor", type=int, choices=_TENORS, help="Swap tenor in years")
     parser.add_argument("--notional", type=float, default=10_000_000_000, help="Notional KRW (default 10bn)")
     parser.add_argument("--fixed-rate", type=float, dest="fixed_rate", help="Fixed rate in %% (e.g. 3.51)")
@@ -213,7 +194,7 @@ def main() -> None:
     parser.add_argument(
         "--trade-date",
         dest="trade_date",
-        help="Original trade date YYYY-MM-DD; reprices an existing swap (MTM) instead of pricing a new one",
+        help="Original trade date YYYY-MM-DD; reprices an existing swap (MTM)",
     )
     parser.add_argument(
         "--source",
@@ -238,7 +219,7 @@ def main() -> None:
         snapshot = load_market_snapshot(source, valuation_date)
     except NonBusinessDayError as e:
         print(f"\n  Error: {e}")
-        print(f"  No market data for non-business days. Use --date to specify a trading day.")
+        print("  No market data for non-business days. Use --date to specify a trading day.")
         return
     print_market_data(snapshot)
 
@@ -274,7 +255,7 @@ def main() -> None:
         print("  Tip: add --tenor <1|2|3|5|7|10> to price a specific swap.")
 
     if args.export and export_row is not None:
-        from irs_pricer.excel_loader import export_result_xl
+        from irs_pricer.loaders.total_data import export_result_xl
 
         export_result_xl(Path(args.export), export_row)
         print(f"  Result exported to {Path(args.export).resolve()}")

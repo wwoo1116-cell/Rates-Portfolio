@@ -7,7 +7,7 @@ from datetime import date
 
 import QuantLib as ql
 
-from .conventions import BUSINESS_CONVENTION, CALENDAR, DAY_COUNT, FLOAT_LEG_TENOR, to_ql_date
+from ..core.conventions import BUSINESS_CONVENTION, CALENDAR, DAY_COUNT, FLOAT_LEG_TENOR, to_ql_date
 from .curve import CurveBundle
 
 

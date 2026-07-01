@@ -3,9 +3,9 @@ from datetime import date
 import pytest
 import QuantLib as ql
 
-from irs_pricer.conventions import BUSINESS_CONVENTION, CALENDAR, DAY_COUNT, FLOAT_LEG_TENOR
-from irs_pricer.curve import build_curve
-from irs_pricer.market_data import MarketSnapshot, RateQuote
+from irs_pricer.core.conventions import BUSINESS_CONVENTION, CALENDAR, DAY_COUNT, FLOAT_LEG_TENOR
+from irs_pricer.engine.curve import build_curve
+from irs_pricer.core.market_data import MarketSnapshot, RateQuote
 
 
 def _sample_snapshot(valuation_date: date) -> MarketSnapshot:

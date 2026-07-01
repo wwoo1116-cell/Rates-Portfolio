@@ -3,11 +3,11 @@ from datetime import date
 import QuantLib as ql
 from dateutil.relativedelta import relativedelta
 
-from irs_pricer import mtm_valuation as mtm
-from irs_pricer.conventions import BUSINESS_CONVENTION, CALENDAR, DAY_COUNT, FLOAT_LEG_TENOR, to_ql_date
-from irs_pricer.curve import CurveBundle, build_curve
-from irs_pricer.instruments import VanillaSwap
-from irs_pricer.market_data import MarketSnapshot, RateQuote
+from irs_pricer.engine import mtm_valuation as mtm
+from irs_pricer.core.conventions import BUSINESS_CONVENTION, CALENDAR, DAY_COUNT, FLOAT_LEG_TENOR, to_ql_date
+from irs_pricer.engine.curve import CurveBundle, build_curve
+from irs_pricer.engine.instruments import VanillaSwap
+from irs_pricer.core.market_data import MarketSnapshot, RateQuote
 
 _QUOTES = [(1, 0.0280), (2, 0.0270), (3, 0.0265), (5, 0.0260), (7, 0.0258), (10, 0.0257)]
 
@@ -89,7 +89,7 @@ def test_telescoping_matches_forward_estimation():
 
 
 def curve_valuation_date(curve: CurveBundle) -> date:
-    from irs_pricer.conventions import from_ql_date
+    from irs_pricer.core.conventions import from_ql_date
 
     return from_ql_date(curve.valuation_date)
 

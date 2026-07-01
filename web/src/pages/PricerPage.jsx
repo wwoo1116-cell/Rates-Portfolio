@@ -98,6 +98,12 @@ function PricerPage() {
         {/* Date picker */}
         <div className="flex items-center gap-3">
           <Link
+            to="/portfolio"
+            className="text-xs text-primary-foreground/70 hover:text-primary-foreground underline underline-offset-2"
+          >
+            포트폴리오
+          </Link>
+          <Link
             to="/methodology"
             className="text-xs text-primary-foreground/70 hover:text-primary-foreground underline underline-offset-2"
           >

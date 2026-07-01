@@ -18,31 +18,19 @@ from pathlib import Path
 
 import openpyxl
 
-from .csv_loader import NonBusinessDayError, _check_business_day
-from .market_data import MarketSnapshot, RateQuote
-from .rows_cache import get_cached
+from ..core.errors import NonBusinessDayError, _check_business_day
+from ..core.market_data import MarketSnapshot, RateQuote
+from .cache import get_cached
+from .infomax_schema import (
+    COL_CD_91D as _COL_CD_91D,
+    COL_VAL_DATE as _COL_VAL_DATE,
+    HEADER_ROWS as _HEADER_ROWS,
+    IRS_MID_COLS as _IRS_MID_COLS,
+)
 
 logger = logging.getLogger(__name__)
 
 XLSX_NAME = "True Data.xlsx"
-_HEADER_ROWS = 3
-
-_COL_VAL_DATE = 0
-_COL_CD_91D = 2
-
-# tenor_years -> MID column index (0-based) within each data row
-_IRS_MID_COLS: dict[int, int] = {
-    1: 14,
-    2: 22,
-    3: 26,
-    4: 30,
-    5: 34,
-    6: 38,
-    7: 42,
-    8: 46,
-    9: 50,
-    10: 54,
-}
 
 
 def _row_date(row: tuple) -> date | None:
@@ -57,7 +45,7 @@ def _row_date(row: tuple) -> date | None:
 def _parse_rows(path: Path) -> list[tuple]:
     """Parse the dated data block from the top of the sheet, stopping at the
     first blank-date row once real data has been seen. Confirmed (see
-    rows_cache.py module docstring context / investigation) that the real
+    cache.py module docstring context / investigation) that the real
     813 data rows sit contiguously right after the header, followed by tens
     of thousands of empty padding rows -- without this early break,
     openpyxl's read-only row iterator still walks every one of those padding

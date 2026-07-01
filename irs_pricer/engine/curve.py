@@ -1,6 +1,6 @@
 """
 Single CD/IRS discount curve bootstrap (QuantLib). Consumes a `MarketSnapshot`
-(the data contract in market_data.py) and knows nothing about where the
+(the data contract in core/market_data.py) and knows nothing about where the
 quotes came from. Used for both discounting and floating-leg projection.
 """
 
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import QuantLib as ql
 
-from .conventions import (
+from ..core.conventions import (
     BUSINESS_CONVENTION,
     CALENDAR,
     DAY_COUNT,
@@ -19,8 +19,8 @@ from .conventions import (
     SPOT_DAYS,
     to_ql_date,
 )
+from ..core.market_data import MarketSnapshot
 from .interpolation import build_piecewise_curve
-from .market_data import MarketSnapshot
 
 
 @dataclass

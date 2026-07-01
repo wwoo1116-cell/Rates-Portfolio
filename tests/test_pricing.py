@@ -1,10 +1,10 @@
 from datetime import date
 
-from irs_pricer.curve import CurveBundle, build_curve
-from irs_pricer.instruments import VanillaSwap
-from irs_pricer.market_data import MarketSnapshot, RateQuote
-from irs_pricer.pricing import price_swap
-from irs_pricer.risk import dv01
+from irs_pricer.engine.curve import CurveBundle, build_curve
+from irs_pricer.engine.instruments import VanillaSwap
+from irs_pricer.core.market_data import MarketSnapshot, RateQuote
+from irs_pricer.engine.pricing import price_swap
+from irs_pricer.engine.risk import dv01
 
 
 def _curve() -> CurveBundle:

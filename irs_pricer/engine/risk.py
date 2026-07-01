@@ -1,4 +1,4 @@
-"""Sensitivity measures, built on top of instruments.VanillaSwap."""
+"""Sensitivity measures, built on top of engine.instruments.VanillaSwap."""
 
 from __future__ import annotations
 

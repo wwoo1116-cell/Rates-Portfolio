@@ -24,7 +24,15 @@ from datetime import date
 
 import QuantLib as ql
 
-from .conventions import BUSINESS_CONVENTION, CALENDAR, DAY_COUNT, FLOAT_LEG_TENOR, SPOT_DAYS, from_ql_date, to_ql_date
+from ..core.conventions import (
+    BUSINESS_CONVENTION,
+    CALENDAR,
+    DAY_COUNT,
+    FLOAT_LEG_TENOR,
+    SPOT_DAYS,
+    from_ql_date,
+    to_ql_date,
+)
 from .curve import CurveBundle
 from .instruments import VanillaSwap
 

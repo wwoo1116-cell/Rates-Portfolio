@@ -6,8 +6,8 @@ Connects to the open Infomax workbook (live RTD cells, same layout as
 POST /api/market-data/live endpoint at a fixed interval.
 
 Run alongside the pricer while the workbook is open in Excel:
-    python data_updater.py
-    python data_updater.py --workbook "True Data.xlsx" --interval 5
+    python scripts/data_updater.py
+    python scripts/data_updater.py --workbook "True Data.xlsx" --interval 5
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """
 Two-tier (in-memory + on-disk) cache for parsed Excel/XLSX row data, shared
-by xlsx_loader.py and excel_loader.py.
+by true_data.py and total_data.py.
 
 The on-disk layer exists specifically to survive `uvicorn --reload` worker
 restarts during development: the in-memory layer is a module-global dict
