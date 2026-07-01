@@ -1,5 +1,5 @@
 # KRW IRS NPV Pricer
-This project is a production-grade KRW Interest Rate Swap (IRS) pricing and risk management application. It calculates Net Present Value (NPV), DV01, and forward rate breakdowns using a dual-curve framework (KOFR for discounting, CD91 for projection).
+This project is a production-grade KRW Interest Rate Swap (IRS) pricing and risk management application. It calculates Net Present Value.
 
 ## 🏗️ Architecture
 The codebase strictly adheres to modular design principles to separate pure quantitative logic from I/O and presentation.
