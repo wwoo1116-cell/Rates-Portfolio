@@ -18,6 +18,10 @@ from ..engine.instruments import VanillaSwap
 from ..engine.mtm_valuation import CashFlowDetail, value_booked_trade
 
 
+from ..core.conventions import to_ql_date
+from ..engine.context import managed_quantlib_env
+
+
 @dataclass
 class PositionResult:
     position_id: str
@@ -55,38 +59,39 @@ def price_portfolio(
     Net/Payer/Receiver NPV are summed on clean_npv (excludes accrued interest);
     each PositionResult still carries dirty_npv for callers that need it.
     """
-    curve = build_curve(snapshot, interpolation_method=interpolation_method)
+    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
+        curve = build_curve(snapshot, interpolation_method=interpolation_method)
 
-    position_results: list[PositionResult] = []
-    cashflows: list[PortfolioCashFlow] = []
-    payer_npv = 0.0
-    receiver_npv = 0.0
+        position_results: list[PositionResult] = []
+        cashflows: list[PortfolioCashFlow] = []
+        payer_npv = 0.0
+        receiver_npv = 0.0
 
-    for position_id, swap in positions:
-        result = value_booked_trade(swap, curve, fixings)
-        position_results.append(
-            PositionResult(
-                position_id=position_id,
-                clean_npv=result.clean_npv,
-                dirty_npv=result.dirty_npv,
-                accrued_interest=result.accrued_interest,
-                pv_fixed_leg=result.pv_fixed_leg,
-                pv_floating_leg=result.pv_floating_leg,
-                pay_fixed=swap.pay_fixed,
+        for position_id, swap in positions:
+            result = value_booked_trade(swap, curve, fixings)
+            position_results.append(
+                PositionResult(
+                    position_id=position_id,
+                    clean_npv=result.clean_npv,
+                    dirty_npv=result.dirty_npv,
+                    accrued_interest=result.accrued_interest,
+                    pv_fixed_leg=result.pv_fixed_leg,
+                    pv_floating_leg=result.pv_floating_leg,
+                    pay_fixed=swap.pay_fixed,
+                )
             )
+            if swap.pay_fixed:
+                payer_npv += result.clean_npv
+            else:
+                receiver_npv += result.clean_npv
+            cashflows.extend(PortfolioCashFlow(position_id, c) for c in result.cashflows)
+
+        cashflows.sort(key=lambda pcf: pcf.detail.payment_date)
+
+        return PortfolioResult(
+            net_npv=payer_npv + receiver_npv,
+            payer_npv=payer_npv,
+            receiver_npv=receiver_npv,
+            position_results=position_results,
+            cashflows=cashflows,
         )
-        if swap.pay_fixed:
-            payer_npv += result.clean_npv
-        else:
-            receiver_npv += result.clean_npv
-        cashflows.extend(PortfolioCashFlow(position_id, c) for c in result.cashflows)
-
-    cashflows.sort(key=lambda pcf: pcf.detail.payment_date)
-
-    return PortfolioResult(
-        net_npv=payer_npv + receiver_npv,
-        payer_npv=payer_npv,
-        receiver_npv=receiver_npv,
-        position_results=position_results,
-        cashflows=cashflows,
-    )

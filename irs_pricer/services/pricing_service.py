@@ -14,6 +14,9 @@ from ..engine.instruments import VanillaSwap
 from ..engine.pricing import price_swap
 from ..engine.risk import dv01
 
+from ..core.conventions import to_ql_date
+from ..engine.context import managed_quantlib_env
+
 _CURVE_STEP_YEARS = 0.25
 _CURVE_MAX_YEARS = 10.0
 
@@ -27,10 +30,11 @@ def price(
 
     Returns a plain dict with keys: npv, fixed_leg_pv, float_leg_pv, par_rate, dv01.
     """
-    curve = build_curve(snapshot, interpolation_method=interpolation_method)
-    result = price_swap(swap, curve)
-    result["dv01"] = dv01(swap, curve)
-    return result
+    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
+        curve = build_curve(snapshot, interpolation_method=interpolation_method)
+        result = price_swap(swap, curve)
+        result["dv01"] = dv01(swap, curve)
+        return result
 
 
 @dataclass
@@ -50,19 +54,20 @@ def sample_curve(
     Tenors carrying a real market quote (the CD91 3M deposit plus each
     swap-quote tenor) are marked is_knot=True.
     """
-    curve = build_curve(snapshot, interpolation_method=interpolation_method)
-    knot_years = {0.25} | {float(q.tenor_years) for q in snapshot.swap_quotes}
+    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
+        curve = build_curve(snapshot, interpolation_method=interpolation_method)
+        knot_years = {0.25} | {float(q.tenor_years) for q in snapshot.swap_quotes}
 
-    steps = round(_CURVE_MAX_YEARS / _CURVE_STEP_YEARS)
-    points = []
-    for i in range(1, steps + 1):
-        t = round(i * _CURVE_STEP_YEARS, 2)
-        points.append(
-            CurvePoint(
-                tenor_years=t,
-                zero_rate=curve.yield_curve.zeroRate(t, ql.Continuous).rate(),
-                discount_factor=curve.yield_curve.discount(t),
-                is_knot=any(abs(t - k) < 1e-6 for k in knot_years),
+        steps = round(_CURVE_MAX_YEARS / _CURVE_STEP_YEARS)
+        points = []
+        for i in range(1, steps + 1):
+            t = round(i * _CURVE_STEP_YEARS, 2)
+            points.append(
+                CurvePoint(
+                    tenor_years=t,
+                    zero_rate=curve.yield_curve.zeroRate(t, ql.Continuous).rate(),
+                    discount_factor=curve.yield_curve.discount(t),
+                    is_knot=any(abs(t - k) < 1e-6 for k in knot_years),
+                )
             )
-        )
-    return points
+        return points

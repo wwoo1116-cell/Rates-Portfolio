@@ -40,7 +40,6 @@ def build_curve(snapshot: MarketSnapshot, interpolation_method: str = "flat") ->
     to "flat" so existing callers are unaffected.
     """
     calc_date = to_ql_date(snapshot.valuation_date)
-    ql.Settings.instance().evaluationDate = calc_date
     settlement_date = CALENDAR.advance(calc_date, SPOT_DAYS, ql.Days)
 
     helpers = [
@@ -83,7 +82,7 @@ def build_curve(snapshot: MarketSnapshot, interpolation_method: str = "flat") ->
     yield_curve_handle = ql.YieldTermStructureHandle(yield_curve)
 
     fixing_date = CALENDAR.advance(calc_date, -SPOT_DAYS, ql.Days)
-    float_index.addFixing(fixing_date, snapshot.cd_rate)
+    float_index.addFixing(fixing_date, snapshot.cd_rate, forceOverwrite=True)
     float_index = float_index.clone(yield_curve_handle)
 
     return CurveBundle(calc_date, settlement_date, yield_curve, yield_curve_handle, float_index)

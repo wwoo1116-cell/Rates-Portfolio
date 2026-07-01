@@ -12,6 +12,10 @@ from ..engine.instruments import VanillaSwap
 from ..engine.mtm_valuation import MTMResult, value_booked_trade
 
 
+from ..core.conventions import to_ql_date
+from ..engine.context import managed_quantlib_env
+
+
 def value_trade(
     snapshot: MarketSnapshot,
     swap: VanillaSwap,
@@ -19,5 +23,6 @@ def value_trade(
     interpolation_method: str = "flat",
 ) -> MTMResult:
     """Build curve, revalue the booked swap using injected historical fixings."""
-    curve = build_curve(snapshot, interpolation_method=interpolation_method)
-    return value_booked_trade(swap, curve, fixings)
+    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
+        curve = build_curve(snapshot, interpolation_method=interpolation_method)
+        return value_booked_trade(swap, curve, fixings)

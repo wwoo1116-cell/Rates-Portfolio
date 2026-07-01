@@ -7,6 +7,8 @@ from irs_pricer.engine.instruments import VanillaSwap
 from irs_pricer.engine.mtm_valuation import value_booked_trade
 from irs_pricer.engine.curve import build_curve
 from irs_pricer.services import portfolio_service
+from irs_pricer.engine.context import managed_quantlib_env
+from irs_pricer.core.conventions import to_ql_date
 
 _QUOTES = [(1, 0.0280), (2, 0.0270), (3, 0.0265), (5, 0.0260), (7, 0.0258), (10, 0.0257)]
 _VALUATION_DATE = date(2026, 6, 29)
@@ -38,9 +40,10 @@ def test_net_npv_equals_sum_of_position_clean_npv():
 
     result = portfolio_service.price_portfolio(_snapshot(), positions, fixings={})
 
-    curve = build_curve(_snapshot())
-    expected_a = value_booked_trade(swap_a, curve, fixings={})
-    expected_b = value_booked_trade(swap_b, curve, fixings={})
+    with managed_quantlib_env(to_ql_date(_VALUATION_DATE)):
+        curve = build_curve(_snapshot())
+        expected_a = value_booked_trade(swap_a, curve, fixings={})
+        expected_b = value_booked_trade(swap_b, curve, fixings={})
 
     assert abs(result.net_npv - (expected_a.clean_npv + expected_b.clean_npv)) < 1.0
     assert abs(result.payer_npv - expected_a.clean_npv) < 1.0
@@ -78,8 +81,9 @@ def test_single_position_portfolio_matches_single_position_mtm():
     swap = _swap(date(2024, 3, 27), 5, 10_000_000, 0.0270, pay_fixed=True)
     result = portfolio_service.price_portfolio(_snapshot(), [("pos-1", swap)], fixings={})
 
-    curve = build_curve(_snapshot())
-    expected = value_booked_trade(swap, curve, fixings={})
+    with managed_quantlib_env(to_ql_date(_VALUATION_DATE)):
+        curve = build_curve(_snapshot())
+        expected = value_booked_trade(swap, curve, fixings={})
 
     assert abs(result.net_npv - expected.clean_npv) < 1.0
     assert len(result.position_results) == 1
