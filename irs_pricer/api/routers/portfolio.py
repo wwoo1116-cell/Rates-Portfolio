@@ -37,7 +37,7 @@ def portfolio_price_endpoint(request: PortfolioPriceRequest) -> PortfolioPriceRe
     ]
     from ...services.market_data_service import load_fixings
     fixings = load_fixings()
-    result = portfolio_service.price_portfolio(_to_snapshot(request), positions, fixings, request.interpolation_method)
+    result = portfolio_service.price_portfolio(_to_snapshot(request), positions, fixings)
     return PortfolioPriceResponse(
         net_npv=result.net_npv,
         payer_npv=result.payer_npv,
@@ -46,5 +46,4 @@ def portfolio_price_endpoint(request: PortfolioPriceRequest) -> PortfolioPriceRe
         cashflows=[
             PortfolioCashFlowOut(position_id=pcf.position_id, **vars(pcf.detail)) for pcf in result.cashflows
         ],
-        interpolation_method=request.interpolation_method,
     )

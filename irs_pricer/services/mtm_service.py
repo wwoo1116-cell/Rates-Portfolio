@@ -20,9 +20,8 @@ def value_trade(
     snapshot: MarketSnapshot,
     swap: VanillaSwap,
     fixings: dict[date, float],
-    interpolation_method: str = "flat",
 ) -> MTMResult:
     """Build curve, revalue the booked swap using injected historical fixings."""
     with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-        curve = build_curve(snapshot, interpolation_method=interpolation_method)
+        curve = build_curve(snapshot)
         return value_booked_trade(swap, curve, fixings)

@@ -75,14 +75,21 @@ def _parse_rows(path: Path) -> list[tuple]:
     return rows
 
 
-def _load_rows(data_dir: Path | str) -> list[tuple]:
+def _index_rows(rows: list[tuple]) -> dict[date, tuple]:
+    """Build a {valuation_date: row} lookup once per parsed workbook."""
+    return {d: row for row in rows if (d := _row_date(row)) is not None}
+
+
+def _load_indexed_rows(data_dir: Path | str) -> dict[date, tuple]:
+    """Cached, date-indexed view of the parsed workbook -- O(1) lookup by
+    valuation_date instead of an O(N) linear scan per lookup."""
     path = Path(data_dir) / XLSX_NAME
-    return get_cached(path, _parse_rows)
+    return get_cached(path, lambda p: _index_rows(_parse_rows(p)), cache_key_suffix="by_date")
 
 
 def common_dates_xlsx(data_dir: Path | str) -> list[date]:
     """Return all valuation dates present in the workbook, sorted ascending."""
-    dates = {_row_date(row) for row in _load_rows(data_dir)}
+    dates = _load_indexed_rows(data_dir).keys()
     if not dates:
         raise ValueError(f"{XLSX_NAME}에서 날짜 데이터를 찾을 수 없습니다.")
     return sorted(dates)
@@ -97,26 +104,38 @@ def load_market_snapshot_xlsx(data_dir: Path | str, valuation_date: date) -> Mar
     """
     _check_business_day(valuation_date)
 
-    for row in _load_rows(data_dir):
-        if _row_date(row) != valuation_date:
-            continue
+    row = _load_indexed_rows(data_dir).get(valuation_date)
+    if row is None:
+        raise ValueError(f"{XLSX_NAME}에 {valuation_date}의 시장 데이터가 없습니다.")
 
+    cd_rate = row[_COL_CD_91D]
+    if cd_rate is None:
+        raise ValueError(f"{valuation_date}의 CD91D 금리를 찾을 수 없습니다.")
+
+    swap_quotes = [
+        RateQuote(tenor_years=tenor, rate=row[col] / 100.0)
+        for tenor, col in _IRS_MID_COLS.items()
+        if row[col] is not None
+    ]
+    if not swap_quotes:
+        raise ValueError(f"{valuation_date}의 IRS 금리를 찾을 수 없습니다.")
+
+    return MarketSnapshot(
+        valuation_date=valuation_date,
+        cd_rate=cd_rate / 100.0,
+        swap_quotes=swap_quotes,
+    )
+
+
+def load_fixing_history_xlsx(data_dir: Path | str) -> dict[date, float]:
+    """Return {date: CD91D rate (decimal)} for every dated row in True Data.xlsx,
+    usable as `historical_fixings` in mtm_valuation."""
+    history: dict[date, float] = {}
+    for row_date, row in _load_indexed_rows(data_dir).items():
         cd_rate = row[_COL_CD_91D]
         if cd_rate is None:
-            raise ValueError(f"{valuation_date}의 CD91D 금리를 찾을 수 없습니다.")
-
-        swap_quotes = [
-            RateQuote(tenor_years=tenor, rate=row[col] / 100.0)
-            for tenor, col in _IRS_MID_COLS.items()
-            if row[col] is not None
-        ]
-        if not swap_quotes:
-            raise ValueError(f"{valuation_date}의 IRS 금리를 찾을 수 없습니다.")
-
-        return MarketSnapshot(
-            valuation_date=valuation_date,
-            cd_rate=cd_rate / 100.0,
-            swap_quotes=swap_quotes,
-        )
-
-    raise ValueError(f"{XLSX_NAME}에 {valuation_date}의 시장 데이터가 없습니다.")
+            continue
+        history[row_date] = cd_rate / 100.0
+    if not history:
+        raise ValueError(f"{XLSX_NAME}에서 CD91D 픽싱 이력을 찾을 수 없습니다.")
+    return history

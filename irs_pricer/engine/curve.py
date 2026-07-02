@@ -20,7 +20,6 @@ from ..core.conventions import (
     to_ql_date,
 )
 from ..core.market_data import MarketSnapshot
-from .interpolation import build_piecewise_curve
 
 
 @dataclass
@@ -32,12 +31,11 @@ class CurveBundle:
     float_index: ql.IborIndex
 
 
-def build_curve(snapshot: MarketSnapshot, interpolation_method: str = "flat") -> CurveBundle:
+def build_curve(snapshot: MarketSnapshot) -> CurveBundle:
     """Bootstraps the single discounting/projection curve from a MarketSnapshot.
 
-    `interpolation_method` selects how the curve fills in between bootstrapped
-    knot points ("flat" | "linear" | "cubic"; see interpolation.py). Defaults
-    to "flat" so existing callers are unaffected.
+    Interpolates zero rates linearly between bootstrapped knot points, per
+    ISDA convention.
     """
     calc_date = to_ql_date(snapshot.valuation_date)
     settlement_date = CALENDAR.advance(calc_date, SPOT_DAYS, ql.Days)
@@ -78,7 +76,7 @@ def build_curve(snapshot: MarketSnapshot, interpolation_method: str = "flat") ->
             )
         )
 
-    yield_curve = build_piecewise_curve(interpolation_method, calc_date, helpers, DAY_COUNT)
+    yield_curve = ql.PiecewiseLinearZero(calc_date, helpers, DAY_COUNT)
     yield_curve_handle = ql.YieldTermStructureHandle(yield_curve)
 
     fixing_date = CALENDAR.advance(calc_date, -SPOT_DAYS, ql.Days)

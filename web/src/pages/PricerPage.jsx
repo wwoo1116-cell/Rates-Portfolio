@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ParRateTable } from '@/components/ParRateTable'
 import { SwapForm } from '@/components/SwapForm'
 import { ResultCard } from '@/components/ResultCard'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { apiGet } from '@/lib/api'
 
 const LIVE_POLL_MS = 10_000
@@ -109,12 +110,6 @@ function PricerPage() {
           >
             산출 방식
           </Link>
-          <Link
-            to="/curve-comparison"
-            className="text-xs text-primary-foreground/70 hover:text-primary-foreground underline underline-offset-2"
-          >
-            보간법 비교
-          </Link>
           {marketDataError && (
             <span className="text-xs text-red-300">{marketDataError}</span>
           )}
@@ -134,6 +129,7 @@ function PricerPage() {
             onChange={(e) => setValuationDate(e.target.value)}
             className="bg-primary/80 border border-primary-foreground/20 text-primary-foreground text-xs rounded-sm px-2 py-1.5 focus:outline-none focus:border-primary-foreground/50 [color-scheme:dark]"
           />
+          <ThemeToggle />
         </div>
       </header>
 

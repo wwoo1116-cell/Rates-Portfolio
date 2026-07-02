@@ -8,6 +8,7 @@ import { BootstrapStepperDemo } from '@/components/methodology/BootstrapStepperD
 import { FlatForwardDemo } from '@/components/methodology/FlatForwardDemo'
 import { SingleDualCurveDemo } from '@/components/methodology/SingleDualCurveDemo'
 import { TelescopingDemo } from '@/components/methodology/TelescopingDemo'
+import { ThemeToggle } from '@/components/ThemeToggle'
 
 const SECTIONS = [
   { id: 'npv-definition', num: 1, title: 'NPV의 정의' },
@@ -30,12 +31,15 @@ function MethodologyPage() {
           <span className="text-primary-foreground/30 text-xs">|</span>
           <span className="text-xs text-primary-foreground/70">NPV 산출 방식</span>
         </div>
-        <Link
-          to="/pricer"
-          className="text-xs text-primary-foreground/80 hover:text-primary-foreground underline underline-offset-2"
-        >
-          ← 계산기로 돌아가기
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/pricer"
+            className="text-xs text-primary-foreground/80 hover:text-primary-foreground underline underline-offset-2"
+          >
+            ← 계산기로 돌아가기
+          </Link>
+          <ThemeToggle />
+        </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-8">
@@ -114,12 +118,8 @@ function MethodologyPage() {
             <CardContent className="pt-0 space-y-3">
               <FlatForwardDemo />
               <p className="text-xs text-muted-foreground border-t border-border pt-3">
-                이 계산기는 기본적으로 flat-forward 보간을 사용하지만, linear·cubic 보간을 선택했을
-                때 커브 모양과 NPV가 실제로 어떻게 달라지는지{' '}
-                <Link to="/curve-comparison" className="text-primary hover:underline underline-offset-2">
-                  보간법 비교 페이지
-                </Link>
-                에서 직접 확인할 수 있습니다.
+                이 계산기는 ISDA 표준에 따라 부트스트랩된 knot 사이를 linear zero-rate 보간법으로
+                채웁니다.
               </p>
             </CardContent>
           </Card>

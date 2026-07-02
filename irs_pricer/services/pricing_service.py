@@ -24,14 +24,13 @@ _CURVE_MAX_YEARS = 10.0
 def price(
     snapshot: MarketSnapshot,
     swap: VanillaSwap,
-    interpolation_method: str = "flat",
 ) -> dict:
     """Build curve, price swap, compute DV01.
 
     Returns a plain dict with keys: npv, fixed_leg_pv, float_leg_pv, par_rate, dv01.
     """
     with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-        curve = build_curve(snapshot, interpolation_method=interpolation_method)
+        curve = build_curve(snapshot)
         result = price_swap(swap, curve)
         result["dv01"] = dv01(swap, curve)
         return result
@@ -47,7 +46,6 @@ class CurvePoint:
 
 def sample_curve(
     snapshot: MarketSnapshot,
-    interpolation_method: str = "flat",
 ) -> list[CurvePoint]:
     """Sample zero rates and discount factors on a 0.25Y mesh up to 10Y.
 
@@ -55,7 +53,7 @@ def sample_curve(
     swap-quote tenor) are marked is_knot=True.
     """
     with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-        curve = build_curve(snapshot, interpolation_method=interpolation_method)
+        curve = build_curve(snapshot)
         knot_years = {0.25} | {float(q.tenor_years) for q in snapshot.swap_quotes}
 
         steps = round(_CURVE_MAX_YEARS / _CURVE_STEP_YEARS)

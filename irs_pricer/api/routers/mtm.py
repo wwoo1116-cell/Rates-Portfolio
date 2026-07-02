@@ -27,7 +27,7 @@ def mtm_endpoint(request: MtmRequest) -> MtmResponse:
     )
     from ...services.market_data_service import load_fixings
     fixings = load_fixings()
-    result = mtm_service.value_trade(_to_snapshot(request), swap, fixings, request.interpolation_method)
+    result = mtm_service.value_trade(_to_snapshot(request), swap, fixings)
     return MtmResponse(
         clean_npv=result.clean_npv,
         dirty_npv=result.dirty_npv,
@@ -37,5 +37,4 @@ def mtm_endpoint(request: MtmRequest) -> MtmResponse:
         telescoping_used=result.telescoping_used,
         telescoping_diverged=result.telescoping_diverged,
         cashflows=[CashFlowDetailOut(**vars(c)) for c in result.cashflows],
-        interpolation_method=request.interpolation_method,
     )

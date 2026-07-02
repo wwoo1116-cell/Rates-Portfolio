@@ -10,9 +10,9 @@ export function ParRateTable({ cdRate, quotes }) {
         <CardTitle>시장 데이터</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
-        <div className="mb-4 flex items-center justify-between rounded-sm bg-muted px-3 py-2">
+        <div className="mb-4 flex items-center justify-between rounded-sm border border-border bg-muted/60 px-3 py-2">
           <span className="text-xs font-medium text-muted-foreground">CD 91D</span>
-          <span className="font-mono text-sm font-semibold text-foreground">
+          <span className="font-mono tabular-nums text-sm font-semibold text-foreground">
             {cdRate ? `${(Number(cdRate) * 100).toFixed(4)}%` : '—'}
           </span>
         </div>
@@ -30,7 +30,7 @@ export function ParRateTable({ cdRate, quotes }) {
               return (
                 <TableRow key={tenor}>
                   <TableCell className="font-medium">{tenor}</TableCell>
-                  <TableCell className="text-right font-mono">
+                  <TableCell className="text-right font-mono tabular-nums">
                     {q ? `${(Number(q.rate) * 100).toFixed(4)}%` : '—'}
                   </TableCell>
                 </TableRow>

@@ -24,35 +24,42 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-_memory_cache: dict[Path, tuple[float, object]] = {}
+_memory_cache: dict[tuple[Path, str], tuple[float, object]] = {}
 
 
-def _disk_cache_path(source_path: Path) -> Path:
-    return source_path.parent / ".cache" / f"{source_path.name}.rows.pkl"
+def _disk_cache_path(source_path: Path, cache_key_suffix: str = "") -> Path:
+    suffix = f".{cache_key_suffix}" if cache_key_suffix else ""
+    return source_path.parent / ".cache" / f"{source_path.name}{suffix}.rows.pkl"
 
 
-def get_cached(source_path: Path, parse_fn: Callable[[Path], T]) -> T:
+def get_cached(source_path: Path, parse_fn: Callable[[Path], T], cache_key_suffix: str = "") -> T:
     """Return parse_fn(source_path)'s result, reusing a cached copy when possible.
 
     Lookup order: in-memory cache -> on-disk pickle cache -> parse_fn(source_path).
     parse_fn's return value must be picklable (e.g. a list of row tuples, or a
     dict of per-sheet date->value series).
+
+    `cache_key_suffix` distinguishes multiple differently-shaped cached views of
+    the same source file (e.g. a raw row list vs. a date-indexed dict) so they
+    don't collide under the same in-memory/disk cache key. Defaults to "" for
+    the original single-view-per-file behavior.
     """
     mtime = source_path.stat().st_mtime
+    cache_key = (source_path, cache_key_suffix)
 
-    cached = _memory_cache.get(source_path)
+    cached = _memory_cache.get(cache_key)
     if cached is not None and cached[0] == mtime:
         logger.debug("memory cache hit: %s", source_path.name)
         return cached[1]
 
-    disk_path = _disk_cache_path(source_path)
+    disk_path = _disk_cache_path(source_path, cache_key_suffix)
     if disk_path.exists():
         try:
             with disk_path.open("rb") as f:
                 disk_mtime, value = pickle.load(f)
             if disk_mtime == mtime:
                 logger.debug("disk cache hit: %s", source_path.name)
-                _memory_cache[source_path] = (mtime, value)
+                _memory_cache[cache_key] = (mtime, value)
                 return value
             logger.debug("disk cache stale (mtime mismatch): %s", source_path.name)
         except Exception as exc:
@@ -61,7 +68,7 @@ def get_cached(source_path: Path, parse_fn: Callable[[Path], T]) -> T:
     logger.info("parsing %s (no valid cache)…", source_path.name)
     value = parse_fn(source_path)
     logger.info("parsed %s successfully", source_path.name)
-    _memory_cache[source_path] = (mtime, value)
+    _memory_cache[cache_key] = (mtime, value)
     _write_disk_cache(disk_path, mtime, value)
     return value
 

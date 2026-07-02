@@ -6,6 +6,7 @@ import { Header } from '@/components/portfolio/Header'
 import { PositionList } from '@/components/portfolio/PositionList'
 import { PortfolioSummaryBar } from '@/components/portfolio/PortfolioSummaryBar'
 import { PortfolioCashFlowTable } from '@/components/portfolio/PortfolioCashFlowTable'
+import { HistoricalPnlPanel } from '@/components/portfolio/HistoricalPnlPanel'
 import { apiGet, apiPost } from '@/lib/api'
 
 const POSITIONS_STORAGE_KEY = 'irs-portfolio:positions'
@@ -145,7 +146,6 @@ function PortfolioPage() {
           fixed_rate: Number(p.fixedRatePct) / 100,
           pay_fixed: p.direction === 'pay',
         })),
-        interpolation_method: 'flat',
       })
       setResult(data)
     } catch (err) {
@@ -200,6 +200,10 @@ function PortfolioPage() {
             )}
           </CardContent>
         </Card>
+
+        <Separator />
+
+        <HistoricalPnlPanel positions={positions} dateRange={dateRange} />
       </main>
     </div>
   )

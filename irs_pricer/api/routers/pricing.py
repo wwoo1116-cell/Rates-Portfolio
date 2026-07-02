@@ -21,10 +21,9 @@ router = APIRouter(prefix="/api")
 @router.post("/curve", response_model=CurveResponse)
 def curve_endpoint(request: CurveRequest) -> CurveResponse:
     """Sample bootstrapped zero rates and discount factors on a 0.25Y tenor mesh."""
-    points = pricing_service.sample_curve(_to_snapshot(request), request.interpolation_method)
+    points = pricing_service.sample_curve(_to_snapshot(request))
     return CurveResponse(
         valuation_date=request.valuation_date,
-        interpolation_method=request.interpolation_method,
         points=[
             CurvePointOut(
                 tenor_years=p.tenor_years,
@@ -45,5 +44,5 @@ def price_endpoint(request: PriceRequest) -> PriceResponse:
         fixed_rate=request.swap.fixed_rate,
         pay_fixed=request.swap.pay_fixed,
     )
-    result = pricing_service.price(_to_snapshot(request), swap, request.interpolation_method)
-    return PriceResponse(**result, interpolation_method=request.interpolation_method)
+    result = pricing_service.price(_to_snapshot(request), swap)
+    return PriceResponse(**result)

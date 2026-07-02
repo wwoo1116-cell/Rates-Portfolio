@@ -43,30 +43,14 @@ def test_zero_rates_are_positive():
             assert zero_rate > 0
 
 
-def test_default_interpolation_method_is_flat():
-    """Regression check for the interpolation_method refactor: build_curve()
-    with no explicit method must behave identically to build_curve(..., "flat"),
-    which is the pre-refactor (hardcoded PiecewiseLogLinearDiscount) behavior."""
-    snapshot = _sample_snapshot(date(2026, 6, 29))
-    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-        default_curve = build_curve(snapshot)
-        flat_curve = build_curve(snapshot, interpolation_method="flat")
-        for t in (0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 10.0):
-            assert default_curve.yield_curve.discount(t) == flat_curve.yield_curve.discount(t)
-            assert default_curve.yield_curve.zeroRate(t, ql.Continuous).rate() == pytest.approx(
-                flat_curve.yield_curve.zeroRate(t, ql.Continuous).rate()
-            )
-
-
-@pytest.mark.parametrize("method", ["flat", "linear", "cubic"])
-def test_all_interpolation_methods_reprice_quoted_par_rate(method):
-    """All three modes bootstrap from the same knot points, so a swap struck
-    at exactly the quoted par rate for a knot tenor must reprice to ~par
-    (fair rate == quote) regardless of interpolation method."""
+def test_par_swap_reprices_to_par_rate_at_knot_tenor():
+    """A swap struck at exactly the quoted par rate for a knot tenor must
+    reprice to ~par (fair rate == quote) under the (sole, hardcoded) linear
+    zero-rate bootstrap."""
     quoted_5y = 0.0260
     snapshot = _sample_snapshot(date(2026, 6, 29))
     with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-        curve = build_curve(snapshot, interpolation_method=method)
+        curve = build_curve(snapshot)
 
         schedule = ql.Schedule(
             curve.settlement_date,
@@ -84,23 +68,3 @@ def test_all_interpolation_methods_reprice_quoted_par_rate(method):
         swap.setPricingEngine(ql.DiscountingSwapEngine(curve.yield_curve_handle))
 
         assert swap.fairRate() == pytest.approx(quoted_5y, abs=1e-6)
-
-
-def test_interpolation_methods_diverge_between_knots():
-    """At an off-knot tenor (between the 3Y and 5Y quotes), flat/linear/cubic
-    must not all agree -- otherwise the interpolation_method parameter isn't
-    actually doing anything."""
-    snapshot = _sample_snapshot(date(2026, 6, 29))
-    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-        zero_rates = {
-            method: build_curve(snapshot, interpolation_method=method).yield_curve.zeroRate(4.0, ql.Continuous).rate()
-            for method in ("flat", "linear", "cubic")
-        }
-    assert len({round(r, 8) for r in zero_rates.values()}) > 1
-
-
-def test_invalid_interpolation_method_raises():
-    with pytest.raises(ValueError):
-        snapshot = _sample_snapshot(date(2026, 6, 29))
-        with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-            build_curve(snapshot, interpolation_method="bogus")

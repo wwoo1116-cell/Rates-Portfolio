@@ -58,7 +58,7 @@ export function NpvDefinitionDemo() {
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">PV(변동 레그)</span>
-            <span className="font-mono text-foreground">₩{fmt(pvFloat)}M</span>
+            <span className="font-mono tabular-nums text-foreground">₩{fmt(pvFloat)}M</span>
           </div>
           <Slider
             min={800}
@@ -71,7 +71,7 @@ export function NpvDefinitionDemo() {
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">PV(고정 레그)</span>
-            <span className="font-mono text-foreground">₩{fmt(pvFixed)}M</span>
+            <span className="font-mono tabular-nums text-foreground">₩{fmt(pvFixed)}M</span>
           </div>
           <Slider
             min={800}

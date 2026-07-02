@@ -68,9 +68,9 @@ export function TelescopingDemo() {
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
             예시: {segment.label} 구간, flat forward 금리{' '}
-            <span className="font-mono text-foreground">{pct(segment.rate)}</span>, 명목원금 ₩
+            <span className="font-mono tabular-nums text-foreground">{pct(segment.rate)}</span>, 명목원금 ₩
             {fmt(NOTIONAL, 0)}M, 예시용 DF(1Y) ={' '}
-            <span className="font-mono text-foreground">{fmt(DF_START, 4)}</span>에서 시작.
+            <span className="font-mono tabular-nums text-foreground">{fmt(DF_START, 4)}</span>에서 시작.
           </p>
 
           <div className="grid md:grid-cols-2 gap-4">
@@ -90,14 +90,14 @@ export function TelescopingDemo() {
                   {periods.map((p) => (
                     <TableRow key={p.index}>
                       <TableCell className="text-xs">Q{p.index + 1}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{fmt(p.dfEnd, 4)}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{fmt(p.pv, 2)}</TableCell>
+                      <TableCell className="text-right font-mono tabular-nums text-xs">{fmt(p.dfEnd, 4)}</TableCell>
+                      <TableCell className="text-right font-mono tabular-nums text-xs">{fmt(p.pv, 2)}</TableCell>
                     </TableRow>
                   ))}
                   <TableRow>
                     <TableCell className="text-xs font-semibold">합계</TableCell>
                     <TableCell />
-                    <TableCell className="text-right font-mono text-xs font-semibold">
+                    <TableCell className="text-right font-mono tabular-nums text-xs font-semibold">
                       {fmt(perPeriodSum, 2)}
                     </TableCell>
                   </TableRow>
@@ -112,15 +112,15 @@ export function TelescopingDemo() {
               <div className="rounded-sm border border-border px-4 py-3 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">DF(start)</span>
-                  <span className="font-mono text-foreground">{fmt(DF_START, 4)}</span>
+                  <span className="font-mono tabular-nums text-foreground">{fmt(DF_START, 4)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">DF(end)</span>
-                  <span className="font-mono text-foreground">{fmt(dfFinal, 4)}</span>
+                  <span className="font-mono tabular-nums text-foreground">{fmt(dfFinal, 4)}</span>
                 </div>
                 <div className="flex justify-between border-t border-border pt-2">
                   <span className="text-muted-foreground">Notional × [DF(start) − DF(end)]</span>
-                  <span className="font-mono font-semibold text-foreground">{fmt(telescopingPv, 2)}</span>
+                  <span className="font-mono tabular-nums font-semibold text-foreground">{fmt(telescopingPv, 2)}</span>
                 </div>
               </div>
             </div>

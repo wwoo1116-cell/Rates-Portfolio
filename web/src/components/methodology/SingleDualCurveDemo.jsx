@@ -87,7 +87,7 @@ export function SingleDualCurveDemo() {
           <span className={cn('text-muted-foreground', mode !== 'dual' && 'opacity-40')}>
             CD91 / KOFR 베이시스 스프레드
           </span>
-          <span className={cn('font-mono text-foreground', mode !== 'dual' && 'opacity-40')}>
+          <span className={cn('font-mono tabular-nums text-foreground', mode !== 'dual' && 'opacity-40')}>
             {basisBps}bp
           </span>
         </div>

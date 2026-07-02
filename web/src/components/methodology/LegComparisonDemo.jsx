@@ -48,21 +48,21 @@ export function LegComparisonDemo() {
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">명목원금</span>
-            <span className="font-mono text-foreground">₩{fmt(notional)}M</span>
+            <span className="font-mono tabular-nums text-foreground">₩{fmt(notional)}M</span>
           </div>
           <Slider min={1000} max={20000} step={500} value={notional} onChange={(e) => setNotional(Number(e.target.value))} />
         </div>
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">고정금리</span>
-            <span className="font-mono text-foreground">{fixedRatePct.toFixed(2)}%</span>
+            <span className="font-mono tabular-nums text-foreground">{fixedRatePct.toFixed(2)}%</span>
           </div>
           <Slider min={1} max={5} step={0.05} value={fixedRatePct} onChange={(e) => setFixedRatePct(Number(e.target.value))} />
         </div>
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">테너</span>
-            <span className="font-mono text-foreground">{tenorYears}Y</span>
+            <span className="font-mono tabular-nums text-foreground">{tenorYears}Y</span>
           </div>
           <Slider min={1} max={10} step={1} value={tenorYears} onChange={(e) => setTenorYears(Number(e.target.value))} />
         </div>

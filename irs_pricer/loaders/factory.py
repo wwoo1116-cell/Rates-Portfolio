@@ -11,8 +11,8 @@ from pathlib import Path
 from ..core.errors import NonBusinessDayError
 from ..core.market_data import MarketSnapshot
 from .csv_loader import common_dates as common_dates_csv, load_fixing_history_csv, load_market_snapshot_csv
-from .total_data import common_dates_xl, load_market_snapshot_xl
-from .true_data import common_dates_xlsx, load_market_snapshot_xlsx
+from .total_data import common_dates_xl, load_fixing_history_xl, load_market_snapshot_xl
+from .true_data import common_dates_xlsx, load_fixing_history_xlsx, load_market_snapshot_xlsx
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +69,18 @@ def load_market_snapshot(source: Path | str, valuation_date: date) -> MarketSnap
 
 
 def load_fixing_history(source: Path | str) -> dict[date, float]:
-    """Inspects `source` and returns historical CD91D fixings for MTM pricing."""
+    """Detects format (CSV, Total Data, True Data) and routes to the matching
+    fixing-history loader, mirroring load_market_snapshot()'s routing."""
     source = Path(source)
-    
+    source_type = _detect_source_type(source)
+
+    if source_type == "true_data":
+        target = source if source.is_dir() else source.parent
+        return load_fixing_history_xlsx(target)
+    elif source_type == "total_data":
+        target = (source / TOTAL_DATA_FILE) if source.is_dir() else source
+        return load_fixing_history_xl(target)
+
     if source.is_dir():
         cd_fixings_path = source / CSV_FIXINGS_FILE
     elif source.suffix.lower() == ".csv":
@@ -84,7 +93,7 @@ def load_fixing_history(source: Path | str) -> dict[date, float]:
             f"필수 과거 금리 데이터 파일이 누락되었습니다. "
             f"경로를 확인하세요: {cd_fixings_path}"
         )
-    
+
     try:
         return load_fixing_history_csv(cd_fixings_path)
     except Exception as e:

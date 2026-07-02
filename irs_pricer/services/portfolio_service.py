@@ -11,6 +11,7 @@ produces -- see mtm_service.py for the single-position analog this mirrors.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 from ..core.market_data import MarketSnapshot
 from ..engine.curve import build_curve
@@ -52,7 +53,6 @@ def price_portfolio(
     snapshot: MarketSnapshot,
     positions: list[tuple[str, VanillaSwap]],
     fixings: dict[date, float],
-    interpolation_method: str = "flat",
 ) -> PortfolioResult:
     """Build one shared curve, revalue every (position_id, swap) pair, aggregate.
 
@@ -60,7 +60,7 @@ def price_portfolio(
     each PositionResult still carries dirty_npv for callers that need it.
     """
     with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-        curve = build_curve(snapshot, interpolation_method=interpolation_method)
+        curve = build_curve(snapshot)
 
         position_results: list[PositionResult] = []
         cashflows: list[PortfolioCashFlow] = []

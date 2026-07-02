@@ -27,5 +27,5 @@ export function fmtEok(n) {
 const PV_NEAR_ZERO = 1 // KRW
 export function pvBg(value) {
   if (value == null || Math.abs(value) < PV_NEAR_ZERO) return 'bg-muted'
-  return value > 0 ? 'bg-emerald-100' : 'bg-red-100'
+  return value > 0 ? 'bg-positive/10' : 'bg-negative/10'
 }

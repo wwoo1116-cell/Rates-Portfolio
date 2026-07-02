@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from ..core.market_data import MarketSnapshot, RateQuote
-
-# Keep in sync with irs_pricer.interpolation.VALID_INTERPOLATION_METHODS.
-InterpolationMethod = Literal["flat", "linear", "cubic"]
 
 
 class RateQuoteIn(BaseModel):
@@ -30,7 +26,6 @@ class PriceRequest(BaseModel):
     cd_rate: float
     swap_quotes: list[RateQuoteIn]
     swap: SwapIn
-    interpolation_method: InterpolationMethod = "flat"
 
 
 class PriceResponse(BaseModel):
@@ -39,7 +34,6 @@ class PriceResponse(BaseModel):
     float_leg_pv: float
     par_rate: float
     dv01: float
-    interpolation_method: InterpolationMethod
 
 
 class MtmSwapIn(BaseModel):
@@ -56,7 +50,6 @@ class MtmRequest(BaseModel):
     cd_rate: float
     swap_quotes: list[RateQuoteIn]
     swap: MtmSwapIn
-    interpolation_method: InterpolationMethod = "flat"
 
 
 class CashFlowDetailOut(BaseModel):
@@ -79,7 +72,6 @@ class MtmResponse(BaseModel):
     telescoping_used: bool
     telescoping_diverged: bool
     cashflows: list[CashFlowDetailOut]
-    interpolation_method: InterpolationMethod
 
 
 class MarketDataResponse(BaseModel):
@@ -92,7 +84,6 @@ class CurveRequest(BaseModel):
     valuation_date: date
     cd_rate: float
     swap_quotes: list[RateQuoteIn]
-    interpolation_method: InterpolationMethod = "flat"
 
 
 class CurvePointOut(BaseModel):
@@ -104,7 +95,6 @@ class CurvePointOut(BaseModel):
 
 class CurveResponse(BaseModel):
     valuation_date: date
-    interpolation_method: InterpolationMethod
     points: list[CurvePointOut]
 
 
@@ -129,7 +119,6 @@ class PortfolioPriceRequest(BaseModel):
     cd_rate: float
     swap_quotes: list[RateQuoteIn]
     positions: list[PortfolioPositionIn] = Field(min_length=1)
-    interpolation_method: InterpolationMethod = "flat"
 
 
 class PositionResultOut(BaseModel):
@@ -160,7 +149,31 @@ class PortfolioPriceResponse(BaseModel):
     receiver_npv: float
     position_results: list[PositionResultOut]
     cashflows: list[PortfolioCashFlowOut]
-    interpolation_method: InterpolationMethod
+
+
+class HistoricalPnlRequest(BaseModel):
+    positions: list[PortfolioPositionIn] = Field(min_length=1)
+    start_date: date
+    end_date: date
+    baseline_date: date | None = None
+    # Unlike other requests, no valuation_date/cd_rate/swap_quotes here --
+    # market data is resolved per-date server-side (see historical_pnl_service).
+
+
+class PnlPointOut(BaseModel):
+    valuation_date: date
+    net_npv: float
+    payer_npv: float
+    receiver_npv: float
+    active_position_ids: list[str]
+    cumulative_pnl: float
+
+
+class HistoricalPnlResponse(BaseModel):
+    baseline_date: date
+    baseline_net_npv: float
+    points: list[PnlPointOut]
+    skipped_dates: list[date]
 
 
 def _to_snapshot(request) -> MarketSnapshot:

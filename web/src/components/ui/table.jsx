@@ -29,7 +29,7 @@ function TableHead({ className, ...props }) {
   return (
     <th
       className={cn(
-        'h-8 px-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted-foreground',
+        'h-7 px-3 text-left text-[11px] font-semibold uppercase tracking-widest text-muted-foreground',
         className,
       )}
       {...props}

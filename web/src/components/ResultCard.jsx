@@ -29,7 +29,7 @@ export function ResultCard({ result }) {
   const npvVariant = npv > 0 ? 'positive' : npv < 0 ? 'negative' : 'outline'
 
   return (
-    <Card>
+    <Card className="transition-colors hover:border-primary/40">
       <CardHeader>
         <CardTitle>결과</CardTitle>
       </CardHeader>
@@ -40,7 +40,7 @@ export function ResultCard({ result }) {
             <Badge variant={npvVariant}>
               {npv >= 0 ? '+' : ''}{fmt(npv)} KRW
             </Badge>
-            <div className="text-[11px] text-muted-foreground font-mono mt-0.5">{fmtEok(npv)}</div>
+            <div className="text-[11px] text-muted-foreground font-mono tabular-nums mt-0.5">{fmtEok(npv)}</div>
           </div>
         </div>
 
@@ -50,15 +50,15 @@ export function ResultCard({ result }) {
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">고정 레그 PV</span>
             <div className="text-right">
-              <div className="font-mono text-foreground">{fmt(result.fixed_leg_pv)} KRW</div>
-              <div className="text-[11px] text-muted-foreground font-mono">{fmtEok(result.fixed_leg_pv)}</div>
+              <div className="font-mono tabular-nums text-foreground">{fmt(result.fixed_leg_pv)} KRW</div>
+              <div className="text-[11px] text-muted-foreground font-mono tabular-nums">{fmtEok(result.fixed_leg_pv)}</div>
             </div>
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">변동 레그 PV</span>
             <div className="text-right">
-              <div className="font-mono text-foreground">{fmt(result.float_leg_pv)} KRW</div>
-              <div className="text-[11px] text-muted-foreground font-mono">{fmtEok(result.float_leg_pv)}</div>
+              <div className="font-mono tabular-nums text-foreground">{fmt(result.float_leg_pv)} KRW</div>
+              <div className="text-[11px] text-muted-foreground font-mono tabular-nums">{fmtEok(result.float_leg_pv)}</div>
             </div>
           </div>
         </div>
@@ -68,11 +68,11 @@ export function ResultCard({ result }) {
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Par rate</span>
-            <span className="font-mono font-medium text-foreground">{fmtPct(result.par_rate)}</span>
+            <span className="font-mono tabular-nums font-medium text-foreground">{fmtPct(result.par_rate)}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">DV01</span>
-            <span className="font-mono text-foreground">{fmt(result.dv01)} KRW/bp</span>
+            <span className="font-mono tabular-nums text-foreground">{fmt(result.dv01)} KRW/bp</span>
           </div>
         </div>
       </CardContent>
@@ -87,7 +87,7 @@ function MtmResultCard({ result }) {
   const dirtyNpv = Number(result.dirty_npv)
 
   return (
-    <Card>
+    <Card className="transition-colors hover:border-primary/40">
       <CardHeader>
         <CardTitle>MTM 재평가</CardTitle>
       </CardHeader>
@@ -95,24 +95,24 @@ function MtmResultCard({ result }) {
         <div className={cn('flex items-center justify-between rounded-sm px-2 py-1.5', pvBg(cleanNpv))}>
           <span className="text-sm font-medium text-foreground">Clean NPV</span>
           <div className="text-right">
-            <div className="font-mono font-semibold text-foreground">
+            <div className="font-mono tabular-nums font-semibold text-foreground">
               {cleanNpv >= 0 ? '+' : ''}{fmt(cleanNpv)} KRW
             </div>
-            <div className="text-[11px] text-muted-foreground font-mono">{fmtEok(cleanNpv)}</div>
+            <div className="text-[11px] text-muted-foreground font-mono tabular-nums">{fmtEok(cleanNpv)}</div>
           </div>
         </div>
         <div className={cn('flex items-center justify-between rounded-sm px-2 py-1.5 text-sm', pvBg(dirtyNpv))}>
           <span className="text-foreground">Dirty NPV</span>
           <div className="text-right">
-            <div className="font-mono text-foreground">
+            <div className="font-mono tabular-nums text-foreground">
               {dirtyNpv >= 0 ? '+' : ''}{fmt(dirtyNpv)} KRW
             </div>
-            <div className="text-[11px] text-muted-foreground font-mono">{fmtEok(dirtyNpv)}</div>
+            <div className="text-[11px] text-muted-foreground font-mono tabular-nums">{fmtEok(dirtyNpv)}</div>
           </div>
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">경과이자</span>
-          <span className="font-mono text-foreground">{fmt(result.accrued_interest)} KRW</span>
+          <span className="font-mono tabular-nums text-foreground">{fmt(result.accrued_interest)} KRW</span>
         </div>
 
         <Separator />
@@ -120,11 +120,11 @@ function MtmResultCard({ result }) {
         <div className="space-y-2">
           <div className={cn('flex items-center justify-between rounded-sm px-2 py-1.5 text-sm', pvBg(result.pv_fixed_leg))}>
             <span className="text-foreground">고정 레그 PV</span>
-            <span className="font-mono text-foreground">{fmt(result.pv_fixed_leg)} KRW</span>
+            <span className="font-mono tabular-nums text-foreground">{fmt(result.pv_fixed_leg)} KRW</span>
           </div>
           <div className={cn('flex items-center justify-between rounded-sm px-2 py-1.5 text-sm', pvBg(result.pv_floating_leg))}>
             <span className="text-foreground">변동 레그 PV</span>
-            <span className="font-mono text-foreground">{fmt(result.pv_floating_leg)} KRW</span>
+            <span className="font-mono tabular-nums text-foreground">{fmt(result.pv_floating_leg)} KRW</span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">텔레스코핑 교차검증</span>
@@ -162,9 +162,9 @@ function MtmResultCard({ result }) {
                     {cf.accrual_start} → {cf.accrual_end}
                   </TableCell>
                   <TableCell className="text-xs">{cf.leg === 'fixed' ? '고정' : '변동'}</TableCell>
-                  <TableCell className="text-right font-mono text-xs">{fmtPct(cf.rate)}</TableCell>
+                  <TableCell className="text-right font-mono tabular-nums text-xs">{fmtPct(cf.rate)}</TableCell>
                   <TableCell className="text-xs">{cf.is_known ? '확정' : '추정'}</TableCell>
-                  <TableCell className="text-right font-mono text-xs">{fmt(cf.pv)}</TableCell>
+                  <TableCell className="text-right font-mono tabular-nums text-xs">{fmt(cf.pv)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -24,8 +24,8 @@ export function PortfolioSummaryBar({ result }) {
               </div>
               <div
                 className={cn(
-                  'text-2xl font-bold font-mono',
-                  value == null ? 'text-muted-foreground' : positive ? 'text-emerald-700' : 'text-red-700',
+                  'text-2xl font-bold font-mono tabular-nums',
+                  value == null ? 'text-muted-foreground' : positive ? 'text-positive' : 'text-negative',
                 )}
               >
                 {value == null ? '—' : `${positive ? '+' : ''}${fmt(value)}`}

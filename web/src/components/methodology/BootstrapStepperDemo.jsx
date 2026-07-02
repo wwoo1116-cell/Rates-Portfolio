@@ -67,16 +67,16 @@ export function BootstrapStepperDemo() {
         {currentStep === 0 ? (
           <p className="text-muted-foreground text-xs leading-relaxed">
             0–3M 구간은 별도로 풀 필요가 없습니다 — 오늘자 CD91 고시금리{' '}
-            <span className="font-mono text-foreground">{pct(DEMO_CD_RATE)}</span>가 그대로 직접
+            <span className="font-mono tabular-nums text-foreground">{pct(DEMO_CD_RATE)}</span>가 그대로 직접
             관측되는 값입니다.
           </p>
         ) : (
           <p className="text-muted-foreground text-xs leading-relaxed">
             {step.label} 구간의 flat forward 금리를, 그 이전 모든 구간이 이미 확정되었다는 전제
             하에 {step.toYears}Y par 스왑금리(고시{' '}
-            <span className="font-mono text-foreground">{pct(step.parRate)}</span>)가 정확히
+            <span className="font-mono tabular-nums text-foreground">{pct(step.parRate)}</span>)가 정확히
             재현되도록 풉니다. 결과:{' '}
-            <span className="font-mono text-foreground">{pct(step.rate)}</span>.
+            <span className="font-mono tabular-nums text-foreground">{pct(step.rate)}</span>.
           </p>
         )}
       </div>

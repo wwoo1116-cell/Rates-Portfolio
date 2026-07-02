@@ -8,11 +8,6 @@ import { useDateQuotes, parRatePctFromEntry } from '@/lib/useDateQuotes'
 import { apiPost } from '@/lib/api'
 
 const TENORS = ['1Y', '2Y', '3Y', '4Y', '5Y', '6Y', '7Y', '8Y', '9Y', '10Y']
-const INTERPOLATION_METHODS = [
-  { method: 'flat', label: 'Flat' },
-  { method: 'linear', label: 'Linear' },
-  { method: 'cubic', label: 'Cubic' },
-]
 
 export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) {
   const [mode, setMode] = useState('new') // 'new' = price a fresh trade, 'mtm' = revalue a booked trade
@@ -21,7 +16,6 @@ export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) 
   const [fixedRatePct, setFixedRatePct] = useState('')
   const [direction, setDirection] = useState('pay')
   const [tradeDate, setTradeDate] = useState('')
-  const [interpolationMethod, setInterpolationMethod] = useState('flat')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -70,7 +64,6 @@ export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) 
             pay_fixed: direction === 'pay',
             float_spread: 0.0,
           },
-          interpolation_method: interpolationMethod,
         })
         onResult(data)
       } catch (err) {
@@ -105,7 +98,6 @@ export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) 
           fixed_rate: fixedRateDecimal,
           pay_fixed: direction === 'pay',
         },
-        interpolation_method: interpolationMethod,
       })
       onResult(data)
     } catch (err) {
@@ -184,28 +176,6 @@ export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) 
                   )}
                 >
                   {t}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* CD curve interpolation method */}
-          <div className="space-y-1.5">
-            <Label>커브 보간법</Label>
-            <div className="flex gap-2 mt-1">
-              {INTERPOLATION_METHODS.map(({ method, label }) => (
-                <button
-                  key={method}
-                  type="button"
-                  onClick={() => setInterpolationMethod(method)}
-                  className={cn(
-                    'flex-1 py-1.5 rounded-sm text-xs font-semibold uppercase tracking-wide border transition-colors',
-                    interpolationMethod === method
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-foreground border-border hover:border-primary',
-                  )}
-                >
-                  {label}
                 </button>
               ))}
             </div>

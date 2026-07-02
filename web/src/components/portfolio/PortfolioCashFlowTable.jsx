@@ -30,10 +30,10 @@ export function PortfolioCashFlowTable({ cashflows }) {
               {cf.accrual_start} → {cf.accrual_end}
             </TableCell>
             <TableCell className="text-xs">{cf.leg === 'fixed' ? '고정' : '변동'}</TableCell>
-            <TableCell className="text-right font-mono text-xs">{fmtPct(cf.rate)}</TableCell>
+            <TableCell className="text-right font-mono tabular-nums text-xs">{fmtPct(cf.rate)}</TableCell>
             <TableCell className="text-xs">{cf.is_known ? '확정' : '추정'}</TableCell>
             <TableCell className="text-xs">{cf.payment_date}</TableCell>
-            <TableCell className="text-right font-mono text-xs">{fmt(cf.pv)}</TableCell>
+            <TableCell className="text-right font-mono tabular-nums text-xs">{fmt(cf.pv)}</TableCell>
           </TableRow>
         ))}
       </TableBody>
