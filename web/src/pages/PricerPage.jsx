@@ -83,17 +83,12 @@ function PricerPage() {
       {/* Top bar */}
       <header className="bg-primary text-primary-foreground px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-[11px] font-semibold uppercase tracking-widest text-primary-foreground/70">
-            IRS Pricer
+          <span className="flex items-center justify-center h-7 w-7 rounded-sm bg-primary-foreground/15 text-[11px] font-bold tracking-wide">
+            PF
           </span>
-          <span className="text-primary-foreground/30 text-xs">|</span>
-          <span className="text-xs text-primary-foreground/70">원화 금리스왑(IRS) NPV 계산기</span>
-          {isLiveDate && !marketDataError && (
-            <span className="flex items-center gap-1 text-[11px] text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              LIVE
-            </span>
-          )}
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-primary-foreground/70">
+            Project Future
+          </span>
         </div>
 
         {/* Date picker */}
