@@ -6,6 +6,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { useDateQuotes, parRatePctFromEntry } from '@/lib/useDateQuotes'
+import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { fmtRate4 } from '@/lib/format'
 import { apiPost } from '@/lib/api'
 
 const TENORS = ['1Y', '2Y', '3Y', '4Y', '5Y', '6Y', '7Y', '8Y', '9Y', '10Y']
@@ -21,13 +23,15 @@ export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) 
   const [error, setError] = useState('')
 
   const matchedQuote = quotes?.find((q) => q.tenor === tenor)
-  const parRatePct = matchedQuote ? (matchedQuote.rate * 100).toFixed(4) : null
+  const parRatePct = matchedQuote ? fmtRate4(matchedQuote.rate) : null
 
   // MTM mode's example must reflect the rate that was realistic when the
   // trade was booked (trade_date), not today's rate (valuationDate) -- using
   // valuationDate here would misleadingly show today's par rate as if it
-  // were the historical contracted rate.
-  const tradeDateEntry = useDateQuotes(mode === 'mtm' ? tradeDate : '')
+  // were the historical contracted rate. Debounced so keyboard entry in the
+  // date input doesn't fire a fetch per keystroke.
+  const debouncedTradeDate = useDebouncedValue(tradeDate)
+  const tradeDateEntry = useDateQuotes(mode === 'mtm' ? debouncedTradeDate : '')
   const tradeDateParRatePct = parRatePctFromEntry(tradeDateEntry, tenor)
 
   const activeParRatePct = mode === 'mtm' ? tradeDateParRatePct : parRatePct

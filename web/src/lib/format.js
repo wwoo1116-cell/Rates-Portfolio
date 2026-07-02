@@ -14,6 +14,13 @@ export function fmtPct(n) {
   return `${(Number(n) * 100).toFixed(4)}%`
 }
 
+// Bare percentage value to 4dp with no '%' suffix -- for input placeholders
+// like `예: 2.8500`, where fmtPct's em-dash/suffix would be wrong.
+export function fmtRate4(rate) {
+  if (rate == null || !Number.isFinite(Number(rate))) return null
+  return (Number(rate) * 100).toFixed(4)
+}
+
 // Secondary 억원 (100M KRW) display for summary-level figures only -- tables
 // with many rows stay in raw KRW for readability.
 export function fmtEok(n) {

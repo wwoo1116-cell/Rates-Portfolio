@@ -4,27 +4,29 @@ import { NumberInput } from '@/components/ui/number-input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { useDateQuotes, parRatePctFromEntry } from '@/lib/useDateQuotes'
-
-// Quotes only carry integer-year tenors (1Y..10Y) -- round the position's
-// actual date span to the nearest quoted tenor purely for the market-rate hint.
-function nearestTenorLabel(startDate, maturityDate) {
-  if (!startDate || !maturityDate) return null
-  const start = new Date(startDate)
-  const end = new Date(maturityDate)
-  const years = (end - start) / (365.25 * 24 * 60 * 60 * 1000)
-  if (!Number.isFinite(years) || years <= 0) return null
-  return `${Math.max(1, Math.round(years))}Y`
-}
+import { useDateQuotes } from '@/lib/useDateQuotes'
+import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { yearFraction, interpolateParRate } from '@/lib/tenor'
+import { fmtRate4 } from '@/lib/format'
 
 export function PositionRow({ position, onChange, onRemove, canRemove }) {
   const { id, startDate, maturityDate, notional, fixedRatePct, direction } = position
 
-  const tenorLabel = nearestTenorLabel(startDate, maturityDate)
+  // Debounced so keyboard entry in the date inputs doesn't fire a
+  // market-data fetch per keystroke.
+  const debouncedStartDate = useDebouncedValue(startDate)
+  const debouncedMaturityDate = useDebouncedValue(maturityDate)
+
   // Hint reflects the market rate as of this position's own start date, not
   // today's valuation date -- mirrors SwapForm's MTM-mode trade-date hint.
-  const startDateEntry = useDateQuotes(startDate)
-  const parRatePct = tenorLabel ? parRatePctFromEntry(startDateEntry, tenorLabel) : null
+  // Quotes only carry integer-year tenors (1Y..10Y); non-integer date spans
+  // are linearly interpolated between the adjacent quoted tenors.
+  const startDateEntry = useDateQuotes(debouncedStartDate)
+  const years = yearFraction(debouncedStartDate, debouncedMaturityDate)
+  const parRatePct =
+    startDateEntry?.status === 'ok' && years != null
+      ? fmtRate4(interpolateParRate(startDateEntry.quotes, years))
+      : null
 
   return (
     <Card>
