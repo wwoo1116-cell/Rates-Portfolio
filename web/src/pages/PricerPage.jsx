@@ -104,12 +104,6 @@ function PricerPage() {
           >
             포트폴리오
           </Link>
-          <Link
-            to="/methodology"
-            className="text-xs text-primary-foreground/70 hover:text-primary-foreground underline underline-offset-2"
-          >
-            산출 방식
-          </Link>
           {marketDataError && (
             <span className="text-xs text-red-300">{marketDataError}</span>
           )}

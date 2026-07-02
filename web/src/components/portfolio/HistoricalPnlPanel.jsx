@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { apiPost } from '@/lib/api'
 import { fmt, fmtEok } from '@/lib/format'
-import { HistoricalPnlChart } from './HistoricalPnlChart'
+import { HistoricalPnlDashboard } from './HistoricalPnlDashboard'
 
 export function HistoricalPnlPanel({ positions, dateRange }) {
   const [startDate, setStartDate] = useState('')
@@ -108,18 +108,7 @@ export function HistoricalPnlPanel({ positions, dateRange }) {
               </span>
             </div>
 
-            <HistoricalPnlChart points={result.points} />
-
-            <div className="flex items-center gap-4 text-[11px] text-muted-foreground uppercase tracking-widest">
-              <span className="flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                Net NPV
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-positive" />
-                누적 PnL
-              </span>
-            </div>
+            <HistoricalPnlDashboard points={result.points} />
 
             {result.skipped_dates.length > 0 && (
               <p className="text-[11px] text-muted-foreground">

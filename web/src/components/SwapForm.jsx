@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { NumberInput } from '@/components/ui/number-input'
 import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
@@ -206,11 +207,8 @@ export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) 
           {/* Notional */}
           <div className="space-y-1.5">
             <Label htmlFor="notional">명목원금 (KRW)</Label>
-            <Input
+            <NumberInput
               id="notional"
-              type="number"
-              min="1"
-              step="1"
               value={notional}
               onChange={(e) => setNotional(e.target.value)}
               placeholder="10,000,000,000"
@@ -233,7 +231,7 @@ export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) 
               step="0.0001"
               value={fixedRatePct}
               onChange={(e) => setFixedRatePct(e.target.value)}
-              placeholder={activeParRatePct ? `${activeParRatePct} (par)` : '예: 2.8500'}
+              placeholder={activeParRatePct ? `예: ${activeParRatePct}` : ''}
             />
             {mode === 'mtm' && tradeDate && (
               <>

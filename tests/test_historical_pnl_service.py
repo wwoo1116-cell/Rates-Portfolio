@@ -109,12 +109,16 @@ def test_date_with_no_active_positions_is_zero_and_skipped(patch_market_data):
     assert [p.valuation_date for p in result.points] == _WINDOW_DATES
 
 
-def test_stray_holiday_in_available_dates_is_skipped_not_fatal(patch_market_data, monkeypatch):
+def test_stray_holiday_in_available_dates_is_omitted_not_zero_filled(patch_market_data, monkeypatch):
     """Regression: list_available_dates() can report a date (because the raw
-    data file has a row for it) that the KRX calendar itself rejects as a
-    holiday. load_snapshot() then raises NonBusinessDayError -- this must be
-    treated like any other unpriceable date (zero point + skipped_dates),
-    not bubble up and fail the whole request."""
+    data file has a row for it, e.g. a stray year-end row) that the KRX
+    calendar itself rejects as a holiday. load_snapshot() then raises
+    NonBusinessDayError. Positions can genuinely be active that day, so a
+    zero-filled point would be a *fabricated* NPV, not a correct one --
+    that previously produced a fake crash-to-zero-and-back in the series
+    right around year boundaries. The date must instead be OMITTED from
+    points entirely (still recorded in skipped_dates), and must not corrupt
+    neighboring dates' own net_npv values."""
 
     def flaky_snapshot(valuation_date: date) -> MarketSnapshot:
         if valuation_date == date(2024, 1, 4):
@@ -129,11 +133,11 @@ def test_stray_holiday_in_available_dates_is_skipped_not_fatal(patch_market_data
     )
 
     assert date(2024, 1, 4) in result.skipped_dates
-    bad_point = next(p for p in result.points if p.valuation_date == date(2024, 1, 4))
-    assert bad_point.net_npv == 0.0
-    assert bad_point.active_position_ids == []
-    # every other date still prices normally
-    assert [p.valuation_date for p in result.points] == _WINDOW_DATES
+    remaining_dates = [d for d in _WINDOW_DATES if d != date(2024, 1, 4)]
+    assert [p.valuation_date for p in result.points] == remaining_dates
+    # neighboring dates still price normally through the real pricing path
+    # (not the fabricated-zero-point fallback) -- position stays active
+    assert all(p.active_position_ids == ["pos-A"] for p in result.points)
 
 
 def test_baseline_date_outside_window_raises(patch_market_data):

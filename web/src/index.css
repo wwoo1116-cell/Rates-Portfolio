@@ -49,6 +49,13 @@
   --sidebar-accent-foreground:      oklch(0.240 0.020 255);
   --sidebar-border:                 oklch(0.900 0.008 247.9);
   --sidebar-ring:                   oklch(0.440 0.100 259);
+
+  /* Plain hex, read via getComputedStyle() for lightweight-charts (canvas
+     rendering can't consume OKLCH or Tailwind classes) -- not bridged into
+     @theme inline since they're never used as Tailwind utility classes. */
+  --chart-bg: #ffffff;
+  --chart-text: #131722;
+  --chart-border: #d6d6d6;
 }
 
 /* ─── Dark mode: institutional data-terminal (GS Marquee style) ──────────── */
@@ -97,6 +104,10 @@
   --sidebar-accent-foreground:      oklch(0.930 0.006 247.9);
   --sidebar-border:                 oklch(1 0 0 / 10%);
   --sidebar-ring:                   oklch(0.620 0.130 259);
+
+  --chart-bg: #131722;
+  --chart-text: #d1d4dc;
+  --chart-border: #2a2e39;
 }
 
 /* ─── Tailwind v4 theme bridge ───────────────────────────────────────────── */

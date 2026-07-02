@@ -55,22 +55,21 @@ def compute_historical_pnl(
     behavior, not a limitation).
 
     A date with no active positions still gets a PnlPoint with net_npv=0.0
-    (an empty portfolio's correct NPV) rather than being dropped, so the
-    series stays date-complete over the window; such dates are also listed
-    in skipped_dates. The same zero-point/skipped treatment applies to a date
-    that list_available_dates() reports as available but that the KRX
-    calendar rejects as a holiday (a rare raw-data anomaly) -- one bad date
-    shouldn't fail the whole request.
+    -- that IS the correct NPV of an empty portfolio -- so the series stays
+    date-complete over the window; such dates are also listed in
+    skipped_dates.
+
+    A date that list_available_dates() reports as available but that the KRX
+    calendar rejects as a holiday (a rare raw-data anomaly, e.g. a stray
+    year-end row) is handled differently: positions may genuinely be active
+    that day, so net_npv=0.0 would be a *fabricated* value, not a correct
+    one -- it previously produced a fake crash-to-zero-and-back in the
+    series right around year boundaries. Such dates are OMITTED from
+    `points` entirely (still recorded in skipped_dates) rather than
+    zero-filled.
     """
     fixings = market_data_service.load_fixings()
     window_dates = [d for d in market_data_service.list_available_dates() if start_date <= d <= end_date]
-
-    if baseline_date is None:
-        if not window_dates:
-            raise ValueError(f"조회 구간 [{start_date}, {end_date}]에 사용 가능한 날짜가 없습니다.")
-        baseline_date = window_dates[0]
-    elif baseline_date not in window_dates:
-        raise ValueError(f"기준일 {baseline_date}이(가) 조회 구간에 없습니다.")
 
     points: list[PnlPoint] = []
     skipped_dates: list[date] = []
@@ -86,7 +85,6 @@ def compute_historical_pnl(
         try:
             snapshot = market_data_service.load_snapshot(valuation_date)
         except NonBusinessDayError:
-            points.append(PnlPoint(valuation_date, 0.0, 0.0, 0.0, [], cumulative_pnl=0.0))
             skipped_dates.append(valuation_date)
             continue
 
@@ -102,7 +100,18 @@ def compute_historical_pnl(
             )
         )
 
-    baseline_net_npv = next(p.net_npv for p in points if p.valuation_date == baseline_date)
+    if not points:
+        raise ValueError(f"조회 구간 [{start_date}, {end_date}]에 평가 가능한 날짜가 없습니다.")
+
+    if baseline_date is None:
+        baseline_date = points[0].valuation_date
+        baseline_net_npv = points[0].net_npv
+    else:
+        try:
+            baseline_net_npv = next(p.net_npv for p in points if p.valuation_date == baseline_date)
+        except StopIteration:
+            raise ValueError(f"기준일 {baseline_date}이(가) 조회 구간에 없거나 시장 데이터가 없습니다.") from None
+
     for p in points:
         p.cumulative_pnl = p.net_npv - baseline_net_npv
 

@@ -1,16 +1,27 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Header } from '@/components/portfolio/Header'
 import { PositionList } from '@/components/portfolio/PositionList'
 import { PortfolioSummaryBar } from '@/components/portfolio/PortfolioSummaryBar'
-import { PortfolioCashFlowTable } from '@/components/portfolio/PortfolioCashFlowTable'
 import { HistoricalPnlPanel } from '@/components/portfolio/HistoricalPnlPanel'
+import { PortfolioSidebar } from '@/components/portfolio/PortfolioSidebar'
 import { apiGet, apiPost } from '@/lib/api'
 
 const POSITIONS_STORAGE_KEY = 'irs-portfolio:positions'
 const VALUATION_DATE_STORAGE_KEY = 'irs-portfolio:valuationDate'
+
+function ComingSoonSection({ title }) {
+  return (
+    <Card>
+      <CardContent className="py-16 text-center text-sm text-muted-foreground">
+        <p className="mb-1 font-semibold text-foreground">{title}</p>
+        <p>준비 중입니다.</p>
+      </CardContent>
+    </Card>
+  )
+}
 
 function createPosition() {
   return {
@@ -53,6 +64,7 @@ function PortfolioPage() {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [activeSection, setActiveSection] = useState('portfolio')
 
   useEffect(() => {
     async function loadRange() {
@@ -166,45 +178,40 @@ function PortfolioPage() {
         marketDataError={marketDataError}
       />
 
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-5">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <PositionList
-            positions={positions}
-            onAdd={addPosition}
-            onUpdate={updatePosition}
-            onRemove={removePosition}
-          />
+      <div className="max-w-6xl mx-auto px-4 py-6 flex gap-6">
+        <PortfolioSidebar active={activeSection} onChange={setActiveSection} />
 
-          {error && <p className="text-xs text-destructive">{error}</p>}
+        <main className="flex-1 min-w-0 space-y-5">
+          {activeSection === 'overview' && <ComingSoonSection title="Overview" />}
+          {activeSection === 'risk' && <ComingSoonSection title="Risk Analytics" />}
+          {activeSection === 'portfolio' && (
+            <>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <PositionList
+                  positions={positions}
+                  onAdd={addPosition}
+                  onUpdate={updatePosition}
+                  onRemove={removePosition}
+                />
 
-          <Button type="submit" className="w-full" disabled={marketBlocked || loading}>
-            {loading ? '계산 중…' : '포트폴리오 계산'}
-          </Button>
-        </form>
+                {error && <p className="text-xs text-destructive">{error}</p>}
 
-        <Separator />
+                <Button type="submit" className="w-full" disabled={marketBlocked || loading}>
+                  {loading ? '계산 중…' : '포트폴리오 계산'}
+                </Button>
+              </form>
 
-        <PortfolioSummaryBar result={result} />
+              <Separator />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>잔존 현금흐름</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {!result ? (
-              <p className="text-sm text-muted-foreground">
-                포지션을 입력하고 계산하면 결과가 표시됩니다.
-              </p>
-            ) : (
-              <PortfolioCashFlowTable cashflows={result.cashflows} />
-            )}
-          </CardContent>
-        </Card>
+              <PortfolioSummaryBar result={result} />
 
-        <Separator />
+              <Separator />
 
-        <HistoricalPnlPanel positions={positions} dateRange={dateRange} />
-      </main>
+              <HistoricalPnlPanel positions={positions} dateRange={dateRange} />
+            </>
+          )}
+        </main>
+      </div>
     </div>
   )
 }

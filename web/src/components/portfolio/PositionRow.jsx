@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { NumberInput } from '@/components/ui/number-input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
@@ -53,11 +54,8 @@ export function PositionRow({ position, onChange, onRemove, canRemove }) {
 
           <div className="space-y-1.5">
             <Label htmlFor={`notional-${id}`}>명목원금 (KRW)</Label>
-            <Input
+            <NumberInput
               id={`notional-${id}`}
-              type="number"
-              min="1"
-              step="1"
               value={notional}
               onChange={(e) => onChange(id, 'notional', e.target.value)}
               placeholder="10,000,000,000"
@@ -79,7 +77,7 @@ export function PositionRow({ position, onChange, onRemove, canRemove }) {
               step="0.0001"
               value={fixedRatePct}
               onChange={(e) => onChange(id, 'fixedRatePct', e.target.value)}
-              placeholder={parRatePct ? `${parRatePct} (par)` : '예: 2.8500'}
+              placeholder={parRatePct ? `예: ${parRatePct}` : ''}
             />
           </div>
 
