@@ -23,7 +23,7 @@ logging.config.dictConfig({
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import historical_pnl, market_data, mtm, portfolio, pricing
+from .routers import calendar, historical_pnl, market_data, mtm, portfolio, pricing
 
 app = FastAPI(title="IRS Pricer API")
 
@@ -39,3 +39,4 @@ app.include_router(pricing.router)
 app.include_router(mtm.router)
 app.include_router(portfolio.router)
 app.include_router(historical_pnl.router)
+app.include_router(calendar.router)

@@ -52,6 +52,21 @@ class MtmRequest(BaseModel):
     swap: MtmSwapIn
 
 
+class MtmFairRateRequest(BaseModel):
+    valuation_date: date
+    cd_rate: float
+    swap_quotes: list[RateQuoteIn]
+    trade_date: date
+    tenor_years: int = Field(gt=0)
+    notional: float = Field(gt=0)
+    float_spread: float = 0.0
+
+
+class MtmFairRateResponse(BaseModel):
+    fair_rate: float
+    maturity_date: date
+
+
 class CashFlowDetailOut(BaseModel):
     accrual_start: date
     accrual_end: date
@@ -104,6 +119,18 @@ class DateRangeResponse(BaseModel):
     available_dates: list[date]
 
 
+class NonBusinessDaysResponse(BaseModel):
+    non_business_days: list[date]
+
+
+class TenorDateResponse(BaseModel):
+    maturity_date: date
+
+
+class SpotDateResponse(BaseModel):
+    spot_date: date
+
+
 class PortfolioPositionIn(BaseModel):
     position_id: str
     start_date: date
@@ -119,6 +146,24 @@ class PortfolioPriceRequest(BaseModel):
     cd_rate: float
     swap_quotes: list[RateQuoteIn]
     positions: list[PortfolioPositionIn] = Field(min_length=1)
+
+
+class PositionFairRateRequest(BaseModel):
+    valuation_date: date
+    cd_rate: float
+    swap_quotes: list[RateQuoteIn]
+    start_date: date
+    maturity_date: date
+    notional: float = Field(gt=0)
+    float_spread: float = 0.0
+
+
+class PositionFairRateResponse(BaseModel):
+    fair_rate: float
+
+
+class HistoricalQuoteResponse(BaseModel):
+    historical_rate: float
 
 
 class PositionResultOut(BaseModel):

@@ -176,7 +176,14 @@ def _price_floating_per_period(rest: list[_Period], curve: CurveBundle, notional
     return pv, details
 
 
-_TELESCOPING_TOLERANCE = 1e-6  # KRW; see test_telescoping_matches_forward_estimation
+# Relative, not absolute: float64 summation-order noise on a ~KRW-billions PV
+# scales with the PV itself (e.g. ~1e-6 KRW of noise is routine at ~1.8bn KRW
+# notional-scale PV) -- a flat 1e-6 KRW absolute bound flagged that noise as a
+# false-positive "divergence" on every realistic trade. The 1e-3 KRW floor
+# covers near-zero PVs (e.g. an already-matured leg) where the relative term
+# alone would be too tight.
+_TELESCOPING_RELATIVE_TOLERANCE = 1e-9
+_TELESCOPING_ABSOLUTE_FLOOR = 1e-3  # KRW
 
 
 def _price_floating_leg(
@@ -216,7 +223,8 @@ def _price_floating_leg(
         if float_spread == 0.0:
             telescoping_used = True
             telescoped_pv, _ = _price_floating_telescoped(rest, curve, notional)
-            if abs(telescoped_pv - rest_pv) > _TELESCOPING_TOLERANCE:
+            tolerance = max(_TELESCOPING_ABSOLUTE_FLOOR, abs(telescoped_pv) * _TELESCOPING_RELATIVE_TOLERANCE)
+            if abs(telescoped_pv - rest_pv) > tolerance:
                 telescoping_diverged = True
                 warnings.warn(
                     "Telescoping cross-check diverged from per-period floating leg PV: "
@@ -260,6 +268,49 @@ def _accrued_interest(
     float_accrued = notional * (known_rate + float_spread) * dcf
 
     return fixed_accrued, float_accrued
+
+
+def fair_rate_for_schedule(
+    trade_date: date,
+    maturity_date: date,
+    curve: CurveBundle,
+    notional: float,
+    float_spread: float,
+    fixings: dict[date, float],
+) -> float:
+    """The fixed rate that zeros clean_npv for a swap effective on trade_date
+    (which may be any date -- past, today, or forward-starting), ending on
+    maturity_date, under `curve`.
+
+    Solved analytically rather than via a QuantLib fairRate() search: since
+    pv_fixed_leg = notional * fixed_rate * sum(dcf_i * df_i), fixed_rate is
+    just pv_floating_leg divided by that (rate-independent) annuity factor.
+    Built from the exact same _build_periods()/_price_floating_leg() this
+    module's own value_booked_trade() uses, so a position priced at the
+    returned rate is *guaranteed* (not just approximately) to clean_npv ~ 0
+    here -- no separate schedule or day-count path to drift out of sync with.
+
+    This is the correct par rate for an arbitrary start date. It is NOT the
+    same number as a curve's raw quoted swap rate (e.g. "1Y = 3.7000%"),
+    which is the fair rate of a *different* swap: one effective on the
+    curve's settlement_date (valuation_date + spot lag), not on trade_date.
+    """
+    trade_date_ql = to_ql_date(trade_date)
+    maturity_date_ql = to_ql_date(maturity_date)
+    periods = _build_periods(trade_date_ql, maturity_date_ql)
+    remaining = [p for p in periods if p.payment_date > from_ql_date(curve.valuation_date)]
+    if not remaining:
+        return 0.0
+
+    df = curve.yield_curve_handle.discount
+    fixed_annuity = sum(
+        DAY_COUNT.yearFraction(p.accrual_start_ql, p.accrual_end_ql) * df(p.payment_date_ql) for p in remaining
+    )
+    if fixed_annuity <= 0.0:
+        return 0.0
+
+    pv_floating, *_ = _price_floating_leg(remaining, curve, notional, float_spread, fixings)
+    return pv_floating / (notional * fixed_annuity)
 
 
 def value_booked_trade(swap: VanillaSwap, curve: CurveBundle, fixings: dict[date, float]) -> MTMResult:

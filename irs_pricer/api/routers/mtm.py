@@ -2,20 +2,45 @@
 
 from __future__ import annotations
 
-from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter
 
 from ...engine.instruments import VanillaSwap
 from ...services import mtm_service
-from ..models import CashFlowDetailOut, MtmRequest, MtmResponse, _to_snapshot
+from ..models import (
+    CashFlowDetailOut,
+    MtmFairRateRequest,
+    MtmFairRateResponse,
+    MtmRequest,
+    MtmResponse,
+    _to_snapshot,
+)
 
 router = APIRouter(prefix="/api")
+
+
+@router.post("/mtm/fair-rate", response_model=MtmFairRateResponse)
+def mtm_fair_rate_endpoint(request: MtmFairRateRequest) -> MtmFairRateResponse:
+    """The schedule-correct par rate hint for MTM re-evaluation -- priced off
+    the exact same trade_date-literal schedule /api/mtm will actually price,
+    not a raw curve-quoted tenor rate (see mtm_service.fair_rate for why
+    those are different swaps)."""
+    from ...services.market_data_service import load_fixings
+    fixings = load_fixings()
+    rate, maturity_date = mtm_service.fair_rate(
+        _to_snapshot(request),
+        request.trade_date,
+        request.tenor_years,
+        request.notional,
+        request.float_spread,
+        fixings,
+    )
+    return MtmFairRateResponse(fair_rate=rate, maturity_date=maturity_date)
 
 
 @router.post("/mtm", response_model=MtmResponse)
 def mtm_endpoint(request: MtmRequest) -> MtmResponse:
     """Revalue a historically booked swap and return clean/dirty NPV plus cash-flow breakdown."""
-    maturity_date = request.swap.trade_date + relativedelta(years=request.swap.tenor_years)
+    maturity_date = mtm_service.trade_maturity_date(request.swap.trade_date, request.swap.tenor_years)
     swap = VanillaSwap(
         tenor_years=request.swap.tenor_years,
         notional=request.swap.notional,

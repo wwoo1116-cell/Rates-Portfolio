@@ -16,7 +16,8 @@ from datetime import date
 from ..core.market_data import MarketSnapshot
 from ..engine.curve import build_curve
 from ..engine.instruments import VanillaSwap
-from ..engine.mtm_valuation import CashFlowDetail, value_booked_trade
+from ..engine.mtm_valuation import CashFlowDetail, fair_rate_for_schedule, value_booked_trade
+from . import market_data_service
 
 
 from ..core.conventions import to_ql_date
@@ -95,3 +96,47 @@ def price_portfolio(
             position_results=position_results,
             cashflows=cashflows,
         )
+
+
+def position_fair_rate(
+    snapshot: MarketSnapshot,
+    start_date: date,
+    maturity_date: date,
+    notional: float,
+    float_spread: float = 0.0,
+    fixings: dict[date, float] | None = None,
+) -> float:
+    """The true par rate for a position with this exact start/maturity date
+    under the current valuation curve -- see fair_rate_for_schedule() for why
+    this differs from the curve's raw quoted tenor rates. This is what the
+    frontend's "Par" fixed-rate hint should show (and should be used to
+    populate the fixed-rate field), instead of interpolating across quoted
+    tenors, which is not guaranteed to zero the position's NPV.
+    """
+    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
+        curve = build_curve(snapshot)
+        return fair_rate_for_schedule(start_date, maturity_date, curve, notional, float_spread, fixings or {})
+
+
+def historical_spot_rate(
+    start_date: date,
+    maturity_date: date,
+    notional: float,
+    float_spread: float = 0.0,
+) -> float:
+    """The historical spot par rate quoted ON start_date itself -- what this
+    exact schedule would actually have traded at back then, using THAT day's
+    own market snapshot and curve (valuation_date == start_date), never
+    today's.
+
+    Deliberately separate from position_fair_rate(), which always prices off
+    the CURRENT valuation curve (a forward breakeven rate) -- these answer
+    two different questions ("what rate zeros this trade's NPV today" vs.
+    "what rate did this trade actually quote at historically") and must not
+    be conflated into one endpoint. See engine/mtm_valuation.py:
+    fair_rate_for_schedule for the shared math each one calls into.
+    """
+    historical_snapshot = market_data_service.load_snapshot(start_date)
+    with managed_quantlib_env(to_ql_date(start_date)):
+        curve = build_curve(historical_snapshot)
+        return fair_rate_for_schedule(start_date, maturity_date, curve, notional, float_spread, {})

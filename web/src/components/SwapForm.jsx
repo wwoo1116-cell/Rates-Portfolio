@@ -5,8 +5,8 @@ import { NumberInput } from '@/components/ui/number-input'
 import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { useDateQuotes, parRatePctFromEntry } from '@/lib/useDateQuotes'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { useMtmFairRate } from '@/lib/useFairRate'
 import { fmtRate4 } from '@/lib/format'
 import { apiPost } from '@/lib/api'
 
@@ -25,26 +25,36 @@ export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) 
   const matchedQuote = quotes?.find((q) => q.tenor === tenor)
   const parRatePct = matchedQuote ? fmtRate4(matchedQuote.rate) : null
 
-  // MTM mode's example must reflect the rate that was realistic when the
-  // trade was booked (trade_date), not today's rate (valuationDate) -- using
-  // valuationDate here would misleadingly show today's par rate as if it
-  // were the historical contracted rate. Debounced so keyboard entry in the
-  // date input doesn't fire a fetch per keystroke.
+  // quotes here is [{tenor: '5Y', rate}] (PricerPage's shape); the API's
+  // RateQuoteIn model expects [{tenor_years: 5, rate}] -- convert once and
+  // reuse for both the MTM fair-rate hint and the actual submit below.
+  const swapQuotes = (quotes ?? []).map((q) => ({
+    tenor_years: parseInt(q.tenor, 10),
+    rate: q.rate,
+  }))
+
+  // MTM mode's hint is the fair rate of the EXACT schedule /api/mtm will
+  // price (trade_date taken literally as the effective date, via the same
+  // _build_periods() schedule value_booked_trade() uses) -- not the curve's
+  // raw quoted tenor rate, which is the fair rate of a *different* swap (one
+  // effective on settlement_date = trade_date + spot lag). Debounced so
+  // keyboard entry in the date input doesn't fire a fetch per keystroke.
   const debouncedTradeDate = useDebouncedValue(tradeDate)
-  const tradeDateEntry = useDateQuotes(mode === 'mtm' ? debouncedTradeDate : '')
-  const tradeDateParRatePct = parRatePctFromEntry(tradeDateEntry, tenor)
+  const tenorYears = parseInt(tenor, 10)
+  const mtmFairRateEntry = useMtmFairRate(
+    valuationDate,
+    cdRate,
+    swapQuotes,
+    mode === 'mtm' ? debouncedTradeDate : '',
+    tenorYears,
+  )
+  const tradeDateParRatePct = mtmFairRateEntry?.status === 'ok' ? fmtRate4(mtmFairRateEntry.fairRate) : null
 
   const activeParRatePct = mode === 'mtm' ? tradeDateParRatePct : parRatePct
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
-
-    const tenorYears = parseInt(tenor, 10)
-    const swapQuotes = (quotes ?? []).map((q) => ({
-      tenor_years: parseInt(q.tenor, 10),
-      rate: q.rate,
-    }))
 
     if (mode === 'mtm') {
       if (!tradeDate) {
@@ -239,23 +249,20 @@ export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) 
             />
             {mode === 'mtm' && tradeDate && (
               <>
-                {tradeDateEntry?.status === 'loading' && (
+                {mtmFairRateEntry?.status === 'loading' && (
                   <p className="text-[11px] text-muted-foreground italic">
-                    계약일 기준 par rate 조회 중… (최초 조회는 몇 초 정도 걸릴 수 있습니다)
+                    이 거래 스케줄 기준 par rate 조회 중… (최초 조회는 몇 초 정도 걸릴 수 있습니다)
                   </p>
                 )}
-                {tradeDateEntry?.status === 'error' && (
-                  <p className="text-[11px] text-destructive">{tradeDateEntry.message}</p>
+                {mtmFairRateEntry?.status === 'error' && (
+                  <p className="text-[11px] text-destructive">{mtmFairRateEntry.message}</p>
                 )}
-                {tradeDateEntry?.status === 'ok' && tradeDateParRatePct && (
+                {mtmFairRateEntry?.status === 'ok' && (
                   <p className="text-[11px] text-muted-foreground italic">
-                    예시: 계약일(trade date) 기준 {tenor} par rate는 {tradeDateParRatePct}%였습니다 —
-                    실제 계약 고정금리를 입력하세요.
-                  </p>
-                )}
-                {tradeDateEntry?.status === 'ok' && !tradeDateParRatePct && (
-                  <p className="text-[11px] text-muted-foreground">
-                    계약일 기준 {tenor} 시장금리가 없습니다.
+                    예시: 계약일(trade date)={tradeDate}, {tenor} 만기 기준 이 거래의 par rate는{' '}
+                    {tradeDateParRatePct}%입니다 (이 거래 스케줄에 대한 값 — 시장에서 고시되는 일반
+                    {tenor} 견적과는 정산일(T+1) 차이로 다를 수 있습니다) — 실제 계약 고정금리를
+                    입력하세요.
                   </p>
                 )}
               </>

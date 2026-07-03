@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
@@ -8,6 +8,7 @@ import { PortfolioSummaryBar } from '@/components/portfolio/PortfolioSummaryBar'
 import { HistoricalPnlPanel } from '@/components/portfolio/HistoricalPnlPanel'
 import { PortfolioSidebar } from '@/components/portfolio/PortfolioSidebar'
 import { apiGet, apiPost } from '@/lib/api'
+import { useSpotDate } from '@/lib/useCalendar'
 
 const POSITIONS_STORAGE_KEY = 'irs-portfolio:positions'
 const VALUATION_DATE_STORAGE_KEY = 'irs-portfolio:valuationDate'
@@ -23,10 +24,12 @@ function ComingSoonSection({ title }) {
   )
 }
 
-function createPosition() {
+// startDate defaults to '' when the spot date isn't resolved yet (e.g. the
+// very first render); backfilled by the effect below as soon as it is.
+function createPosition(startDate = '') {
   return {
     id: crypto.randomUUID(),
-    startDate: '',
+    startDate,
     maturityDate: '',
     notional: '10000000000',
     fixedRatePct: '',
@@ -65,6 +68,35 @@ function PortfolioPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [activeSection, setActiveSection] = useState('portfolio')
+
+  // Spot date (valuation_date + settlement lag) -- the market convention
+  // start date for a brand-new swap. Defaults every new position's 시작일 to
+  // this instead of leaving it blank, so the position is a real, priceable
+  // spot-starting trade the moment it's created.
+  const spotDateEntry = useSpotDate(valuationDate)
+  const spotDate = spotDateEntry?.status === 'ok' ? spotDateEntry.spotDate : ''
+
+  // Fills any position still missing a 시작일 (the initial default position
+  // created before the spot date was known), AND re-syncs any position whose
+  // 시작일 still equals the *previous* auto-assigned spot date -- valuationDate
+  // resolves to today's default on mount before a user-picked value settles
+  // in, so without this a position can get locked onto the wrong spot date
+  // if the user changes valuationDate shortly after landing. A position the
+  // user has actually repointed to some other date (not the last spot date)
+  // is left alone -- only values that still match the prior auto-fill are
+  // considered "still following today," never a deliberate historical pick.
+  const prevSpotDateRef = useRef(null)
+  useEffect(() => {
+    if (!spotDate) return
+    const prevSpotDate = prevSpotDateRef.current
+    setPositions((prev) =>
+      prev.map((p) => {
+        if (!p.startDate || p.startDate === prevSpotDate) return { ...p, startDate: spotDate }
+        return p
+      }),
+    )
+    prevSpotDateRef.current = spotDate
+  }, [spotDate])
 
   useEffect(() => {
     async function loadRange() {
@@ -117,16 +149,22 @@ function PortfolioPage() {
     }
   }, [valuationDate])
 
+  // Any edit invalidates the last computed result -- without this, a
+  // position's row-level NPV (and the summary breakdown) would keep showing
+  // a stale P&L number that no longer matches its current inputs.
   function updatePosition(id, field, value) {
     setPositions((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)))
+    setResult(null)
   }
 
   function addPosition() {
-    setPositions((prev) => [...prev, createPosition()])
+    setPositions((prev) => [...prev, createPosition(spotDate)])
+    setResult(null)
   }
 
   function removePosition(id) {
     setPositions((prev) => (prev.length > 1 ? prev.filter((p) => p.id !== id) : prev))
+    setResult(null)
   }
 
   async function handleSubmit(e) {
@@ -192,6 +230,10 @@ function PortfolioPage() {
                   onAdd={addPosition}
                   onUpdate={updatePosition}
                   onRemove={removePosition}
+                  valuationDate={valuationDate}
+                  cdRate={cdRate}
+                  quotes={quotes}
+                  result={result}
                 />
 
                 {error && <p className="text-xs text-destructive">{error}</p>}
@@ -203,7 +245,7 @@ function PortfolioPage() {
 
               <Separator />
 
-              <PortfolioSummaryBar result={result} />
+              <PortfolioSummaryBar result={result} positions={positions} />
 
               <Separator />
 
