@@ -12,7 +12,7 @@ from ..core.market_data import MarketSnapshot
 from ..engine.curve import build_curve
 from ..engine.instruments import VanillaSwap
 from ..engine.pricing import price_swap
-from ..engine.risk import dv01
+from ..engine.risk import curve_bump_scenarios, dv01
 
 from ..core.conventions import to_ql_date
 from ..engine.context import managed_quantlib_env
@@ -34,6 +34,43 @@ def price(
         result = price_swap(swap, curve)
         result["dv01"] = dv01(swap, curve)
         return result
+
+
+@dataclass
+class DeltaBucket:
+    pillar: str
+    delta: float
+
+
+@dataclass
+class DeltaResult:
+    total_delta: float  # sum of the bucket deltas -- see engine/risk.py's module docstring for why
+    buckets: list[DeltaBucket]
+
+
+def delta(
+    snapshot: MarketSnapshot,
+    swap: VanillaSwap,
+) -> DeltaResult:
+    """Bucketed + total key-rate delta for a hypothetical (new-trade) swap.
+
+    For each curve pillar in turn, that pillar's own market quote is bumped
+    and the whole curve is re-bootstrapped from scratch, then `swap` is
+    repriced against that curve; see engine/risk.py's module docstring for
+    why a market-quote bump + full rebootstrap (not a direct discount-factor
+    perturbation) is the convention that matches the reference system here,
+    and why total_delta is the sum of the buckets rather than a
+    separately-priced parallel scenario.
+    """
+    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
+        base_curve = build_curve(snapshot)
+        base_npv = price_swap(swap, base_curve)["npv"]
+
+        buckets: list[DeltaBucket] = []
+        for label, curve in curve_bump_scenarios(snapshot):
+            bumped_npv = price_swap(swap, curve)["npv"]
+            buckets.append(DeltaBucket(label, bumped_npv - base_npv))
+        return DeltaResult(total_delta=sum(b.delta for b in buckets), buckets=buckets)
 
 
 @dataclass

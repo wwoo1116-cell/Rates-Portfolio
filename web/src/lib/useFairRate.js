@@ -19,11 +19,11 @@ function subscribe(l) {
   return () => listeners.delete(l)
 }
 
-function keyFor(valuationDate, cdRate, quotes, startDate, maturityDate) {
-  return JSON.stringify([valuationDate, cdRate, quotes, startDate, maturityDate])
+function keyFor(valuationDate, cdRate, onRate, quotes, startDate, maturityDate, dataSource) {
+  return JSON.stringify([valuationDate, cdRate, onRate, quotes, startDate, maturityDate, dataSource])
 }
 
-function ensureFetched(key, valuationDate, cdRate, quotes, startDate, maturityDate) {
+function ensureFetched(key, valuationDate, cdRate, onRate, quotes, startDate, maturityDate, dataSource) {
   const existing = cache.get(key)
   if (existing && existing.status !== 'error') return
   cache.set(key, { status: 'loading' })
@@ -31,10 +31,12 @@ function ensureFetched(key, valuationDate, cdRate, quotes, startDate, maturityDa
   apiPost('/api/portfolio/fair-rate', {
     valuation_date: valuationDate,
     cd_rate: Number(cdRate),
+    on_rate: onRate != null ? Number(onRate) : null,
     swap_quotes: quotes,
     start_date: startDate,
     maturity_date: maturityDate,
     notional: HINT_NOTIONAL,
+    data_source: dataSource,
   })
     .then((body) => {
       cache.set(key, { status: 'ok', fairRate: body.fair_rate })
@@ -55,17 +57,31 @@ function ensureFetched(key, valuationDate, cdRate, quotes, startDate, maturityDa
  * which is only exact for a spot-starting, whole-tenor swap. See
  * irs_pricer/engine/mtm_valuation.py:fair_rate_for_schedule for why.
  *
+ * dataSource ('true_data' | 'ccp') decides what an already-reset period is
+ * priced at: True Data's real historical CD91D fixing in 'true_data' mode,
+ * or the curve's own cd_rate in 'ccp' mode (there being no real fixing
+ * history behind an independent, possibly hypothetical CCP curve) -- see
+ * routers/portfolio.py:_resolve_fixings.
+ *
  * Returns {status: 'loading'|'ok'|'error', fairRate, message} or null while
  * any required input is missing.
  */
-export function usePositionFairRate(valuationDate, cdRate, quotes, startDate, maturityDate) {
+export function usePositionFairRate(
+  valuationDate,
+  cdRate,
+  quotes,
+  startDate,
+  maturityDate,
+  dataSource = 'true_data',
+  onRate = null,
+) {
   const ready = Boolean(
     valuationDate && cdRate != null && quotes?.length && startDate && maturityDate && startDate < maturityDate,
   )
-  const key = ready ? keyFor(valuationDate, cdRate, quotes, startDate, maturityDate) : null
+  const key = ready ? keyFor(valuationDate, cdRate, onRate, quotes, startDate, maturityDate, dataSource) : null
 
   useEffect(() => {
-    if (ready) ensureFetched(key, valuationDate, cdRate, quotes, startDate, maturityDate)
+    if (ready) ensureFetched(key, valuationDate, cdRate, onRate, quotes, startDate, maturityDate, dataSource)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` already encodes every dependency
   }, [ready, key])
 

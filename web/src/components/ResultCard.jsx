@@ -29,7 +29,7 @@ export function ResultCard({ result }) {
   const npvVariant = npv > 0 ? 'positive' : npv < 0 ? 'negative' : 'outline'
 
   return (
-    <Card className="transition-colors hover:border-primary/40">
+    <Card>
       <CardHeader>
         <CardTitle>결과</CardTitle>
       </CardHeader>
@@ -87,7 +87,7 @@ function MtmResultCard({ result }) {
   const dirtyNpv = Number(result.dirty_npv)
 
   return (
-    <Card className="transition-colors hover:border-primary/40">
+    <Card>
       <CardHeader>
         <CardTitle>MTM 재평가</CardTitle>
       </CardHeader>

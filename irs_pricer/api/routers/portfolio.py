@@ -10,10 +10,13 @@ from ...core.errors import NonBusinessDayError
 from ...engine.instruments import VanillaSwap
 from ...services import portfolio_service
 from ..models import (
+    DeltaBucketOut,
     HistoricalQuoteResponse,
     PortfolioCashFlowOut,
+    PortfolioDeltaResponse,
     PortfolioPriceRequest,
     PortfolioPriceResponse,
+    PositionDeltaOut,
     PositionFairRateRequest,
     PositionFairRateResponse,
     PositionResultOut,
@@ -73,10 +76,8 @@ def historical_quote_endpoint(
     return HistoricalQuoteResponse(historical_rate=rate)
 
 
-@router.post("/price", response_model=PortfolioPriceResponse)
-def portfolio_price_endpoint(request: PortfolioPriceRequest) -> PortfolioPriceResponse:
-    """Revalue every position against one shared curve; return aggregated NPV and cash flows."""
-    positions = [
+def _to_positions(request: PortfolioPriceRequest) -> list[tuple[str, VanillaSwap]]:
+    return [
         (
             p.position_id,
             VanillaSwap(
@@ -91,6 +92,12 @@ def portfolio_price_endpoint(request: PortfolioPriceRequest) -> PortfolioPriceRe
         )
         for p in request.positions
     ]
+
+
+@router.post("/price", response_model=PortfolioPriceResponse)
+def portfolio_price_endpoint(request: PortfolioPriceRequest) -> PortfolioPriceResponse:
+    """Revalue every position against one shared curve; return aggregated NPV and cash flows."""
+    positions = _to_positions(request)
     from ...services.market_data_service import load_fixings
     fixings = load_fixings()
     result = portfolio_service.price_portfolio(_to_snapshot(request), positions, fixings)
@@ -101,5 +108,26 @@ def portfolio_price_endpoint(request: PortfolioPriceRequest) -> PortfolioPriceRe
         position_results=[PositionResultOut(**vars(p)) for p in result.position_results],
         cashflows=[
             PortfolioCashFlowOut(position_id=pcf.position_id, **vars(pcf.detail)) for pcf in result.cashflows
+        ],
+    )
+
+
+@router.post("/delta", response_model=PortfolioDeltaResponse)
+def portfolio_delta_endpoint(request: PortfolioPriceRequest) -> PortfolioDeltaResponse:
+    """Bucketed (per curve pillar) + total delta for every position, and aggregated across the book."""
+    positions = _to_positions(request)
+    from ...services.market_data_service import load_fixings
+    fixings = load_fixings()
+    result = portfolio_service.price_portfolio_delta(_to_snapshot(request), positions, fixings)
+
+    def _buckets(buckets):
+        return [DeltaBucketOut(pillar=b.pillar, delta=b.delta) for b in buckets]
+
+    return PortfolioDeltaResponse(
+        total_delta=result.total_delta,
+        buckets=_buckets(result.buckets),
+        position_deltas=[
+            PositionDeltaOut(position_id=pd.position_id, total_delta=pd.total_delta, buckets=_buckets(pd.buckets))
+            for pd in result.position_deltas
         ],
     )

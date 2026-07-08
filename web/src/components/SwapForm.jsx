@@ -146,10 +146,10 @@ export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) 
                     onResult(null)
                   }}
                   className={cn(
-                    'flex-1 py-1.5 rounded-sm text-xs font-semibold uppercase tracking-wide border transition-colors',
+                    'flex-1 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wide transition-colors',
                     mode === m
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-foreground border-border hover:border-primary',
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                   )}
                 >
                   {mLabel}
@@ -184,10 +184,10 @@ export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) 
                   type="button"
                   onClick={() => setTenor(t)}
                   className={cn(
-                    'px-3 py-1 rounded-sm text-xs font-medium border transition-colors',
+                    'px-3 py-1 rounded-sm text-xs font-medium transition-colors',
                     tenor === t
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-foreground border-border hover:border-primary hover:text-primary',
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                   )}
                 >
                   {t}
@@ -206,10 +206,10 @@ export function SwapForm({ valuationDate, quotes, cdRate, disabled, onResult }) 
                   type="button"
                   onClick={() => setDirection(d)}
                   className={cn(
-                    'flex-1 py-1.5 rounded-sm text-xs font-semibold uppercase tracking-wide border transition-colors',
+                    'flex-1 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wide transition-colors',
                     direction === d
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-foreground border-border hover:border-primary',
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                   )}
                 >
                   {d === 'pay' ? '고정 지급' : '고정 수취'}

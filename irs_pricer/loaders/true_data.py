@@ -2,10 +2,12 @@
 Load market data from "True Data.xlsx" (single-sheet Infomax export).
 
 Layout: rows 1-3 are headers, data starts at row 4, most recent date first.
-Each row packs CD + IRS (6M..30Y) as repeating [date, bid, ask, mid] blocks,
-except the CD block which is [date, 1M, 91D]. Column 0 (the CD date) is the
-valuation date that keys the whole row; IRS date sub-columns are the T+1
-settlement date and are not used as a lookup key.
+Each row packs IRS (6M..30Y) as repeating [date, bid, ask, mid] blocks,
+followed by a single CD91D column (see infomax_schema.py for the exact
+column indices -- confirmed directly against the workbook's own header
+rows). Column 0 is the valuation date that keys the whole row; each IRS
+block's own date sub-column is its T+1 settlement date and is not used as a
+lookup key.
 
 Rates are percentage (e.g. 2.92 = 2.92%); divided by 100 for QuantLib.
 """
@@ -21,11 +23,12 @@ import openpyxl
 from ..core.errors import NonBusinessDayError, _check_business_day
 from ..core.market_data import MarketSnapshot, RateQuote
 from .cache import get_cached
+from .call_rate import load_on_rate
 from .infomax_schema import (
     COL_CD_91D as _COL_CD_91D,
     COL_VAL_DATE as _COL_VAL_DATE,
     HEADER_ROWS as _HEADER_ROWS,
-    IRS_MID_COLS as _IRS_MID_COLS,
+    IRS_TENORS as _IRS_TENORS,
 )
 
 logger = logging.getLogger(__name__)
@@ -113,8 +116,8 @@ def load_market_snapshot_xlsx(data_dir: Path | str, valuation_date: date) -> Mar
         raise ValueError(f"{valuation_date}의 CD91D 금리를 찾을 수 없습니다.")
 
     swap_quotes = [
-        RateQuote(tenor_years=tenor, rate=row[col] / 100.0)
-        for tenor, col in _IRS_MID_COLS.items()
+        RateQuote(tenor_years=ty, rate=row[col] / 100.0, tenor_months=tm)
+        for ty, tm, col in _IRS_TENORS
         if row[col] is not None
     ]
     if not swap_quotes:
@@ -124,6 +127,10 @@ def load_market_snapshot_xlsx(data_dir: Path | str, valuation_date: date) -> Mar
         valuation_date=valuation_date,
         cd_rate=cd_rate / 100.0,
         swap_quotes=swap_quotes,
+        # Real O/N (Call Rate Data.xlsx), keyed by the same valuation_date --
+        # None (no "1D" pillar) if that workbook doesn't have a row for this
+        # date yet, rather than falling back to any assumed/hardcoded value.
+        on_rate=load_on_rate(data_dir, valuation_date),
     )
 
 

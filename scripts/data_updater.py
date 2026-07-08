@@ -22,12 +22,12 @@ import xlwings as xw
 from irs_pricer.loaders.infomax_schema import (
     COL_CD_91D as _COL_CD_91D,
     COL_VAL_DATE as _COL_VAL_DATE,
-    IRS_MID_COLS as _IRS_MID_COLS,
+    IRS_TENORS as _IRS_TENORS,
 )
 
 API_URL = "http://localhost:8000/api/market-data/live"
 
-_LAST_COL = max(_IRS_MID_COLS.values())  # column BC (index 54)
+_LAST_COL = max(_COL_CD_91D, max(col for _, _, col in _IRS_TENORS))
 
 
 def _to_date(val) -> date | None:
@@ -57,8 +57,8 @@ def push_row(row: list) -> None:
         return
 
     swap_quotes = [
-        {"tenor_years": tenor, "rate": row[col] / 100.0}
-        for tenor, col in _IRS_MID_COLS.items()
+        {"tenor_years": ty, "tenor_months": tm, "rate": row[col] / 100.0}
+        for ty, tm, col in _IRS_TENORS
         if row[col] is not None
     ]
     if not swap_quotes:

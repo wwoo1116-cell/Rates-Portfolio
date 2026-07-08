@@ -25,10 +25,10 @@ function timeToKey(time) {
 
 function toggleButtonClass(active) {
   return cn(
-    'px-3 py-1.5 rounded-sm text-xs font-semibold uppercase tracking-wide border transition-colors',
+    'px-3 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wide transition-colors',
     active
-      ? 'bg-primary text-primary-foreground border-primary'
-      : 'bg-background text-foreground border-border hover:border-primary',
+      ? 'bg-primary text-primary-foreground'
+      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
   )
 }
 
@@ -245,7 +245,7 @@ export function HistoricalPnlDashboard({ points }) {
         <div ref={containerRef} className="h-full w-full" />
         <div
           ref={tooltipRef}
-          className="pointer-events-none absolute z-10 hidden rounded-md border border-border bg-background p-3 text-foreground shadow-md min-w-[160px]"
+          className="pointer-events-none absolute z-10 hidden rounded-md border border-border bg-background p-3 text-foreground shadow-sm min-w-[160px]"
           style={{ display: 'none' }}
         />
       </div>

@@ -10,6 +10,8 @@ from ..models import (
     CurvePointOut,
     CurveRequest,
     CurveResponse,
+    DeltaBucketOut,
+    DeltaResponse,
     PriceRequest,
     PriceResponse,
     _to_snapshot,
@@ -46,3 +48,19 @@ def price_endpoint(request: PriceRequest) -> PriceResponse:
     )
     result = pricing_service.price(_to_snapshot(request), swap)
     return PriceResponse(**result)
+
+
+@router.post("/delta", response_model=DeltaResponse)
+def delta_endpoint(request: PriceRequest) -> DeltaResponse:
+    """Bucketed (per curve pillar) + total DV01-style delta for a hypothetical swap."""
+    swap = VanillaSwap(
+        tenor_years=request.swap.tenor_years,
+        notional=request.swap.notional,
+        fixed_rate=request.swap.fixed_rate,
+        pay_fixed=request.swap.pay_fixed,
+    )
+    result = pricing_service.delta(_to_snapshot(request), swap)
+    return DeltaResponse(
+        total_delta=result.total_delta,
+        buckets=[DeltaBucketOut(pillar=b.pillar, delta=b.delta) for b in result.buckets],
+    )

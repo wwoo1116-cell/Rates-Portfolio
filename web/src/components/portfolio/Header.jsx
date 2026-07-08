@@ -23,14 +23,14 @@ export function Header({ valuationDate, dateRange, onValuationDateChange, market
         >
           단일 스왑 계산기
         </Link>
-        {marketDataError && <span className="text-xs text-red-300">{marketDataError}</span>}
+        {marketDataError && <span className="text-xs text-negative-on-primary">{marketDataError}</span>}
         <input
           type="date"
           value={valuationDate}
           min={dateRange.min}
           max={dateRange.max}
           onChange={(e) => onValuationDateChange(e.target.value)}
-          className="bg-primary/80 border border-primary-foreground/20 text-primary-foreground text-xs rounded-sm px-2 py-1.5 focus:outline-none focus:border-primary-foreground/50 [color-scheme:dark]"
+          className="bg-primary/80 border border-primary-foreground/20 text-primary-foreground text-xs rounded-md px-2 py-1.5 focus:outline-none focus:border-primary-foreground/50 [color-scheme:dark]"
         />
         <ThemeToggle />
       </div>

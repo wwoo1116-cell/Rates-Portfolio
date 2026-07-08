@@ -215,6 +215,54 @@ def test_multi_position_portfolio_aggregates_new_and_historical_correctly(valuat
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# 6) Portfolio-level delta: aggregation and offsetting positions
+# ─────────────────────────────────────────────────────────────────────────
+def test_offsetting_positions_net_to_near_zero_portfolio_delta(valuation_date, snapshot):
+    """Same schedule, opposite direction -- every curve-pillar bucket (and the
+    total) should cancel to ~0, the way an exactly matched book would."""
+    spot_date = _spot_date(valuation_date)
+    maturity_date = spot_date + relativedelta(years=5)
+    notional = 10_000_000_000
+    rate = portfolio_service.position_fair_rate(snapshot, spot_date, maturity_date, notional, fixings={})
+
+    positions = [
+        ("payer", _swap(spot_date, maturity_date, notional, rate, pay_fixed=True)),
+        ("receiver", _swap(spot_date, maturity_date, notional, rate, pay_fixed=False)),
+    ]
+    result = portfolio_service.price_portfolio_delta(snapshot, positions, fixings={})
+
+    assert abs(result.total_delta) < 1.0
+    for bucket in result.buckets:
+        assert abs(bucket.delta) < 1.0
+
+
+def test_portfolio_buckets_equal_sum_of_position_buckets(valuation_date, snapshot):
+    spot_date = _spot_date(valuation_date)
+    notional = 10_000_000_000
+    positions = []
+    for years in (2, 5):
+        maturity = spot_date + relativedelta(years=years)
+        rate = portfolio_service.position_fair_rate(snapshot, spot_date, maturity, notional, fixings={})
+        positions.append((f"pos-{years}y", _swap(spot_date, maturity, notional, rate)))
+
+    result = portfolio_service.price_portfolio_delta(snapshot, positions, fixings={})
+
+    by_pillar = {b.pillar: b.delta for b in result.buckets}
+    expected_by_pillar = {}
+    for pd in result.position_deltas:
+        for b in pd.buckets:
+            expected_by_pillar[b.pillar] = expected_by_pillar.get(b.pillar, 0.0) + b.delta
+
+    assert by_pillar.keys() == expected_by_pillar.keys()
+    for pillar, value in expected_by_pillar.items():
+        assert by_pillar[pillar] == pytest.approx(value, abs=1e-6)
+
+    assert result.total_delta == pytest.approx(
+        sum(pd.total_delta for pd in result.position_deltas), abs=1e-6
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # QuantLib global Settings.evaluationDate isolation across independent calls
 # ─────────────────────────────────────────────────────────────────────────
 def test_quantlib_evaluation_date_isolated_across_independent_pricing_calls(snapshot):

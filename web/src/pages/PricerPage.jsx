@@ -100,7 +100,7 @@ function PricerPage() {
             포트폴리오
           </Link>
           {marketDataError && (
-            <span className="text-xs text-red-300">{marketDataError}</span>
+            <span className="text-xs text-negative-on-primary">{marketDataError}</span>
           )}
           {marketDataLoading && (
             <span className="text-xs text-primary-foreground/50">불러오는 중…</span>
@@ -116,7 +116,7 @@ function PricerPage() {
             min={dateRange.min}
             max={dateRange.max}
             onChange={(e) => setValuationDate(e.target.value)}
-            className="bg-primary/80 border border-primary-foreground/20 text-primary-foreground text-xs rounded-sm px-2 py-1.5 focus:outline-none focus:border-primary-foreground/50 [color-scheme:dark]"
+            className="bg-primary/80 border border-primary-foreground/20 text-primary-foreground text-xs rounded-md px-2 py-1.5 focus:outline-none focus:border-primary-foreground/50 [color-scheme:dark]"
           />
           <ThemeToggle />
         </div>

@@ -15,7 +15,7 @@ export function PortfolioSidebar({ active, onChange }) {
           type="button"
           onClick={() => onChange(key)}
           className={cn(
-            'block w-full rounded-sm px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide transition-colors',
+            'block w-full rounded-md px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide transition-colors',
             active === key
               ? 'bg-accent text-accent-foreground'
               : 'text-muted-foreground hover:bg-accent/50',

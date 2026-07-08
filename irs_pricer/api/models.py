@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +13,7 @@ from ..core.market_data import MarketSnapshot, RateQuote
 class RateQuoteIn(BaseModel):
     tenor_years: int = Field(gt=0)
     rate: float
+    tenor_months: int | None = Field(default=None, gt=0)
 
 
 class SwapIn(BaseModel):
@@ -24,6 +26,7 @@ class SwapIn(BaseModel):
 class PriceRequest(BaseModel):
     valuation_date: date
     cd_rate: float
+    on_rate: float | None = None
     swap_quotes: list[RateQuoteIn]
     swap: SwapIn
 
@@ -34,6 +37,16 @@ class PriceResponse(BaseModel):
     float_leg_pv: float
     par_rate: float
     dv01: float
+
+
+class DeltaBucketOut(BaseModel):
+    pillar: str
+    delta: float
+
+
+class DeltaResponse(BaseModel):
+    total_delta: float
+    buckets: list[DeltaBucketOut]
 
 
 class MtmSwapIn(BaseModel):
@@ -48,6 +61,7 @@ class MtmSwapIn(BaseModel):
 class MtmRequest(BaseModel):
     valuation_date: date
     cd_rate: float
+    on_rate: float | None = None
     swap_quotes: list[RateQuoteIn]
     swap: MtmSwapIn
 
@@ -55,6 +69,7 @@ class MtmRequest(BaseModel):
 class MtmFairRateRequest(BaseModel):
     valuation_date: date
     cd_rate: float
+    on_rate: float | None = None
     swap_quotes: list[RateQuoteIn]
     trade_date: date
     tenor_years: int = Field(gt=0)
@@ -92,12 +107,14 @@ class MtmResponse(BaseModel):
 class MarketDataResponse(BaseModel):
     valuation_date: date
     cd_rate: float
+    on_rate: float | None = None
     swap_quotes: list[RateQuoteIn]
 
 
 class CurveRequest(BaseModel):
     valuation_date: date
     cd_rate: float
+    on_rate: float | None = None
     swap_quotes: list[RateQuoteIn]
 
 
@@ -144,18 +161,26 @@ class PortfolioPositionIn(BaseModel):
 class PortfolioPriceRequest(BaseModel):
     valuation_date: date
     cd_rate: float
+    on_rate: float | None = None
     swap_quotes: list[RateQuoteIn]
     positions: list[PortfolioPositionIn] = Field(min_length=1)
+    # "true_data": already-reset periods use True Data's real historical
+    # CD91D fixing. "ccp": the curve is an independent, user-typed payload
+    # with no real fixing history behind it, so an already-reset period is
+    # assumed to have fixed at cd_rate itself instead of querying True Data.
+    data_source: Literal["true_data", "ccp"] = "true_data"
 
 
 class PositionFairRateRequest(BaseModel):
     valuation_date: date
     cd_rate: float
+    on_rate: float | None = None
     swap_quotes: list[RateQuoteIn]
     start_date: date
     maturity_date: date
     notional: float = Field(gt=0)
     float_spread: float = 0.0
+    data_source: Literal["true_data", "ccp"] = "true_data"
 
 
 class PositionFairRateResponse(BaseModel):
@@ -196,6 +221,84 @@ class PortfolioPriceResponse(BaseModel):
     cashflows: list[PortfolioCashFlowOut]
 
 
+class PositionDeltaOut(BaseModel):
+    position_id: str
+    total_delta: float
+    buckets: list[DeltaBucketOut]
+
+
+class PortfolioDeltaResponse(BaseModel):
+    total_delta: float
+    buckets: list[DeltaBucketOut]
+    position_deltas: list[PositionDeltaOut]
+
+
+class RateHistoryPointOut(BaseModel):
+    valuation_date: date
+    cd_rate: float
+    on_rate: float | None = None
+    base_rate: float | None = None
+    tenor_rates: dict[str, float]
+
+
+class RateHistoryResponse(BaseModel):
+    points: list[RateHistoryPointOut]
+
+
+class SpreadPointOut(BaseModel):
+    valuation_date: date
+    spread_bp: float
+
+
+class RateSpreadResponse(BaseModel):
+    short: str
+    long: str
+    points: list[SpreadPointOut]
+
+
+class BacktestPointOut(BaseModel):
+    valuation_date: date
+    spread_bp: float
+    z_score: float | None = None
+    position: int
+    daily_pnl: float
+    cumulative_pnl: float
+
+
+class BacktestTradeOut(BaseModel):
+    entry_date: date
+    exit_date: date
+    direction: int
+    entry_z: float
+    exit_z: float
+    entry_spread_bp: float
+    exit_spread_bp: float
+    pnl: float
+    exit_reason: str
+
+
+class BacktestSummaryOut(BaseModel):
+    total_pnl: float
+    max_drawdown: float
+    win_rate: float | None = None
+    sharpe_ratio: float | None = None
+    num_trades: int
+
+
+class SpreadBacktestResponse(BaseModel):
+    short: str
+    long: str
+    lookback: int
+    entry_z: float
+    exit_z: float
+    stop_z: float
+    cost_bp: float
+    notional: float
+    points: list[BacktestPointOut]
+    trades: list[BacktestTradeOut]
+    summary: BacktestSummaryOut
+
+
 class HistoricalPnlRequest(BaseModel):
     positions: list[PortfolioPositionIn] = Field(min_length=1)
     start_date: date
@@ -226,5 +329,6 @@ def _to_snapshot(request) -> MarketSnapshot:
     return MarketSnapshot(
         valuation_date=request.valuation_date,
         cd_rate=request.cd_rate,
-        swap_quotes=[RateQuote(q.tenor_years, q.rate) for q in request.swap_quotes],
+        swap_quotes=[RateQuote(q.tenor_years, q.rate, q.tenor_months) for q in request.swap_quotes],
+        on_rate=getattr(request, "on_rate", None),
     )

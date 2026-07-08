@@ -221,18 +221,24 @@ def _price_floating_leg(
         # as an internal cross-check (it requires float_spread == 0.0).
         rest_pv, rest_details = _price_floating_per_period(rest, curve, notional, float_spread)
         if float_spread == 0.0:
-            telescoping_used = True
-            telescoped_pv, _ = _price_floating_telescoped(rest, curve, notional)
-            tolerance = max(_TELESCOPING_ABSOLUTE_FLOOR, abs(telescoped_pv) * _TELESCOPING_RELATIVE_TOLERANCE)
-            if abs(telescoped_pv - rest_pv) > tolerance:
-                telescoping_diverged = True
-                warnings.warn(
-                    "Telescoping cross-check diverged from per-period floating leg PV: "
-                    f"telescoped={telescoped_pv!r} per_period={rest_pv!r} "
-                    f"diff={abs(telescoped_pv - rest_pv)!r}",
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
+            # Telescoping cross-check relies on exact cancellation of adjacent discount factors.
+            # If the first period is in-progress (d1 < ref) and missing its historical fixing,
+            # the forward rate fallback applies an annualized (ref, d2) rate to the full (d1, d2)
+            # period, which intentionally breaks the telescoping identity.
+            can_telescope = rest[0].accrual_start_ql >= curve.valuation_date
+            if can_telescope:
+                telescoping_used = True
+                telescoped_pv, _ = _price_floating_telescoped(rest, curve, notional)
+                tolerance = max(_TELESCOPING_ABSOLUTE_FLOOR, abs(telescoped_pv) * _TELESCOPING_RELATIVE_TOLERANCE)
+                if abs(telescoped_pv - rest_pv) > tolerance:
+                    telescoping_diverged = True
+                    warnings.warn(
+                        "Telescoping cross-check diverged from per-period floating leg PV: "
+                        f"telescoped={telescoped_pv!r} per_period={rest_pv!r} "
+                        f"diff={abs(telescoped_pv - rest_pv)!r}",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
         pv += rest_pv
         details.extend(rest_details)
 
@@ -254,10 +260,11 @@ def _accrued_interest(
 
     first = remaining[0]
     accrual_start_ql = first.accrual_start_ql
-    if valuation_date_ql <= accrual_start_ql:
-        return 0.0, 0.0  # valuation_date sits exactly at/before the period start
+    settlement_date_ql = curve.settlement_date
+    if settlement_date_ql <= accrual_start_ql:
+        return 0.0, 0.0  # settlement_date sits exactly at/before the period start
 
-    dcf = DAY_COUNT.yearFraction(accrual_start_ql, valuation_date_ql)
+    dcf = DAY_COUNT.yearFraction(accrual_start_ql, settlement_date_ql)
     fixed_accrued = notional * fixed_rate * dcf
 
     known_rate = fixings.get(_reset_date(accrual_start_ql))
@@ -297,7 +304,11 @@ def fair_rate_for_schedule(
     """
     trade_date_ql = to_ql_date(trade_date)
     maturity_date_ql = to_ql_date(maturity_date)
-    periods = _build_periods(trade_date_ql, maturity_date_ql)
+
+    # Apply Fix 1: KRX convention uses T+1 (Spot) as the effective date for the schedule
+    effective_date_ql = CALENDAR.advance(trade_date_ql, SPOT_DAYS, ql.Days)
+
+    periods = _build_periods(effective_date_ql, maturity_date_ql)
     remaining = [p for p in periods if p.payment_date > from_ql_date(curve.valuation_date)]
     if not remaining:
         return 0.0
@@ -328,7 +339,10 @@ def value_booked_trade(swap: VanillaSwap, curve: CurveBundle, fixings: dict[date
     trade_date_ql = to_ql_date(swap.trade_date)
     maturity_date_ql = to_ql_date(swap.maturity_date)
 
-    periods = _build_periods(trade_date_ql, maturity_date_ql)
+    # Apply Fix 1: KRX convention uses T+1 (Spot) as the effective date for the schedule
+    effective_date_ql = CALENDAR.advance(trade_date_ql, SPOT_DAYS, ql.Days)
+    
+    periods = _build_periods(effective_date_ql, maturity_date_ql)
     remaining = [p for p in periods if p.payment_date > valuation_date]
 
     pv_fixed, fixed_details = _price_fixed_leg(remaining, curve, swap.notional, swap.fixed_rate)
@@ -338,6 +352,14 @@ def value_booked_trade(swap: VanillaSwap, curve: CurveBundle, fixings: dict[date
     fixed_accrued, float_accrued = _accrued_interest(
         remaining, curve, valuation_date_ql, swap.notional, swap.fixed_rate, swap.float_spread, fixings
     )
+
+    df_settlement = curve.yield_curve_handle.discount(curve.settlement_date)
+    pv_fixed /= df_settlement
+    pv_floating /= df_settlement
+    for c in fixed_details:
+        c.pv /= df_settlement
+    for c in float_details:
+        c.pv /= df_settlement
 
     if swap.pay_fixed:
         clean_npv = pv_floating - pv_fixed

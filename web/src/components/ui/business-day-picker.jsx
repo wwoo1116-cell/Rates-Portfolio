@@ -78,8 +78,8 @@ export function BusinessDayPicker({ id, value, onChange, minDateExclusive, disab
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          'flex h-9 w-full items-center rounded-sm border border-input bg-background px-3 py-1 text-sm text-left',
-          'focus:outline-none focus:ring-1 focus:ring-ring focus:border-primary',
+          'flex h-9 w-full items-center rounded-md border border-input bg-background px-3 py-1 text-sm text-left',
+          'focus:outline-none focus:border-primary',
           'disabled:cursor-not-allowed disabled:opacity-50',
           value ? 'text-foreground' : 'text-muted-foreground',
         )}
@@ -90,7 +90,7 @@ export function BusinessDayPicker({ id, value, onChange, minDateExclusive, disab
       {open && (
         <div
           role="dialog"
-          className="absolute z-50 mt-1 w-64 rounded-sm border border-border bg-popover p-2 text-popover-foreground shadow-lg"
+          className="absolute z-50 mt-1 w-64 rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-md"
         >
           <div className="flex items-center justify-between px-1 pb-2">
             <button

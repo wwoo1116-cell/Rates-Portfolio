@@ -45,8 +45,9 @@ def test_zero_rates_are_positive():
 
 def test_par_swap_reprices_to_par_rate_at_knot_tenor():
     """A swap struck at exactly the quoted par rate for a knot tenor must
-    reprice to ~par (fair rate == quote) under the (sole, hardcoded) linear
-    zero-rate bootstrap."""
+    reprice to ~par (fair rate == quote) -- true under any consistent
+    bootstrap regardless of interpolation scheme (currently log-linear on
+    discount factors, per KRX CCP convention)."""
     quoted_5y = 0.0260
     snapshot = _sample_snapshot(date(2026, 6, 29))
     with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):

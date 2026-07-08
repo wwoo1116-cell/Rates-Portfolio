@@ -20,10 +20,12 @@ logging.config.dictConfig({
     },
 })
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from .routers import calendar, historical_pnl, market_data, mtm, portfolio, pricing
+from ..core.errors import CurveBootstrapError
+from .routers import calendar, historical_pnl, market_data, mtm, portfolio, pricing, rate_history, spread_backtest
 
 app = FastAPI(title="IRS Pricer API")
 
@@ -34,9 +36,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(CurveBootstrapError)
+async def curve_bootstrap_error_handler(request: Request, exc: CurveBootstrapError) -> JSONResponse:
+    """Every endpoint routes through build_curve() at some point -- handling
+    this centrally means a bad market rate (CCP curve typo, corrupt snapshot)
+    comes back as one clean 400 everywhere, instead of a raw QuantLib
+    RuntimeError as an opaque 500 with no actionable message for the caller."""
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
+
 app.include_router(market_data.router)
 app.include_router(pricing.router)
 app.include_router(mtm.router)
 app.include_router(portfolio.router)
 app.include_router(historical_pnl.router)
 app.include_router(calendar.router)
+app.include_router(rate_history.router)
+app.include_router(spread_backtest.router)

@@ -17,7 +17,9 @@ from ..core.market_data import MarketSnapshot
 from ..engine.curve import build_curve
 from ..engine.instruments import VanillaSwap
 from ..engine.mtm_valuation import CashFlowDetail, fair_rate_for_schedule, value_booked_trade
+from ..engine.risk import curve_bump_scenarios
 from . import market_data_service
+from .pricing_service import DeltaBucket
 
 
 from ..core.conventions import to_ql_date
@@ -48,6 +50,66 @@ class PortfolioResult:
     receiver_npv: float
     position_results: list[PositionResult]
     cashflows: list[PortfolioCashFlow]
+
+
+@dataclass
+class PositionDelta:
+    position_id: str
+    total_delta: float
+    buckets: list[DeltaBucket]
+
+
+@dataclass
+class PortfolioDeltaResult:
+    total_delta: float
+    buckets: list[DeltaBucket]  # portfolio-level, summed across positions per pillar
+    position_deltas: list[PositionDelta]
+
+
+def price_portfolio_delta(
+    snapshot: MarketSnapshot,
+    positions: list[tuple[str, VanillaSwap]],
+    fixings: dict[date, float],
+) -> PortfolioDeltaResult:
+    """Bucketed + total delta per position, and aggregated across the book.
+
+    For each key-rate bump scenario (one pillar's own market quote bumped,
+    the whole curve re-bootstrapped from scratch -- see engine/risk.py's
+    module docstring) revalues every position against that scenario's curve
+    with value_booked_trade() -- the same revaluation price_portfolio() uses
+    -- so each position's delta is consistent with its displayed clean_npv.
+    Portfolio-level buckets are the sum of every position's own bucket for
+    that pillar; each total_delta (position-level and portfolio-level) is
+    the sum of that entity's own buckets (see engine/risk.py's module
+    docstring for why there's no separate parallel-shift scenario).
+    """
+    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
+        base_curve = build_curve(snapshot)
+        base_npvs = {
+            position_id: value_booked_trade(swap, base_curve, fixings).clean_npv for position_id, swap in positions
+        }
+
+        position_buckets: dict[str, list[DeltaBucket]] = {position_id: [] for position_id, _ in positions}
+        portfolio_buckets: list[DeltaBucket] = []
+
+        for label, curve in curve_bump_scenarios(snapshot):
+            bucket_sum = 0.0
+            for position_id, swap in positions:
+                bumped_npv = value_booked_trade(swap, curve, fixings).clean_npv
+                d = bumped_npv - base_npvs[position_id]
+                bucket_sum += d
+                position_buckets[position_id].append(DeltaBucket(label, d))
+            portfolio_buckets.append(DeltaBucket(label, bucket_sum))
+
+        position_deltas = [
+            PositionDelta(position_id, sum(b.delta for b in position_buckets[position_id]), position_buckets[position_id])
+            for position_id, _ in positions
+        ]
+        return PortfolioDeltaResult(
+            total_delta=sum(b.delta for b in portfolio_buckets),
+            buckets=portfolio_buckets,
+            position_deltas=position_deltas,
+        )
 
 
 def price_portfolio(
