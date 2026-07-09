@@ -23,6 +23,12 @@ export function Header({ valuationDate, dateRange, onValuationDateChange, market
         >
           단일 스왑 계산기
         </Link>
+        <Link
+          to="/settings"
+          className="text-xs text-primary-foreground/70 hover:text-primary-foreground underline underline-offset-2"
+        >
+          DB 설정
+        </Link>
         {marketDataError && <span className="text-xs text-negative-on-primary">{marketDataError}</span>}
         <input
           type="date"

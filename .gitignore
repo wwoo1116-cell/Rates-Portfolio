@@ -8,3 +8,7 @@ __pycache__/
 
 # Excel lock/temp files (created while a workbook is open)
 ~$*
+
+# MySQL connection settings (host/user/password) entered via the Settings
+# page -- contains a plaintext password, never belongs in git.
+.db_connection.json

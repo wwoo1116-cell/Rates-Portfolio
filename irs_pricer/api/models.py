@@ -158,6 +158,49 @@ class PortfolioPositionIn(BaseModel):
     float_spread: float = 0.0
 
 
+class TradeIn(BaseModel):
+    """Explicit-date trade booking -- same shape as PortfolioPositionIn."""
+
+    position_id: str
+    start_date: date
+    maturity_date: date
+    notional: float = Field(gt=0)
+    fixed_rate: float = Field(gt=0)
+    pay_fixed: bool = True
+    float_spread: float = 0.0
+
+
+class TradeByTenorIn(BaseModel):
+    """Tenor-based trade booking -- start/maturity are derived server-side."""
+
+    position_id: str
+    trade_date: date
+    tenor_months: int = Field(gt=0)
+    notional: float = Field(gt=0)
+    fixed_rate: float = Field(gt=0)
+    pay_fixed: bool = True
+    float_spread: float = 0.0
+
+
+class TradeOut(BaseModel):
+    trade_id: int
+    external_position_id: str
+    trade_date: date
+    start_date: date
+    maturity_date: date
+    tenor_months: int | None
+    notional: float
+    fixed_rate: float
+    pay_fixed: bool
+    float_spread: float
+    float_index: str
+    status: str
+
+
+class LegacyPositionImportRequest(BaseModel):
+    positions: list[PortfolioPositionIn]
+
+
 class PortfolioPriceRequest(BaseModel):
     valuation_date: date
     cd_rate: float
@@ -308,6 +351,17 @@ class HistoricalPnlRequest(BaseModel):
     # market data is resolved per-date server-side (see historical_pnl_service).
 
 
+class HistoricalPnlByTradesRequest(BaseModel):
+    """Cached variant of HistoricalPnlRequest -- references booked
+    trade_specification rows by ID instead of carrying full position specs
+    inline (see historical_pnl_service.compute_historical_pnl_for_trades)."""
+
+    trade_ids: list[int] = Field(min_length=1)
+    start_date: date
+    end_date: date
+    baseline_date: date | None = None
+
+
 class PnlPointOut(BaseModel):
     valuation_date: date
     net_npv: float
@@ -322,6 +376,63 @@ class HistoricalPnlResponse(BaseModel):
     baseline_net_npv: float
     points: list[PnlPointOut]
     skipped_dates: list[date]
+
+
+class NpvTraceSwapIn(BaseModel):
+    trade_date: date
+    tenor_years: int = Field(gt=0)
+    notional: float = Field(gt=0)
+    fixed_rate: float
+    pay_fixed: bool = True
+    float_spread: float = 0.0
+
+
+class NpvTraceRequest(BaseModel):
+    swap: NpvTraceSwapIn
+    start_date: date
+    end_date: date
+    # No valuation_date/cd_rate/swap_quotes -- market data is resolved
+    # per-date server-side (see npv_trace_service), same convention as
+    # HistoricalPnlRequest.
+
+
+class NpvTracePointOut(BaseModel):
+    valuation_date: date
+    clean_npv: float
+    dirty_npv: float
+    daily_pnl: float
+    cumulative_pnl: float
+
+
+class NpvTraceResponse(BaseModel):
+    trade_date: date
+    maturity_date: date
+    entry_npv: float
+    points: list[NpvTracePointOut]
+    skipped_dates: list[date]
+
+
+class DbConnectionIn(BaseModel):
+    host: str
+    port: int = 3306
+    user: str
+    password: str
+    database: str
+
+
+class DbConnectionStatusOut(BaseModel):
+    configured: bool
+    host: str | None = None
+    port: int | None = None
+    user: str | None = None
+    database: str | None = None
+    # Password is never round-tripped back to the frontend -- the settings
+    # form always requires it be retyped to change, never displays it.
+
+
+class DbConnectionTestResult(BaseModel):
+    ok: bool
+    message: str
 
 
 def _to_snapshot(request) -> MarketSnapshot:

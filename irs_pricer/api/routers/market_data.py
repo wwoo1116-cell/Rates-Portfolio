@@ -41,5 +41,8 @@ def get_market_data(valuation_date: date) -> MarketDataResponse:
         valuation_date=snapshot.valuation_date,
         cd_rate=snapshot.cd_rate,
         on_rate=snapshot.on_rate,
-        swap_quotes=[RateQuoteIn(tenor_years=q.tenor_years, rate=q.rate) for q in snapshot.swap_quotes],
+        swap_quotes=[
+            RateQuoteIn(tenor_years=q.tenor_years, rate=q.rate, tenor_months=q.tenor_months)
+            for q in snapshot.swap_quotes
+        ],
     )

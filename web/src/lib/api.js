@@ -5,10 +5,24 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
 
 const NETWORK_ERROR_MESSAGE = '백엔드 서버에 연결할 수 없습니다 — 서버가 실행 중인지 확인하세요.'
 
+// FastAPI's own request validation (422, before a route handler even runs)
+// returns `detail` as an array of Pydantic error objects, not a string --
+// every other error path in this app (HTTPException) already returns a
+// plain string. Without this, an array `detail` renders as the useless
+// "[object Object]" (Array.toString() on objects) instead of the actual
+// per-field validation message.
+function detailToMessage(detail, status) {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail.map((e) => (typeof e === 'string' ? e : (e.msg ?? JSON.stringify(e)))).join(', ')
+  }
+  return `요청이 실패했습니다 (HTTP ${status}).`
+}
+
 async function handleResponse(res) {
   const body = await res.json().catch(() => null)
   if (!res.ok) {
-    throw new Error(body?.detail ?? `요청이 실패했습니다 (HTTP ${res.status}).`)
+    throw new Error(detailToMessage(body?.detail, res.status))
   }
   return body
 }

@@ -69,3 +69,13 @@ def load_on_rate(data_dir: Path | str, valuation_date: date) -> float | None:
     if not path.exists():
         return None
     return _load_indexed_rows(data_dir).get(valuation_date)
+
+
+def all_rates(data_dir: Path | str) -> dict[date, float]:
+    """Every {date: rate (decimal)} in Call Rate Data.xlsx, or {} if the file
+    is missing -- used by the ETL backfill script (scripts/migrate_excel_to_mysql.py)
+    to migrate the whole O/N history, not just a single date."""
+    path = Path(data_dir) / XLSX_NAME
+    if not path.exists():
+        return {}
+    return dict(_load_indexed_rows(data_dir))

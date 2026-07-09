@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createChart, createSeriesMarkers, LineSeries } from 'lightweight-charts'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
@@ -10,6 +10,8 @@ import { apiGet } from '@/lib/api'
 import { getChartColors } from '@/lib/chartColors'
 import { ALL_TENOR_OPTIONS } from '@/lib/rateHistory'
 import { fmt } from '@/lib/format'
+import { useTradeDetail } from '@/lib/useTradeDetail'
+import { TradeDetailPanel } from './TradeDetailPanel'
 
 // A backtest run always re-hits the API with the current params -- there is
 // no client-side recomputation of the strategy anywhere in this file. Every
@@ -127,6 +129,70 @@ export function SpreadBacktestPanel({ startDate, endDate, dateRange }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Stabilized so `openTrade`'s own useCallback identity (deps on this
+  // object) doesn't churn every render -- without this, a *new*
+  // backtestParams object was constructed inline on every render, which
+  // defeated useTradeDetail's memoization for no reason other than object
+  // identity. latestAvailableDate is the true max market-data date (not the
+  // possibly-earlier `endDate` the user has the top-level chart window
+  // scrolled to) -- draft what-if trades trace all the way to it.
+  const backtestParams = useMemo(
+    () => ({
+      long: params.long,
+      short: params.short,
+      notional: Number(params.notional) || 0,
+      latestAvailableDate: dateRange?.max ?? null,
+    }),
+    [params.long, params.short, params.notional, dateRange?.max],
+  )
+  const detail = useTradeDetail(backtestParams)
+
+  // Read by the spread chart's click handler, which is wired once at chart
+  // mount time (see handleSpreadChartReady) and needs the latest trades list
+  // / latest `detail` without re-subscribing on every `result` update.
+  // ChartPane's creation effect has `[]` deps, so subscribeClick's callback
+  // is registered exactly once and would otherwise permanently close over
+  // whatever `detail` (and therefore whatever stale backtestParams) existed
+  // at that first mount -- these refs are the fix: always dereferenced at
+  // click-time, never captured.
+  const resultRef = useRef(null)
+  useEffect(() => {
+    resultRef.current = result
+  }, [result])
+
+  const detailRef = useRef(detail)
+  useEffect(() => {
+    detailRef.current = detail
+  }, [detail])
+
+  // What-If simulator: a click on any of the three synced charts opens the
+  // detail panel for that date, whether or not a backtest trade happened to
+  // land there. An exact-date match against the current backtest's trades
+  // still opens the REAL trade (preserving entry/exit/pnl inspection); any
+  // other date becomes a synthetic draft the trader can freely reprice.
+  function resolveTradeForClick(clickedDate) {
+    const trades = resultRef.current?.trades ?? []
+    const matched = trades.find((t) => t.entry_date === clickedDate || t.exit_date === clickedDate)
+    if (matched) return matched
+    return {
+      entry_date: clickedDate,
+      exit_date: null,
+      direction: null,
+      pnl: null,
+      exit_reason: null,
+      is_draft: true,
+    }
+  }
+
+  // Shared by all three synced charts (spread/z-score/equity) -- lightweight-charts
+  // resolves param.time to the nearest plotted bar for any click inside the
+  // data range, marker or not; a click outside the plotted range (empty
+  // margin, price-scale gutter) leaves param.time undefined and is ignored.
+  function handleChartClick(param) {
+    if (!param.time) return
+    detailRef.current.openTrade(resolveTradeForClick(param.time))
+  }
+
   const entryZ = Number(params.entry_z)
   const exitZ = Number(params.exit_z)
   const stopZ = Number(params.stop_z)
@@ -197,17 +263,20 @@ export function SpreadBacktestPanel({ startDate, endDate, dateRange }) {
     spreadSeriesRef.current = null
     spreadMarkersRef.current = null
     wireCharts()
+    chart.subscribeClick(handleChartClick)
   }
   function handleZscoreChartReady(chart) {
     zscoreChartRef.current = chart
     zscoreSeriesRef.current = null
     zscorePriceLinesRef.current = []
     wireCharts()
+    chart.subscribeClick(handleChartClick)
   }
   function handleEquityChartReady(chart) {
     equityChartRef.current = chart
     equitySeriesRef.current = null
     wireCharts()
+    chart.subscribeClick(handleChartClick)
   }
 
   // Spread chart + entry/exit markers.
@@ -294,6 +363,7 @@ export function SpreadBacktestPanel({ startDate, endDate, dateRange }) {
   const summary = result?.summary
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle>Spread 평균회귀 백테스트</CardTitle>
@@ -420,7 +490,14 @@ export function SpreadBacktestPanel({ startDate, endDate, dateRange }) {
                   </TableRow>
                 )}
                 {result.trades.map((t, i) => (
-                  <TableRow key={i}>
+                  <TableRow
+                    key={i}
+                    className={cn(
+                      'cursor-pointer',
+                      detail.selectedTrade === t && 'bg-accent/60',
+                    )}
+                    onClick={() => detail.openTrade(t)}
+                  >
                     <TableCell>{t.entry_date}</TableCell>
                     <TableCell>{t.exit_date}</TableCell>
                     <TableCell>{t.direction === 1 ? 'Long' : 'Short'}</TableCell>
@@ -438,5 +515,7 @@ export function SpreadBacktestPanel({ startDate, endDate, dateRange }) {
         )}
       </CardContent>
     </Card>
+    <TradeDetailPanel detail={detail} />
+    </>
   )
 }

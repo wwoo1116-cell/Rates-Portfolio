@@ -6,6 +6,7 @@ import { Header } from '@/components/portfolio/Header'
 import { PositionList } from '@/components/portfolio/PositionList'
 import { PortfolioSummaryBar } from '@/components/portfolio/PortfolioSummaryBar'
 import { HistoricalPnlPanel } from '@/components/portfolio/HistoricalPnlPanel'
+import { LegacyImportBanner } from '@/components/portfolio/LegacyImportBanner'
 import { PortfolioSidebar } from '@/components/portfolio/PortfolioSidebar'
 import { RiskAnalyticsPanel } from '@/components/portfolio/RiskAnalyticsPanel'
 import OverviewPage from '@/pages/OverviewPage'
@@ -335,6 +336,8 @@ function PortfolioPage() {
           )}
           {activeSection === 'portfolio' && (
             <>
+              <LegacyImportBanner positions={positions} />
+
               <Card>
                 <CardHeader>
                   <CardTitle>포지션 입력</CardTitle>
