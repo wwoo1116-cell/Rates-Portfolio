@@ -13,6 +13,7 @@ from sqlalchemy import create_engine, text
 
 from ...db import database
 from ...db.connection_settings import DbConnectionSettings, load, save
+from ...services.market_data_service import reset_db_availability
 from ..models import DbConnectionIn, DbConnectionStatusOut, DbConnectionTestResult
 
 router = APIRouter(prefix="/api/db-settings")
@@ -75,6 +76,7 @@ def save_connection(request: DbConnectionIn) -> DbConnectionStatusOut:
         raise HTTPException(status_code=400, detail=error)
     save(settings)
     database.reconfigure()
+    reset_db_availability()
     return DbConnectionStatusOut(
         configured=True,
         host=settings.host,

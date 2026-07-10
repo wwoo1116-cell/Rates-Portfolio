@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { createChart, LineSeries } from 'lightweight-charts'
 import { getChartColors, seriesPalette } from '@/lib/chartColors'
 
+// Round to nearest 10,000 KRW and format with commas -- matches the app-wide
+// display convention for KRW NPV/PnL values (see format.js: fmt(n, 0)).
+const krwFormatter = (v) => {
+  const rounded = Math.round(v / 10000) * 10000
+  return rounded.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+}
+
 // Dual-axis line chart: clean NPV on the left scale, cumulative PnL (vs
 // entry-date NPV) on the right -- same ChartPane lifecycle conventions as
 // SpreadBacktestPanel.jsx/OverviewPage.jsx (create-on-mount, ResizeObserver,
@@ -72,6 +79,7 @@ export function PnLTraceChart({ trace, loading }) {
         lineWidth: 2,
         title: 'Clean NPV',
         priceScaleId: 'left',
+        priceFormat: { type: 'custom', formatter: krwFormatter },
       })
     }
     npvSeriesRef.current.setData(trace.points.map((p) => ({ time: p.valuation_date, value: p.clean_npv })))
@@ -82,6 +90,7 @@ export function PnLTraceChart({ trace, loading }) {
         lineWidth: 2,
         title: '누적 손익',
         priceScaleId: 'right',
+        priceFormat: { type: 'custom', formatter: krwFormatter },
       })
     }
     pnlSeriesRef.current.setData(trace.points.map((p) => ({ time: p.valuation_date, value: p.cumulative_pnl })))

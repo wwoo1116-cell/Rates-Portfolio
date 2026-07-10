@@ -152,6 +152,11 @@ class TradeSpecification(Base):
 
     trade_id: Mapped[int] = mapped_column(_BIGINT_UNSIGNED, primary_key=True, autoincrement=True)
     external_position_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
+    # Desk metadata, not trade economics -- nullable since older/legacy-imported
+    # trades were never labeled with either (blueprint amendment, see
+    # MIGRATION_PLAN.md §0.4: real persisted columns, not client-derived only).
+    book: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ticker: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     trade_date: Mapped[date] = mapped_column(Date, nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)

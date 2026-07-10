@@ -7,7 +7,7 @@ from datetime import date
 
 import QuantLib as ql
 
-from ..core.conventions import BUSINESS_CONVENTION, CALENDAR, DAY_COUNT, FLOAT_LEG_TENOR, to_ql_date
+from ..core.conventions import BUSINESS_CONVENTION, CALENDAR, DAY_COUNT, FLOAT_LEG_TENOR, to_ql_date, SPOT_DAYS
 from .curve import CurveBundle
 
 
@@ -22,6 +22,11 @@ class VanillaSwap:
     maturity_date: date | None = None  # if set, overrides tenor_years for the leg schedule (MTM repricing)
 
     def to_ql_swap(self, curve: CurveBundle) -> ql.VanillaSwap:
+        if self.trade_date is not None:
+            effective_date = CALENDAR.advance(to_ql_date(self.trade_date), SPOT_DAYS, ql.Days)
+        else:
+            effective_date = curve.settlement_date
+
         if self.maturity_date is not None:
             maturity_date = to_ql_date(self.maturity_date)
         else:
@@ -32,13 +37,13 @@ class VanillaSwap:
             # stub period -- exactly what SwapRateHelper's internal swap (curve.py bootstrap)
             # does NOT do, causing a small but nonzero NPV at the quoted par rate.
             maturity_date = CALENDAR.advance(
-                curve.settlement_date,
+                effective_date,
                 ql.Period(self.tenor_years, ql.Years),
                 ql.Unadjusted,
                 False,
             )
         schedule = ql.Schedule(
-            curve.settlement_date,
+            effective_date,
             maturity_date,
             FLOAT_LEG_TENOR,
             CALENDAR,

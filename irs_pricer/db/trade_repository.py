@@ -31,6 +31,8 @@ def create(
     float_spread: float = 0.0,
     tenor_months: int | None = None,
     float_index: str = "CD91D",
+    book: str | None = None,
+    ticker: str | None = None,
 ) -> TradeSpecification:
     trade = TradeSpecification(
         external_position_id=external_position_id,
@@ -43,6 +45,8 @@ def create(
         pay_fixed=pay_fixed,
         float_spread=float_spread,
         float_index=float_index,
+        book=book,
+        ticker=ticker,
     )
     db.add(trade)
     db.commit()

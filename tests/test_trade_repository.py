@@ -25,8 +25,17 @@ def test_create_and_get_round_trip(db):
     assert trade.trade_id is not None
     assert trade.status == models.TradeStatus.ACTIVE
     assert trade.float_index == "CD91D"
+    assert trade.book is None
+    assert trade.ticker is None
     fetched = trade_repository.get(db, trade.trade_id)
     assert fetched.external_position_id == "p1"
+
+
+def test_book_and_ticker_round_trip(db):
+    trade = _make(db, book="RP Trading", ticker="IRS 10Y KRW")
+    fetched = trade_repository.get(db, trade.trade_id)
+    assert fetched.book == "RP Trading"
+    assert fetched.ticker == "IRS 10Y KRW"
 
 
 def test_get_by_external_id(db):

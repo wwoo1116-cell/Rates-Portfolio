@@ -41,15 +41,38 @@ _DATA_DIR = Path(__file__).resolve().parent.parent.parent   # irs_pricer/service
 # updates without waiting for a poll cycle to land in MySQL.
 _live_snapshots: dict[date, MarketSnapshot] = {}
 
+# Set the first time a DB-first lookup raises (e.g. the market-data table
+# doesn't exist yet on this connection -- the same remote DB this app's
+# trade_specification table is also still missing from). A schema/connection
+# error isn't going to un-happen for the next date in the same bulk request
+# (rate_history_service.get_rate_history can iterate several thousand dates
+# in a single call), so short-circuiting straight to Excel here turned a
+# confirmed ~100s worst case into sub-second. Reset by database.reconfigure()
+# so fixing the connection and saving new settings gets a fresh try.
+_db_market_data_unavailable = False
+
 
 def _load_snapshot_from_db(valuation_date: date) -> MarketSnapshot | None:
-    """None if the DB isn't configured/reachable, or has no row for this date
-    -- either way the caller falls back to Excel."""
+    """None if the DB isn't configured/reachable, has no row for this date, or
+    has already failed once this process -- either way the caller falls back
+    to Excel."""
+    global _db_market_data_unavailable
+    if _db_market_data_unavailable:
+        return None
     try:
         with session_scope() as db:
             return repository.get_snapshot(db, valuation_date)
     except (DatabaseNotConfiguredError, SQLAlchemyError):
+        _db_market_data_unavailable = True
         return None
+
+
+def reset_db_availability() -> None:
+    """Call after saving new connection settings (db_settings.router) so a
+    fixed/changed connection gets a fresh attempt instead of staying stuck on
+    the previous connection's failure."""
+    global _db_market_data_unavailable
+    _db_market_data_unavailable = False
 
 
 def load_snapshot(valuation_date: date) -> MarketSnapshot:

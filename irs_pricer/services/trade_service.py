@@ -31,6 +31,8 @@ def book_trade_explicit(
     fixed_rate: float,
     pay_fixed: bool,
     float_spread: float = 0.0,
+    book: str | None = None,
+    ticker: str | None = None,
 ) -> TradeSpecification:
     """Explicit-date booking -- mirrors PortfolioPositionIn exactly. tenor_months
     stays NULL: this trade wasn't booked from a tenor, so there's no
@@ -45,6 +47,8 @@ def book_trade_explicit(
         fixed_rate=fixed_rate,
         pay_fixed=pay_fixed,
         float_spread=float_spread,
+        book=book,
+        ticker=ticker,
     )
 
 
@@ -58,6 +62,8 @@ def book_trade_by_tenor(
     fixed_rate: float,
     pay_fixed: bool,
     float_spread: float = 0.0,
+    book: str | None = None,
+    ticker: str | None = None,
 ) -> TradeSpecification:
     """Tenor-based booking -- start_date is the spot date off trade_date
     (calendar_service.spot_date, same T+1 lag build_curve() uses), maturity_date
@@ -78,6 +84,8 @@ def book_trade_by_tenor(
         fixed_rate=fixed_rate,
         pay_fixed=pay_fixed,
         float_spread=float_spread,
+        book=book,
+        ticker=ticker,
     )
 
 

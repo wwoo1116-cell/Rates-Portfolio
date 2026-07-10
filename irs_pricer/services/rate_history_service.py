@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from ..core.errors import NonBusinessDayError
 from ..engine.curve import _quote_label
 from ..loaders.base_rate import load_base_rate
 from . import market_data_service
@@ -39,14 +38,24 @@ def get_rate_history(start_date: date, end_date: date) -> list[RateHistoryPoint]
     """One RateHistoryPoint per business date with usable market data in
     [start_date, end_date] (inclusive). Dates the KRX calendar rejects as a
     non-business day, or that no data source covers, are silently skipped --
-    a chart is fine with gaps; the frontend isn't expected to reconcile them."""
+    a chart is fine with gaps; the frontend isn't expected to reconcile them.
+
+    Iterates market_data_service.load_snapshot() per date -- its own DB-first/
+    Excel-fallback logic short-circuits to Excel-only after the first DB
+    failure (see market_data_service._db_market_data_unavailable), so a bulk
+    multi-thousand-date request here doesn't pay a per-date DB round-trip."""
     dates = [d for d in market_data_service.list_available_dates() if start_date <= d <= end_date]
 
     points: list[RateHistoryPoint] = []
     for d in dates:
         try:
             snapshot = market_data_service.load_snapshot(d)
-        except NonBusinessDayError:
+        except ValueError:
+            # Covers NonBusinessDayError (a ValueError subclass) and the
+            # loaders' plain ValueErrors for a date genuinely missing from
+            # True Data.xlsx (e.g. before its real coverage begins, even
+            # though market_data_service.list_available_dates() -- sourced
+            # from a different, longer-history file -- includes it).
             continue
         points.append(
             RateHistoryPoint(

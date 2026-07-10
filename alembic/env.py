@@ -22,7 +22,10 @@ config = context.config
 # the connection settings saved via the frontend Settings page) rather than a
 # separate hardcoded value in alembic.ini -- one source of truth for "where's
 # the database", whether alembic or the app itself is asking.
-config.set_main_option("sqlalchemy.url", get_database_url())
+# '%' -> '%%': configparser's default interpolation treats a bare '%' as the
+# start of an interpolation token, which raises on a percent-encoded password
+# (e.g. quote_plus('!') -> '%21') unless it's escaped first.
+config.set_main_option("sqlalchemy.url", get_database_url().replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

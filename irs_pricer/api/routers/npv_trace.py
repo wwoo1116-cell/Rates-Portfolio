@@ -20,7 +20,12 @@ router = APIRouter(prefix="/api/mtm")
 
 @router.post("/npv-trace", response_model=NpvTraceResponse)
 def npv_trace_endpoint(request: NpvTraceRequest) -> NpvTraceResponse:
-    maturity_date = mtm_service.trade_maturity_date(request.swap.trade_date, request.swap.tenor_years)
+    # Prefer the exact maturity_date supplied by the frontend (e.g. from the
+    # trade's own maturity_date field); fall back to relativedelta rounding
+    # only when it's absent (e.g. pure-tenor what-if from the spec form).
+    maturity_date = request.swap.maturity_date or mtm_service.trade_maturity_date(
+        request.swap.trade_date, int(round(request.swap.tenor_years))
+    )
     swap = VanillaSwap(
         tenor_years=request.swap.tenor_years,
         notional=request.swap.notional,

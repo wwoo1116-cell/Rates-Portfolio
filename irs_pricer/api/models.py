@@ -168,6 +168,8 @@ class TradeIn(BaseModel):
     fixed_rate: float = Field(gt=0)
     pay_fixed: bool = True
     float_spread: float = 0.0
+    book: str | None = None
+    ticker: str | None = None
 
 
 class TradeByTenorIn(BaseModel):
@@ -180,6 +182,8 @@ class TradeByTenorIn(BaseModel):
     fixed_rate: float = Field(gt=0)
     pay_fixed: bool = True
     float_spread: float = 0.0
+    book: str | None = None
+    ticker: str | None = None
 
 
 class TradeOut(BaseModel):
@@ -195,6 +199,8 @@ class TradeOut(BaseModel):
     float_spread: float
     float_index: str
     status: str
+    book: str | None = None
+    ticker: str | None = None
 
 
 class LegacyPositionImportRequest(BaseModel):
@@ -380,7 +386,14 @@ class HistoricalPnlResponse(BaseModel):
 
 class NpvTraceSwapIn(BaseModel):
     trade_date: date
-    tenor_years: int = Field(gt=0)
+    # Accept float so the frontend can pass exact day-count fractional tenors
+    # (e.g. 3.0137 years).  The router rounds to the nearest whole year only
+    # when maturity_date is not supplied; when maturity_date IS supplied it
+    # overrides tenor_years entirely in the VanillaSwap schedule.
+    tenor_years: float = Field(gt=0)
+    # Optional exact maturity date from the user's date picker.  Preferred over
+    # deriving maturity from tenor_years + relativedelta rounding.
+    maturity_date: date | None = None
     notional: float = Field(gt=0)
     fixed_rate: float
     pay_fixed: bool = True
@@ -402,6 +415,7 @@ class NpvTracePointOut(BaseModel):
     dirty_npv: float
     daily_pnl: float
     cumulative_pnl: float
+    delta: float = 0.0
 
 
 class NpvTraceResponse(BaseModel):

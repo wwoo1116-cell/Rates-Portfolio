@@ -18,8 +18,12 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from ..core.errors import NonBusinessDayError
+from ..core.conventions import to_ql_date
 from ..db import trace_repository, trade_repository
+from ..engine.context import managed_quantlib_env
+from ..engine.curve import build_curve
 from ..engine.instruments import VanillaSwap
+from ..engine.mtm_valuation import value_booked_trade
 from . import market_data_service, mtm_service
 
 
@@ -30,6 +34,7 @@ class NpvTracePoint:
     dirty_npv: float
     daily_pnl: float
     cumulative_pnl: float  # clean_npv - entry_npv, filled in a second pass
+    delta: float = 0.0
 
 
 @dataclass
@@ -65,7 +70,9 @@ def compute_npv_trace(swap: VanillaSwap, start_date: date, end_date: date) -> Np
 
     points: list[NpvTracePoint] = []
     skipped_dates: list[date] = []
-    prev_npv: float | None = None
+    prev_result = None
+    prev_dirty_npv: float | None = None
+    cumulative_cashflows = 0.0
 
     for valuation_date in window_dates:
         try:
@@ -74,8 +81,29 @@ def compute_npv_trace(swap: VanillaSwap, start_date: date, end_date: date) -> Np
             skipped_dates.append(valuation_date)
             continue
 
-        result = mtm_service.value_trade(snapshot, swap, fixings)
-        daily_pnl = 0.0 if prev_npv is None else result.clean_npv - prev_npv
+        with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
+            curve = build_curve(snapshot)
+            result = value_booked_trade(swap, curve, fixings)
+            # DV01 (Fixed Leg BPS): computed directly from the already-evaluated
+            # fixed leg PV to avoid QuantLib 2nd-leg missing fixing errors (which
+            # occur when .fixedLegBPS() forces a full swap calculation).
+            delta_val = result.pv_fixed_leg / (swap.fixed_rate * 10000.0)
+
+        if prev_result is not None:
+            # Add any cashflows that paid out between prev_date and valuation_date
+            for cf in prev_result.cashflows:
+                if cf.payment_date <= valuation_date:
+                    amt = cf.cashflow or 0.0
+                    if cf.leg == "fixed":
+                        sign = -1.0 if swap.pay_fixed else 1.0
+                    else:
+                        sign = 1.0 if swap.pay_fixed else -1.0
+                    cumulative_cashflows += sign * amt
+
+        total_value = result.dirty_npv + cumulative_cashflows
+        prev_total = prev_dirty_npv if prev_dirty_npv is not None else result.dirty_npv
+        daily_pnl = total_value - prev_total
+
         points.append(
             NpvTracePoint(
                 valuation_date=valuation_date,
@@ -83,16 +111,25 @@ def compute_npv_trace(swap: VanillaSwap, start_date: date, end_date: date) -> Np
                 dirty_npv=result.dirty_npv,
                 daily_pnl=daily_pnl,
                 cumulative_pnl=0.0,
+                delta=delta_val,
             )
         )
-        prev_npv = result.clean_npv
+        prev_result = result
+        prev_dirty_npv = total_value
 
     if not points:
         raise ValueError(f"조회 구간 [{start_date}, {end_date}]에 평가 가능한 날짜가 없습니다.")
 
-    entry_npv = points[0].clean_npv
+    entry_npv = points[0].dirty_npv
     for p in points:
-        p.cumulative_pnl = p.clean_npv - entry_npv
+        # cumulative_pnl will be filled by tracking the sum of daily_pnl
+        pass
+    
+    # Fill cumulative PnL
+    cum_pnl = 0.0
+    for p in points:
+        cum_pnl += p.daily_pnl
+        p.cumulative_pnl = cum_pnl
 
     return NpvTraceResult(
         trade_date=swap.trade_date,

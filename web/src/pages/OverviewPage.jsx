@@ -16,6 +16,12 @@ import {
 const DAY_MS = 24 * 60 * 60 * 1000
 const DEFAULT_WINDOW_DAYS = 365
 
+// Format a decimal rate (e.g. 0.0239) as a 4dp percentage string ("2.3900%").
+// Used for Y-axis ticks, crosshair price labels, and series price labels on
+// the Rates Overview chart -- applies globally so every series on that chart
+// (BOK base rate + all IRS tenor lines) shares the same formatting rule.
+const rateFormatter = (v) => `${(v * 100).toFixed(4)}%`
+
 const DEFAULT_SERIES = new Set(['cd_rate', '1Y', '3Y', '10Y'])
 const DEFAULT_SPREADS = new Set(['1s3s', '3s10s'])
 
@@ -37,7 +43,7 @@ function toggleClass(active) {
 // One synced pane -- owns its own chart/series lifecycle; the parent only
 // hands it `points`/selected keys and a ref-callback so the two panes can be
 // cross-wired for crosshair + time-range sync after both exist.
-function ChartPane({ height, onChartReady, children }) {
+function ChartPane({ height, onChartReady, formatter, children }) {
   const containerRef = useRef(null)
   const chartRef = useRef(null)
   const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'))
@@ -49,6 +55,9 @@ function ChartPane({ height, onChartReady, children }) {
       grid: { vertLines: { visible: false }, horzLines: { visible: false } },
       rightPriceScale: { borderColor: colors.border },
       timeScale: { borderColor: colors.border },
+      // priceFormatter is passed in so the rates pane shows X.XXXX% while the
+      // spreads pane (a separate ChartPane instance) keeps the default bp format.
+      ...(formatter ? { localization: { priceFormatter: formatter } } : {}),
     })
     chartRef.current = chart
     onChartReady(chart)
@@ -243,6 +252,7 @@ function OverviewPage() {
           lineWidth: 3,
           lineType: LineType.WithSteps,
           title: 'BOK 기준금리',
+          priceFormat: { type: 'custom', formatter: rateFormatter },
         })
         rateAnchorRef.current = rateAnchorRef.current ?? baseRateSeriesRef.current
       }
@@ -265,7 +275,7 @@ function OverviewPage() {
       if (!selectedSeries.has(opt.key)) return
       let series = seriesMap.get(opt.key)
       if (!series) {
-        series = chart.addSeries(LineSeries, { color: palette[index % palette.length], lineWidth: 2, title: opt.label })
+        series = chart.addSeries(LineSeries, { color: palette[index % palette.length], lineWidth: 2, title: opt.label, priceFormat: { type: 'custom', formatter: rateFormatter } })
         seriesMap.set(opt.key, series)
         rateAnchorRef.current = rateAnchorRef.current ?? series
       }
@@ -370,7 +380,7 @@ function OverviewPage() {
             )}
           </div>
 
-          <ChartPane height={340} onChartReady={handleRatesChartReady} />
+          <ChartPane height={340} onChartReady={handleRatesChartReady} formatter={rateFormatter} />
         </CardContent>
       </Card>
 

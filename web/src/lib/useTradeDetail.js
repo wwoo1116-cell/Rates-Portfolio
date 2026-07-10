@@ -25,6 +25,11 @@ function defaultSpecFromTrade(trade, backtestParams, entrySnapshot) {
   return {
     trade_date: trade.entry_date,
     tenor_years: approxTenorYears(tenorLabel),
+    // Pass the exact maturity date when available (real backtest trades have
+    // an exit_date that doubles as the trace end, but not a maturity_date --
+    // leave null so the backend derives it from tenor_years for now; a future
+    // "book-from-backtest" flow could supply it from actual trade terms).
+    maturity_date: null,
     notional: trade.is_draft ? DRAFT_DEFAULT_NOTIONAL : backtestParams.notional,
     pay_fixed: trade.is_draft ? true : trade.direction === 1,
     fixed_rate: fairRate != null ? Number(fairRate.toFixed(6)) : 0.035,

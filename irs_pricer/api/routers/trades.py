@@ -33,6 +33,8 @@ def _to_trade_out(trade: TradeSpecification) -> TradeOut:
         float_spread=float(trade.float_spread),
         float_index=trade.float_index,
         status=trade.status.value,
+        book=trade.book,
+        ticker=trade.ticker,
     )
 
 
@@ -54,6 +56,8 @@ def book_trade(request: TradeIn, db: Session = Depends(get_db)) -> TradeOut:
             fixed_rate=request.fixed_rate,
             pay_fixed=request.pay_fixed,
             float_spread=request.float_spread,
+            book=request.book,
+            ticker=request.ticker,
         )
     except IntegrityError as e:
         db.rollback()
@@ -73,6 +77,8 @@ def book_trade_by_tenor(request: TradeByTenorIn, db: Session = Depends(get_db)) 
             fixed_rate=request.fixed_rate,
             pay_fixed=request.pay_fixed,
             float_spread=request.float_spread,
+            book=request.book,
+            ticker=request.ticker,
         )
     except IntegrityError as e:
         db.rollback()

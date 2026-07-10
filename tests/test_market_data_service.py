@@ -36,6 +36,16 @@ def _reset_live_snapshot_cache():
     market_data_service._live_snapshots.clear()
 
 
+@pytest.fixture(autouse=True)
+def _reset_db_availability():
+    """_db_market_data_unavailable is also module-level mutable state (a
+    fast-path latch set on the first DB failure, see market_data_service.py) --
+    same leakage risk as _live_snapshots above."""
+    market_data_service._db_market_data_unavailable = False
+    yield
+    market_data_service._db_market_data_unavailable = False
+
+
 @pytest.fixture
 def db_reachable(monkeypatch, db):
     """Point market_data_service at the shared `db` fixture's session (tables
@@ -142,6 +152,23 @@ class TestLoadSnapshotFallback:
         _no_excel_source(monkeypatch)
         with pytest.raises(ValueError):
             market_data_service.load_snapshot(_FAKE_DATE)
+
+    def test_db_failure_short_circuits_subsequent_lookups_in_same_process(self, monkeypatch, db_connection_broken):
+        """rate_history_service.get_rate_history can iterate several thousand
+        dates in one request -- once the DB has failed once, later dates in
+        the same process must not pay for another doomed round-trip."""
+        excel_snapshot = MarketSnapshot(valuation_date=_FAKE_DATE, cd_rate=0.0292, swap_quotes=[RateQuote(2, 0.03)])
+        monkeypatch.setattr(market_data_service, "load_market_snapshot", lambda _dir, _d: excel_snapshot)
+        market_data_service.load_snapshot(_FAKE_DATE)  # first call: hits (and fails) the DB, latches the flag
+        assert market_data_service._db_market_data_unavailable is True
+
+        def _fail_if_called():
+            raise AssertionError("session_scope should not be called once DB has already failed this process")
+
+        monkeypatch.setattr(market_data_service, "session_scope", _fail_if_called)
+        other_date = date(2026, 1, 6)
+        result = market_data_service.load_snapshot(other_date)
+        assert result is excel_snapshot
 
     def test_weekend_raises_non_business_day_before_touching_db_or_excel(self, db_unconfigured):
         from irs_pricer.core.errors import NonBusinessDayError
