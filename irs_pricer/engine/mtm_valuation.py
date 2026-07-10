@@ -305,10 +305,7 @@ def fair_rate_for_schedule(
     trade_date_ql = to_ql_date(trade_date)
     maturity_date_ql = to_ql_date(maturity_date)
 
-    # Apply Fix 1: KRX convention uses T+1 (Spot) as the effective date for the schedule
-    effective_date_ql = CALENDAR.advance(trade_date_ql, SPOT_DAYS, ql.Days)
-
-    periods = _build_periods(effective_date_ql, maturity_date_ql)
+    periods = _build_periods(trade_date_ql, maturity_date_ql)
     remaining = [p for p in periods if p.payment_date > from_ql_date(curve.valuation_date)]
     if not remaining:
         return 0.0
@@ -339,10 +336,7 @@ def value_booked_trade(swap: VanillaSwap, curve: CurveBundle, fixings: dict[date
     trade_date_ql = to_ql_date(swap.trade_date)
     maturity_date_ql = to_ql_date(swap.maturity_date)
 
-    # Apply Fix 1: KRX convention uses T+1 (Spot) as the effective date for the schedule
-    effective_date_ql = CALENDAR.advance(trade_date_ql, SPOT_DAYS, ql.Days)
-    
-    periods = _build_periods(effective_date_ql, maturity_date_ql)
+    periods = _build_periods(trade_date_ql, maturity_date_ql)
     remaining = [p for p in periods if p.payment_date > valuation_date]
 
     pv_fixed, fixed_details = _price_fixed_leg(remaining, curve, swap.notional, swap.fixed_rate)

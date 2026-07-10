@@ -44,7 +44,7 @@ def _first_floating_cashflow(price_response_json):
     return next(
         cf
         for cf in price_response_json["cashflows"]
-        if cf["leg"] == "floating" and cf["accrual_start"] == "2026-07-02"
+        if cf["leg"] == "floating" and cf["accrual_start"] == "2026-07-01"
     )
 
 
@@ -58,7 +58,7 @@ def test_true_data_mode_uses_real_historical_fixing_and_matches_known_npv():
     first_floating = _first_floating_cashflow(data)
     assert first_floating["is_known"] is True
     assert abs(first_floating["rate"] - 0.0292) < 1e-9
-    assert abs(data["net_npv"] - (-13_838_802.10)) < 1.0, f"Expected -13,838,802.10, got {data['net_npv']}"
+    assert abs(data["net_npv"] - (-13_410_272.24)) < 1.0, f"Expected -13,410,272.24, got {data['net_npv']}"
 
 def test_ccp_mode_uses_true_historical_fixing_for_past_resets():
     resp = client.post(
@@ -76,7 +76,7 @@ def test_ccp_mode_uses_true_historical_fixing_for_past_resets():
     # comment above), so this assertion alone doesn't distinguish the two
     # conventions -- it's here for parity with the true_data test above.
     assert abs(first_floating["rate"] - 0.0292) < 1e-9
-    assert abs(data["net_npv"] - (-13_838_802.10)) < 1.0, f"Expected -13,838,802.10, got {data['net_npv']}"
+    assert abs(data["net_npv"] - (-13_410_272.24)) < 1.0, f"Expected -13,410,272.24, got {data['net_npv']}"
 
 
 def test_data_source_defaults_to_true_data_when_omitted():
@@ -85,7 +85,7 @@ def test_data_source_defaults_to_true_data_when_omitted():
         json={**_COMMON, "positions": [_POSITION]},
     )
     assert resp.status_code == 200
-    assert abs(resp.json()["net_npv"] - (-13_838_802.10)) < 1.0
+    assert abs(resp.json()["net_npv"] - (-13_410_272.24)) < 1.0
 
 
 def test_fair_rate_endpoint_matches_true_data_when_quotes_align():

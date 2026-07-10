@@ -4,7 +4,15 @@ import QuantLib as ql
 from dateutil.relativedelta import relativedelta
 
 from irs_pricer.engine import mtm_valuation as mtm
-from irs_pricer.core.conventions import BUSINESS_CONVENTION, CALENDAR, DAY_COUNT, FLOAT_LEG_TENOR, to_ql_date
+from irs_pricer.core.conventions import (
+    BUSINESS_CONVENTION,
+    CALENDAR,
+    DAY_COUNT,
+    FLOAT_LEG_TENOR,
+    SPOT_DAYS,
+    from_ql_date,
+    to_ql_date,
+)
 from irs_pricer.engine.curve import CurveBundle, build_curve
 from irs_pricer.engine.instruments import VanillaSwap
 from irs_pricer.core.market_data import MarketSnapshot, RateQuote
@@ -43,7 +51,19 @@ def test_valuation_at_trade_date_matches_new_trade_pricing():
             maturity_date=maturity_date,
         )
 
-        result = mtm.value_booked_trade(swap, curve, fixings={})
+        # build_curve() registers exactly one synthetic fixing on curve.float_index
+        # (at valuation_date - SPOT_DAYS, value = snapshot.cd_rate) purely so
+        # QuantLib's own machinery has a fixing to satisfy IborIndex's history
+        # requirement -- not a real historical print. Since trade_date ==
+        # valuation_date here, this swap's first reset date lands exactly on
+        # that synthetic fixing, so the raw ql_swap built below will silently
+        # use it for its first coupon. Pass the same value through `fixings` so
+        # both sides price that coupon off the identical rate; otherwise this
+        # test would be comparing two different (and both legitimate) floating
+        # rate conventions -- forward-curve estimate vs. registered fixing --
+        # rather than the schedule/day-count/discounting regression it's meant to check.
+        reset_date = from_ql_date(CALENDAR.advance(to_ql_date(trade_date), -SPOT_DAYS, ql.Days))
+        result = mtm.value_booked_trade(swap, curve, fixings={reset_date: 0.0292})
 
         schedule = ql.Schedule(
             to_ql_date(trade_date),
@@ -60,11 +80,25 @@ def test_valuation_at_trade_date_matches_new_trade_pricing():
         )
         ql_swap.setPricingEngine(ql.DiscountingSwapEngine(curve.yield_curve_handle))
 
-        assert abs(result.pv_fixed_leg - (-ql_swap.fixedLegNPV())) < 1.0
-        assert abs(result.pv_floating_leg - ql_swap.floatingLegNPV()) < 1.0
-        assert abs(result.clean_npv - ql_swap.NPV()) < 1.0
-        assert result.accrued_interest == 0.0
-        assert result.clean_npv == result.dirty_npv
+        # value_booked_trade() references its PVs to curve.settlement_date (T+1,
+        # market MTM convention), while ql_swap's own NPV()/fixedLegNPV()/
+        # floatingLegNPV() are referenced to valuation_date (T, QuantLib's
+        # evaluation date) -- divide by df(settlement_date) for an apples-to-
+        # apples comparison.
+        df_settlement = curve.yield_curve_handle.discount(curve.settlement_date)
+        assert abs(result.pv_fixed_leg - (-ql_swap.fixedLegNPV() / df_settlement)) < 1.0
+        assert abs(result.pv_floating_leg - (ql_swap.floatingLegNPV() / df_settlement)) < 1.0
+        assert abs(result.clean_npv - (ql_swap.NPV() / df_settlement)) < 1.0
+        # value_booked_trade() references accrued interest to curve.settlement_date
+        # (T+1) too, matching standard bond-market practice: a trade struck today,
+        # settling T+1, still accrues one day of interest by settlement. So even
+        # trade_date == valuation_date shows a small nonzero net accrual -- one
+        # day's difference between the float leg's known rate and the fixed rate.
+        expected_one_day_accrual = notional * (0.0292 - fixed_rate) * DAY_COUNT.yearFraction(
+            to_ql_date(trade_date), curve.settlement_date
+        )
+        assert abs(result.accrued_interest - expected_one_day_accrual) < 1e-6
+        assert abs(result.dirty_npv - (result.clean_npv + result.accrued_interest)) < 1e-9
 
 
 def test_telescoping_matches_forward_estimation():
