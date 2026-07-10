@@ -1,0 +1,357 @@
+@import "./tokens.css";
+@import "@blueprintjs/core/lib/css/blueprint.css";
+@import "@blueprintjs/icons/lib/css/blueprint-icons.css";
+@import "ag-grid-community/styles/ag-grid.css";
+@import "ag-grid-community/styles/ag-theme-balham.css";
+@import "dockview-react/dist/styles/dockview.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────
+   GLOBAL GEOMETRY & MOTION VARIABLES
+   ───────────────────────────────────────────── */
+:root {
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-fast: 150ms var(--ease-out-quart);
+  --transition-normal: 250ms var(--ease-out-quint);
+  --transition-slow: 400ms var(--ease-out-expo);
+}
+
+/* ─────────────────────────────────────────────
+   KEYFRAMES FOR ENTRANCE ANIMATIONS
+   ───────────────────────────────────────────── */
+@keyframes entrance-premium {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes entrance-grid {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline-offset: -1px;
+}
+
+/* ─────────────────────────────────────────────
+   ACCESSIBILITY: Global Focus Ring
+   ───────────────────────────────────────────── */
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* ─────────────────────────────────────────────
+   BASE
+   ───────────────────────────────────────────── */
+html,
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-base);
+  color: var(--fg-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-md); /* Base 16px/1rem */
+  line-height: 1.5; /* Vertical rhythm */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-kerning: normal;
+  font-optical-sizing: auto;
+}
+
+/* Enforce tabular-nums for all mono text (financial figures) */
+.mono-text,
+.ag-theme-balham-dark {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums diagonal-fractions;
+}
+
+/* Kicker / Eyebrow labels */
+.kicker {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+
+/* Tabular numerics everywhere */
+.num,
+[data-num] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─────────────────────────────────────────────
+   BLUEPRINT v5 DARK OVERRIDES
+   ───────────────────────────────────────────── */
+.bp5-dark {
+  --pt-app-background-color: var(--bg-base);
+  --pt-text-color: var(--fg-primary);
+  --pt-text-color-muted: var(--fg-secondary);
+  --pt-text-color-disabled: var(--fg-muted);
+  --pt-heading-color: var(--fg-primary);
+  --pt-link-color: var(--accent);
+  --pt-intent-primary: var(--accent);
+  --pt-intent-success: var(--sem-positive);
+  --pt-intent-warning: var(--accent);
+  --pt-intent-danger: var(--sem-negative);
+
+  color: var(--fg-primary);
+  background: var(--bg-base);
+}
+
+/* Blueprint Cards */
+.bp5-dark .bp5-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-dim);
+  padding: 12px;
+}
+
+/* Blueprint Buttons */
+.bp5-dark .bp5-button {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  min-height: 28px;
+  padding: 0 10px;
+  transition: background-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.bp5-dark .bp5-button:active {
+  transform: scale(0.95);
+  filter: brightness(0.9);
+}
+
+.bp5-dark .bp5-button.bp5-minimal:not(.bp5-intent-primary) {
+  color: var(--fg-secondary);
+}
+.bp5-dark .bp5-button.bp5-minimal:hover {
+  background: var(--bg-overlay);
+  color: var(--fg-primary);
+}
+
+/* Blueprint Intent Primary → Accent */
+.bp5-dark .bp5-button.bp5-intent-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.bp5-dark .bp5-button.bp5-intent-primary:hover {
+  background: var(--accent-dim);
+}
+
+/* Blueprint Inputs */
+.bp5-dark .bp5-input {
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  color: var(--fg-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  height: 28px;
+  line-height: 28px;
+  padding: 0 8px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.bp5-dark .bp5-input:focus {
+  border-color: var(--accent);
+  box-shadow: none !important;
+}
+
+/* Blueprint Tags (badge replacement) */
+.bp5-dark .bp5-tag {
+  border-radius: 0 !important;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 6px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Blueprint Select */
+.bp5-dark .bp5-html-select select,
+.bp5-dark .bp5-select select {
+  background: var(--bg-overlay);
+  color: var(--fg-primary);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--text-sm);
+  height: 28px;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+/* Blueprint Popover / Menu */
+.bp5-dark .bp5-popover-content,
+.bp5-dark .bp5-menu {
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+}
+.bp5-dark .bp5-menu-item:hover {
+  background: var(--accent-soft);
+  color: var(--fg-primary);
+}
+.bp5-dark .bp5-menu-item.bp5-active,
+.bp5-dark .bp5-menu-item.bp5-selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Blueprint NonIdealState */
+.bp5-dark .bp5-non-ideal-state-visual {
+  color: var(--fg-muted);
+}
+.bp5-dark .bp5-non-ideal-state .bp5-heading {
+  color: var(--fg-secondary);
+  font-size: var(--text-md);
+}
+.bp5-dark .bp5-non-ideal-state p {
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+
+/* ─────────────────────────────────────────────
+   AG GRID: balham-dark institutional overrides
+   ───────────────────────────────────────────── */
+.ag-theme-balham-dark {
+  --ag-background-color:              var(--bg-surface);
+  --ag-header-background-color:       var(--bg-header);
+  --ag-odd-row-background-color:      var(--bg-raised);
+  --ag-row-hover-color:               var(--accent-soft);
+  --ag-selected-row-background-color: var(--accent-ghost);
+  --ag-border-color:                  var(--border-dim);
+  --ag-row-border-color:              var(--border-dim);
+  --ag-header-column-separator-color: var(--border-subtle);
+  --ag-header-column-separator-display: block;
+  --ag-header-column-separator-height: 100%;
+  --ag-font-size:                     var(--text-sm);
+  --ag-font-family:                   var(--font-ui);
+  --ag-row-height:                    var(--row-h);
+  --ag-header-height:                 30px;
+  --ag-cell-horizontal-padding:       8px;
+  --ag-range-selection-border-color:  var(--accent);
+  --ag-header-foreground-color:       var(--fg-muted);
+  --ag-foreground-color:              var(--fg-secondary);
+  --ag-secondary-foreground-color:    var(--fg-muted);
+  --ag-input-focus-border-color:      var(--accent);
+  --ag-checkbox-checked-color:        var(--accent);
+  --ag-checkbox-unchecked-color:      var(--fg-muted);
+  --ag-column-hover-color:            var(--accent-ghost);
+  --ag-icon-color:                    var(--fg-muted);
+  --ag-icon-hover-color:              var(--fg-secondary);
+}
+
+.ag-theme-balham-dark .ag-row {
+  transition: background-color var(--transition-fast);
+}
+
+/* AG Grid: group row style */
+.ag-theme-balham-dark .ag-row-group {
+  background: var(--bg-overlay) !important;
+  color: var(--fg-primary);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* AG Grid initial reveal */
+.ag-theme-balham-dark .ag-root-wrapper {
+  animation: entrance-grid var(--transition-slow) forwards;
+}
+
+/* AG Grid: column header */
+.ag-theme-balham-dark .ag-header-cell {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* AG Grid: suppress rounded corners on everything */
+.ag-theme-balham-dark .ag-root-wrapper,
+.ag-theme-balham-dark .ag-header,
+.ag-theme-balham-dark .ag-floating-filter,
+.ag-theme-balham-dark .ag-cell-focus {
+  border-radius: 0 !important;
+}
+
+/* AG Grid: column resize handle */
+.ag-theme-balham-dark .ag-header-cell-resize::after {
+  background: var(--border-subtle);
+  width: 1px;
+}
+
+/* ─────────────────────────────────────────────
+   DOCKVIEW: updated palette & animation
+   ───────────────────────────────────────────── */
+.dockview-theme-dark {
+  --dv-tabs-and-actions-container-height:           30px;
+  --dv-tabs-and-actions-container-background-color: var(--bg-header);
+  --dv-active-tab-background-color:                 var(--bg-surface);
+  --dv-inactive-tab-background-color:               transparent;
+  --dv-tab-divider-color:                           transparent;
+  --dv-pane-background-color:                       var(--bg-base);
+  --dv-drag-over-background-color:                  var(--accent-soft);
+  --dv-active-tab-color:                            var(--fg-primary);
+  --dv-inactive-tab-color:                          var(--fg-muted);
+  --dv-separator-border:                            var(--border-dim);
+  --dv-tab-close-btn-color:                         var(--fg-dim);
+}
+
+/* Animate Dockview panes on load */
+.dockview-theme-dark .dv-pane {
+  animation: entrance-premium var(--transition-slow) forwards;
+}
+
+.dockview-theme-dark .dv-resize-handle {
+  background: var(--border-dim);
+}
+
+.dockview-theme-dark .dv-resize-handle:hover {
+  background: var(--accent-dim);
+}
+
+/* Active tab: accent left-border indicator */
+.dockview-theme-dark .dv-tab.dv-active-tab {
+  border-top: 1px solid var(--accent) !important;
+}
+
+/* ─────────────────────────────────────────────
+   MOTION / ACCESSIBILITY
+   ───────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

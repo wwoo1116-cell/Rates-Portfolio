@@ -1,0 +1,90 @@
+/* ============================================================
+   INSTITUTIONAL DARK — SINGLE THEME, NO TOGGLE
+   Palantir Foundry / Goldman Sachs Marquee dialect
+   Accent: Pantone 158C (#F58220) alpha/lightness only
+   ============================================================ */
+:root {
+  /* ── Backgrounds: Blueprint Dark Gray ── */
+  --bg-base:      #293742;   /* Main Background (Dark Gray 4)      */
+  --bg-surface:   #202B33;   /* Panels / Sidebar (Dark Gray 5)     */
+  --bg-raised:    #30404D;   /* Cards / Overlays (Dark Gray 3)     */
+  --bg-overlay:   #30404D;   /* inputs, hover rows, dropdowns      */
+  --bg-header:    #202B33;   /* top bar                            */
+
+  /* ── Foreground ── */
+  --fg-primary:   #F5F8FA;
+  --fg-secondary: #C8D1D9;
+  --fg-muted:     #8A9BA8;
+  --fg-dim:       #5C7080;
+
+  /* ── Structural borders ── */
+  --border-dim:    rgba(16, 22, 26, 0.15);
+  --border-subtle: rgba(16, 22, 26, 0.30);
+  --border-strong: rgba(16, 22, 26, 0.50);
+
+  /* ── Directional semantic (PnL, spreads) ── */
+  --sem-positive:      #0F9960; /* Blueprint Intent.SUCCESS */
+  --sem-negative:      #DB3737; /* Blueprint Intent.DANGER  */
+  --sem-positive-soft: rgba(15, 153, 96, 0.15);
+  --sem-negative-soft: rgba(219, 55, 55, 0.15);
+
+  /* ── Accent: Primary Blue ── */
+  --accent:       #137CBD; /* Blueprint Intent.PRIMARY */
+  --accent-dim:   rgba(19, 124, 189, 0.60);
+  --accent-soft:  rgba(19, 124, 189, 0.15);
+  --accent-ghost: rgba(19, 124, 189, 0.07);
+
+  /* Heatmap / volume density scale: alpha modulation */
+  --heat-5: rgba(19, 124, 189, 0.90);
+  --heat-4: rgba(19, 124, 189, 0.65);
+  --heat-3: rgba(19, 124, 189, 0.42);
+  --heat-2: rgba(19, 124, 189, 0.22);
+  --heat-1: rgba(19, 124, 189, 0.08);
+
+  /* ── Chart Accent Colors ── */
+  --chart-ocean: #2B95D6;
+  --chart-aqua:  #91CCF1;
+  --chart-purple: #8A9BA8;
+  --chart-tangerine: #D9822B;
+  --chart-berry: #E75353;
+
+  /* ── Typography (Fixed rem-scale for accessibility) ── */
+  --font-ui:   'Inter', system-ui, sans-serif;
+  /* Numerics font unification: retired the separate JetBrains Mono numeric
+     face in favor of Inter everywhere, with font-variant-numeric: tabular-nums
+     (already set alongside every var(--font-mono) call site) doing the
+     digit-alignment work Mono used to. Kept this token name/indirection so
+     every existing call site (AG Grid cellStyle, .num/.mono-text) repoints
+     to Inter without a call-site-by-call-site rename. */
+  --font-mono: var(--font-ui);
+
+  /* Based on 16px = 1rem */
+  --text-xs:  0.75rem;   /* 12px: axis ticks, micro labels   */
+  --text-sm:  0.875rem;  /* 14px: grid cells, body           */
+  --text-md:  1rem;      /* 16px: panel headers              */
+  --text-lg:  1.125rem;  /* 18px: section titles             */
+  --text-xl:  1.5rem;    /* 24px: KPI sub-values             */
+  --text-2xl: 2rem;      /* 32px: KPI primary display        */
+
+  /* Letter-spacing */
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.05em;
+  --tracking-caps: 0.08em;
+
+  /* ── Geometry ── */
+  --radius:  0px;     /* global: no rounded edges   */
+  --row-h:   28px;    /* AG Grid row height         */
+
+  /* ── Legacy aliases for compatibility during migration ── */
+  --bg-primary:       var(--bg-base);
+  --bg-secondary:     var(--bg-surface);
+  --bg-tertiary:      var(--bg-raised);
+  --bg-elevated:      var(--bg-overlay);
+  --bg-header-dark:   var(--bg-header);
+  --border-subtle-old: var(--border-dim);
+  --sem-info:         var(--accent);
+  --sem-info-soft:    var(--accent-soft);
+  --sem-risk:         var(--accent);
+  --sem-risk-soft:    var(--accent-soft);
+}

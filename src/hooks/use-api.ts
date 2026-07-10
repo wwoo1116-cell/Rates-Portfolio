@@ -1,0 +1,181 @@
+/**
+ * TanStack Query hooks wrapping api-client.ts. Thin by design: components
+ * pick the pieces they need rather than a single monolithic "portfolio data"
+ * hook, since different tabs (Portfolio Management vs. Home's heatmap vs.
+ * Backtest) each need a different subset/cadence of this data.
+ */
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  calendarApi,
+  marketDataApi,
+  mtmApi,
+  portfolioApi,
+  rateHistoryApi,
+  tradesApi,
+  type HistoricalPnlRequest,
+  type NpvTraceRequest,
+  type PortfolioPriceRequest,
+  type PositionFairRateRequest,
+  type TradeByTenorIn,
+  type TradeIn,
+} from "@/lib/api-client";
+
+const queryKeys = {
+  trades: (asOfDate?: string) => ["trades", asOfDate ?? "active"] as const,
+  marketDataRange: () => ["market-data", "range"] as const,
+  marketDataSnapshot: (valuationDate: string) => ["market-data", "snapshot", valuationDate] as const,
+  spotDate: (valuationDate: string) => ["calendar", "spot-date", valuationDate] as const,
+  portfolioPrice: (req: PortfolioPriceRequest | undefined) => ["portfolio", "price", req] as const,
+  portfolioDelta: (req: PortfolioPriceRequest | undefined) => ["portfolio", "delta", req] as const,
+  historicalPnl: (req: HistoricalPnlRequest | undefined) => ["portfolio", "historical-pnl", req] as const,
+  rateHistory: (start: string, end: string) => ["rate-history", start, end] as const,
+};
+
+export function useTrades(asOfDate?: string) {
+  return useQuery({
+    queryKey: queryKeys.trades(asOfDate),
+    queryFn: () => tradesApi.list(asOfDate),
+  });
+}
+
+export function useBookTrade() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (req: TradeIn) => tradesApi.book(req),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["trades"] }),
+  });
+}
+
+export function useBookTradeByTenor() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (req: TradeByTenorIn) => tradesApi.bookByTenor(req),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["trades"] }),
+  });
+}
+
+export function useCancelTrade() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (tradeId: number) => tradesApi.cancel(tradeId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["trades"] }),
+  });
+}
+
+export function useMarketDataRange() {
+  return useQuery({
+    queryKey: queryKeys.marketDataRange(),
+    queryFn: () => marketDataApi.dateRange(),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useMarketDataSnapshot(valuationDate: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.marketDataSnapshot(valuationDate ?? ""),
+    queryFn: () => marketDataApi.snapshot(valuationDate as string),
+    enabled: Boolean(valuationDate),
+  });
+}
+
+/** Composition every "live" view needs before it can price/risk anything: the
+ * most recent date the backend has market data for, plus that date's full
+ * snapshot (cd_rate/on_rate/swap_quotes). Shared by Portfolio Management
+ * (Phase 3) and Home's status view/risk heatmap (Phase 4/5) so each doesn't
+ * re-wire the same range->snapshot lookup independently. */
+export function useLatestMarketSnapshot() {
+  const rangeQuery = useMarketDataRange();
+  const latestDate = rangeQuery.data?.max_date;
+  const snapshotQuery = useMarketDataSnapshot(latestDate);
+  return {
+    snapshot: snapshotQuery.data,
+    isLoading: rangeQuery.isLoading || snapshotQuery.isLoading,
+    isError: rangeQuery.isError || snapshotQuery.isError,
+  };
+}
+
+export function useSpotDate(valuationDate: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.spotDate(valuationDate ?? ""),
+    queryFn: () => calendarApi.spotDate(valuationDate as string),
+    enabled: Boolean(valuationDate),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Portfolio price/delta are mutations, not queries: the request body (curve
+ * snapshot + full position list + data_source) is assembled fresh by the
+ * caller on every valuation-date/fixings change, not cached by a stable key. */
+export function usePortfolioPrice() {
+  return useMutation({
+    mutationFn: (req: PortfolioPriceRequest) => portfolioApi.price(req),
+  });
+}
+
+export function usePortfolioDelta() {
+  return useMutation({
+    mutationFn: (req: PortfolioPriceRequest) => portfolioApi.delta(req),
+  });
+}
+
+/** Read form of portfolioApi.price, for views that derive NPV straight from
+ * current trades + market data rather than an explicit user action (e.g. the
+ * Portfolio Management grid's NPV column, Phase 3). `req` is undefined until
+ * both the trade list and a market snapshot have loaded -- the query stays
+ * disabled until then. */
+export function usePortfolioPriceQuery(req: PortfolioPriceRequest | undefined) {
+  return useQuery({
+    queryKey: queryKeys.portfolioPrice(req),
+    queryFn: () => portfolioApi.price(req as PortfolioPriceRequest),
+    enabled: Boolean(req),
+  });
+}
+
+/** Read form of portfolioApi.delta, for Home's Tenor x DV01 risk heatmap
+ * (Phase 4) -- same derive-from-current-state rationale as usePortfolioPriceQuery. */
+export function usePortfolioDeltaQuery(req: PortfolioPriceRequest | undefined) {
+  return useQuery({
+    queryKey: queryKeys.portfolioDelta(req),
+    queryFn: () => portfolioApi.delta(req as PortfolioPriceRequest),
+    enabled: Boolean(req),
+  });
+}
+
+/** Read form of portfolioApi.historicalPnl, for Home's minimal status view (Phase 5). */
+export function useHistoricalPnlQuery(req: HistoricalPnlRequest | undefined) {
+  return useQuery({
+    queryKey: queryKeys.historicalPnl(req),
+    queryFn: () => portfolioApi.historicalPnl(req as HistoricalPnlRequest),
+    enabled: Boolean(req),
+  });
+}
+
+/** Daily CD91D/O-N/BOK-base/IRS-tenor rate series for Home's rate-history
+ * chart -- the same backend endpoint the old IRS Pricer_Mock/web app's
+ * Overview RV dashboard used, ported here as its first real frontend
+ * consumer in this app. */
+export function useRateHistory(start: string, end: string) {
+  return useQuery({
+    queryKey: queryKeys.rateHistory(start, end),
+    queryFn: () => rateHistoryApi.history(start, end),
+    enabled: Boolean(start && end),
+  });
+}
+
+/** Hypothetical-swap PnL trace from trade_date to end_date (services/
+ * npv_trace_service.py) -- a mutation since it's triggered by an explicit
+ * "trace this hypothetical trade" user action (Home's rate-history chart
+ * date-click interaction), not derived from ambient state. */
+export function useNpvTrace() {
+  return useMutation({
+    mutationFn: (req: NpvTraceRequest) => mtmApi.npvTrace(req),
+  });
+}
+
+export function usePositionFairRate() {
+  return useMutation({
+    mutationFn: (req: PositionFairRateRequest) => portfolioApi.fairRate(req),
+  });
+}

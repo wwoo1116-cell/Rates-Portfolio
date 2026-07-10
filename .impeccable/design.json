@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-07T00:00:00.000Z",
+  "title": "Design System: KRW FI / Rates Portfolio Management System",
+  "extensions": {
+    "colorMeta": {
+      "sem-info-dark": {
+        "role": "primary",
+        "displayName": "Marquee Blue",
+        "canonical": "#3B82F6",
+        "tonalRamp": ["#0B1220", "#12213D", "#1B3562", "#2554A0", "#3B82F6", "#6FA3F8", "#A6C6FB", "#D9E7FE"]
+      },
+      "sem-positive-dark": {
+        "role": "semantic",
+        "displayName": "Trading Green",
+        "canonical": "#00C176",
+        "tonalRamp": ["#04140E", "#062A1E", "#0A4230", "#0C6B44", "#00C176", "#4EDDA0", "#94EFC4", "#D2FBE7"]
+      },
+      "sem-negative-dark": {
+        "role": "semantic",
+        "displayName": "Trading Red",
+        "canonical": "#FF4A5C",
+        "tonalRamp": ["#1F0508", "#3D0A10", "#641119", "#A81E29", "#FF4A5C", "#FF8590", "#FFB8BF", "#FFE3E6"]
+      },
+      "sem-risk-dark": {
+        "role": "semantic",
+        "displayName": "Signal Amber",
+        "canonical": "#F5A623",
+        "tonalRamp": ["#1F1404", "#3D2808", "#64400D", "#A96C13", "#F5A623", "#F8C567", "#FBDDA0", "#FDF0D2"]
+      },
+      "bg-primary-dark": {
+        "role": "neutral",
+        "displayName": "Void Ink",
+        "canonical": "#0F1419",
+        "tonalRamp": ["#0F1419", "#1A2028", "#2A323D", "#3F4854", "#6B7280", "#A8B0BC", "#D4D9E0", "#F2F4F7"]
+      },
+      "bg-primary-light": {
+        "role": "neutral",
+        "displayName": "Paper White",
+        "canonical": "#FFFFFF",
+        "tonalRamp": ["#0A0E14", "#1F2937", "#4B5563", "#6B7280", "#9CA3AF", "#D1D5DB", "#EDF1F7", "#FFFFFF"]
+      },
+      "bg-header-dark": {
+        "role": "neutral",
+        "displayName": "Terminal Black",
+        "canonical": "#0A0E14"
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Hero KPI numbers and PriceDisplay big-figure span only." },
+      "h1": { "displayName": "H1", "purpose": "Page title." },
+      "h2": { "displayName": "H2", "purpose": "Section title within a panel." },
+      "body": { "displayName": "Body", "purpose": "Default UI text." },
+      "body-strong": { "displayName": "Body Strong", "purpose": "Table cell emphasis, button labels, active nav item." },
+      "label": { "displayName": "Label", "purpose": "Category tags, filter chip labels, column headers — always uppercase, wide tracking." },
+      "micro": { "displayName": "Micro", "purpose": "Timestamps, footnotes, percentage markers, input suffixes." }
+    },
+    "shadows": [
+      { "name": "sm", "value": "0 1px 3px rgba(0, 0, 0, 0.4)", "purpose": "Dark-mode popovers, dropdowns, floating/dragged dockview panels." },
+      { "name": "md", "value": "0 4px 12px rgba(0, 0, 0, 0.16)", "purpose": "Light-mode popovers and modals." }
+    ],
+    "motion": [
+      { "name": "color-swap", "value": "background-color 0.15s ease-out, border-color 0.15s ease-out", "purpose": "Default hover/focus transition for buttons, inputs, nav items — quick, no easing flourish." },
+      { "name": "sidebar-collapse", "value": "width 0.15s ease-out", "purpose": "Sidebar expand/collapse." }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single blue submit action per screen — Run Backtest, Add to Sandbox, Run Optimization.",
+      "html": "<button class=\"ds-btn-primary\">Run Backtest</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 16px; border-radius: 4px; border: none; background: #3B82F6; color: #FFFFFF; font-family: Inter, sans-serif; font-size: 14px; font-weight: 500; line-height: 1.5; cursor: pointer; transition: background-color 0.15s ease-out; } .ds-btn-primary:hover { background: #2f6fd1; } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 1px #3B82F6; } .ds-btn-primary:disabled { opacity: 0.4; pointer-events: none; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Transparent, subtle-bordered action — used beside a primary button or standalone for lower-emphasis actions.",
+      "html": "<button class=\"ds-btn-secondary\">Add Filter</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.06); background: transparent; color: #FFFFFF; font-family: Inter, sans-serif; font-size: 14px; font-weight: 500; line-height: 1.5; cursor: pointer; transition: background-color 0.15s ease-out; } .ds-btn-secondary:hover { background: #1A2028; } .ds-btn-secondary:focus-visible { outline: none; box-shadow: 0 0 0 1px #3B82F6; }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": null,
+      "description": "Three-part composite chip used in Portfolio Management's filter bar: uppercase label segment, mixed-case value segment, optional remove icon.",
+      "html": "<span class=\"ds-chip\"><span class=\"ds-chip-label\">BOOK</span><span class=\"ds-chip-value\">CMA RP</span><button type=\"button\" class=\"ds-chip-remove\" aria-label=\"Remove filter\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M18 6 6 18M6 6l12 12\"/></svg></button></span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; height: 28px; border-radius: 4px; background: #1A2028; overflow: hidden; font-family: Inter, sans-serif; } .ds-chip-label { display: flex; align-items: center; height: 100%; padding: 0 8px; background: #2A323D; color: #6B7280; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; } .ds-chip-value { padding: 0 8px; color: #FFFFFF; font-size: 14px; } .ds-chip-remove { display: flex; align-items: center; justify-content: center; height: 100%; padding: 0 8px; background: transparent; border: none; color: #4B5563; cursor: pointer; } .ds-chip-remove:hover { color: #A8B0BC; }"
+    },
+    {
+      "name": "Soft Badge",
+      "kind": "chip",
+      "refersTo": "badge-soft-info",
+      "description": "Asset-class / status badge used in tables (Top Movers, Positions Grid). Soft background, colored text — never a solid fill except on row hover.",
+      "html": "<span class=\"ds-badge ds-badge-info\">IRS</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; border-radius: 4px; padding: 4px 8px; font-family: Inter, sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; } .ds-badge-info { background: rgba(59,130,246,0.14); color: #3B82F6; } .ds-badge-positive { background: rgba(0,193,118,0.14); color: #00C176; } .ds-badge-negative { background: rgba(255,74,92,0.14); color: #FF4A5C; } .ds-badge-risk { background: rgba(245,166,35,0.14); color: #F5A623; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Filled text/number input — used across forms (Simulation trade entry, Optimal Portfolio constraints).",
+      "html": "<div class=\"ds-input-wrap\"><input class=\"ds-input\" type=\"text\" placeholder=\"Notional\" /><span class=\"ds-input-suffix\">億</span></div>",
+      "css": ".ds-input-wrap { position: relative; display: flex; align-items: center; } .ds-input { height: 32px; width: 100%; border-radius: 4px; border: 1px solid transparent; background: #2A323D; padding: 0 12px; padding-right: 48px; color: #FFFFFF; font-family: Inter, sans-serif; font-size: 14px; outline: none; } .ds-input::placeholder { color: #4B5563; } .ds-input:focus { border-color: #3B82F6; } .ds-input-suffix { position: absolute; right: 12px; pointer-events: none; color: #6B7280; font-size: 11px; }"
+    },
+    {
+      "name": "Price Display (Big Figure)",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Signature component. Renders a rate/price in three visual weights — dim base, bold big-figure, dim unit — right-aligned and tabular so consecutive rows align on the big figure. Example: 3.4|567|%.",
+      "html": "<span class=\"ds-price\"><span class=\"ds-price-base\">3.4</span><span class=\"ds-price-big\">567</span><span class=\"ds-price-unit\">%</span></span>",
+      "css": ".ds-price { display: inline-flex; align-items: baseline; justify-content: flex-end; white-space: nowrap; font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; } .ds-price-base { color: #4B5563; font-size: 14px; } .ds-price-big { color: #FFFFFF; font-weight: 700; font-size: 20px; } .ds-price-unit { color: #4B5563; font-size: 14px; }"
+    },
+    {
+      "name": "Status Dot (Live)",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "8px status indicator with a pulsing ring when live — used in the top bar's market-data connection status and desk-wide live indicators.",
+      "html": "<span class=\"ds-status-dot\"><span class=\"ds-status-dot-ping\"></span><span class=\"ds-status-dot-core\"></span></span>",
+      "css": ".ds-status-dot { position: relative; display: inline-flex; height: 8px; width: 8px; } .ds-status-dot-ping { position: absolute; display: inline-flex; height: 100%; width: 100%; border-radius: 9999px; background: #00C176; opacity: 0.6; animation: ds-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite; } .ds-status-dot-core { position: relative; display: inline-flex; height: 8px; width: 8px; border-radius: 9999px; background: #00C176; } @keyframes ds-ping { 75%, 100% { transform: scale(2); opacity: 0; } } @media (prefers-reduced-motion: reduce) { .ds-status-dot-ping { animation: none; opacity: 0.35; } }"
+    },
+    {
+      "name": "Sidebar Nav Item",
+      "kind": "nav",
+      "refersTo": null,
+      "description": "Sidebar navigation item with the 2px active-state accent bar — the one sanctioned exception to the no-border-stripe rule.",
+      "html": "<a href=\"#\" class=\"ds-nav-item ds-nav-item-active\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M3 12l9-9 9 9M5 10v10h14V10\"/></svg><span>Home</span></a>",
+      "css": ".ds-nav-item { position: relative; display: flex; align-items: center; gap: 12px; height: 36px; padding: 0 12px; border-radius: 4px; color: #A8B0BC; font-family: Inter, sans-serif; font-size: 14px; font-weight: 500; text-decoration: none; } .ds-nav-item:hover { background: #1A2028; } .ds-nav-item-active { background: #1A2028; color: #FFFFFF; } .ds-nav-item-active::before { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 2px; background: #3B82F6; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Marquee Dialect",
+    "overview": "This system speaks the same visual language as Goldman Sachs Marquee — not a clone, a dialect. It sits deliberately between two failure modes: Bloomberg's extreme density, where hierarchy collapses under its own information load, and Robinhood's extreme minimalism, which throws away the density this desk actually needs. The dialect's grammar is information density with breathing room: every pixel earns its place, and the room to breathe comes from luminance steps and typographic weight, never from empty decoration. Two structural doctrines carry the whole system. First, contrast-driven hierarchy — structure is built from 2–5% luminance steps between background layers and from type weight, never from hue. Second, semantic color minimalism — color is reserved for meaning (direction, state, status) and appears only as points: dots, badges, thin lines, emphasized digits. It is never a fill. This system explicitly rejects: any card that 'looks designed' (gradient, shadow, thick border, rounded-lg), decorative panel-background color used 'for visual interest,' gradient text, glassmorphism as a default treatment, numbers in a proportional font, and color used as the primary signal for hierarchy or meaning. Dark and light are not one palette inverted — dark is the trading/monitoring surface, light is the analysis/reporting surface, and each has its own deliberately tuned neutral and semantic ramp.",
+    "keyCharacteristics": [
+      "Backgrounds separated by luminance steps, never by borders",
+      "Semantic color (green/red/amber/blue) used only as a meaningful point, never a fill",
+      "Tabular, monospace numerics everywhere a number appears",
+      "Big-figure notation (3-digit) for every rate and price display",
+      "Dark = trading surface, Light = analysis surface — two tuned palettes, not an inversion"
+    ],
+    "rules": [
+      { "name": "The Points-Not-Fills Rule", "body": "Semantic color renders as a dot, badge, thin line, or emphasized digit. The moment a semantic color becomes a panel or card background, it has become decoration — revert it.", "section": "colors" },
+      { "name": "The Two-Palette Rule", "body": "Dark and light are not filter: invert() of each other. Each mode's neutral ramp and semantic ramp is independently tuned because they serve two different desk activities.", "section": "colors" },
+      { "name": "The Case Invariant Rule", "body": "Category tags are always uppercase with wide tracking; values are always mixed case. There is no exception.", "section": "typography" },
+      { "name": "The Tabular-Everywhere Rule", "body": "Any element that renders a number is tabular-nums and, for anything beyond an inline count, JetBrains Mono.", "section": "typography" },
+      { "name": "The Flat-Panel Rule", "body": "Cards and panels never receive a shadow at rest. Shadow appears only on transient/overlay surfaces.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do build hierarchy from background luminance steps (2–5%) and type weight — never from color.",
+      "Do keep semantic color (positive/negative/risk/info) to points: dots, badges, thin lines, emphasized digits.",
+      "Do render every number as tabular-nums, and every rate/price through PriceDisplay's 3-digit big-figure convention.",
+      "Do treat dark and light as two independently-tuned palettes serving two different desk activities.",
+      "Do keep the dockview panel header (Terminal Black, #0A0E14) dark in both modes; it's chrome, not content.",
+      "Do use only the 8px spacing scale (space-1 through space-8, skipping 5/7/9) and only rounded (4px) / rounded-md (6px).",
+      "Do use shadow-sm / shadow-md exclusively on popovers, modals, dropdowns, and dragged dockview panels — never on static cards."
+    ],
+    "donts": [
+      "Don't add a gradient, thick border, or rounded-lg to a card to make it 'look designed'.",
+      "Don't use a colored panel background 'for visual interest' — color only appears where it carries meaning.",
+      "Don't use border-left/border-right as a colored accent stripe anywhere outside two sanctioned, functional exceptions: the sidebar's 2px active-nav-item bar, and the Backtest scenario card's 2px selected-state bar.",
+      "Don't render a number in a proportional font, or leave it non-tabular.",
+      "Don't use uppercase on a value or mixed-case on a category tag.",
+      "Don't use rounded-full anywhere except status dots and the user avatar.",
+      "Don't put emoji anywhere in the UI.",
+      "Don't conflate the KTB cash-curve tenor set (3Y/5Y/10Y/20Y/30Y) with the fuller IRS/CRS tenor set (3M–30Y).",
+      "Don't apply a gradient-text treatment (background-clip: text) anywhere."
+    ]
+  }
+}

@@ -1,0 +1,424 @@
+/**
+ * TypeScript mirrors of irs_pricer/api/models.py's Pydantic request/response
+ * models. Hand-mirrored (no codegen tool exists on either side yet -- see
+ * MIGRATION_PLAN.md §6.2) -- keep in sync manually when models.py changes.
+ *
+ * Dates cross the wire as FastAPI/Pydantic `date` -> JSON strings ("YYYY-MM-DD"),
+ * so every `date` field here is typed `string`, not `Date`.
+ */
+
+export type DataSource = "true_data" | "ccp";
+
+export interface RateQuoteIn {
+  tenor_years: number;
+  rate: number;
+  tenor_months?: number | null;
+}
+
+export interface SwapIn {
+  tenor_years: number;
+  notional: number;
+  fixed_rate: number;
+  pay_fixed?: boolean;
+}
+
+export interface PriceRequest {
+  valuation_date: string;
+  cd_rate: number;
+  on_rate?: number | null;
+  swap_quotes: RateQuoteIn[];
+  swap: SwapIn;
+}
+
+export interface PriceResponse {
+  npv: number;
+  fixed_leg_pv: number;
+  float_leg_pv: number;
+  par_rate: number;
+  dv01: number;
+}
+
+export interface DeltaBucketOut {
+  pillar: string;
+  delta: number;
+}
+
+export interface DeltaResponse {
+  total_delta: number;
+  buckets: DeltaBucketOut[];
+}
+
+export interface MtmSwapIn {
+  trade_date: string;
+  tenor_years: number;
+  notional: number;
+  fixed_rate: number;
+  pay_fixed?: boolean;
+  float_spread?: number;
+}
+
+export interface MtmRequest {
+  valuation_date: string;
+  cd_rate: number;
+  on_rate?: number | null;
+  swap_quotes: RateQuoteIn[];
+  swap: MtmSwapIn;
+}
+
+export interface MtmFairRateRequest {
+  valuation_date: string;
+  cd_rate: number;
+  on_rate?: number | null;
+  swap_quotes: RateQuoteIn[];
+  trade_date: string;
+  tenor_years: number;
+  notional: number;
+  float_spread?: number;
+}
+
+export interface MtmFairRateResponse {
+  fair_rate: number;
+  maturity_date: string;
+}
+
+export interface CashFlowDetailOut {
+  accrual_start: string;
+  accrual_end: string;
+  payment_date: string;
+  leg: "fixed" | "floating";
+  rate: number | null;
+  is_known: boolean;
+  cashflow: number | null;
+  pv: number;
+}
+
+export interface MtmResponse {
+  clean_npv: number;
+  dirty_npv: number;
+  accrued_interest: number;
+  pv_fixed_leg: number;
+  pv_floating_leg: number;
+  telescoping_used: boolean;
+  telescoping_diverged: boolean;
+  cashflows: CashFlowDetailOut[];
+}
+
+export interface MarketDataResponse {
+  valuation_date: string;
+  cd_rate: number;
+  on_rate?: number | null;
+  swap_quotes: RateQuoteIn[];
+}
+
+export interface CurveRequest {
+  valuation_date: string;
+  cd_rate: number;
+  on_rate?: number | null;
+  swap_quotes: RateQuoteIn[];
+}
+
+export interface CurvePointOut {
+  tenor_years: number;
+  zero_rate: number;
+  discount_factor: number;
+  is_knot: boolean;
+}
+
+export interface CurveResponse {
+  valuation_date: string;
+  points: CurvePointOut[];
+}
+
+export interface DateRangeResponse {
+  min_date: string;
+  max_date: string;
+  available_dates: string[];
+}
+
+export interface NonBusinessDaysResponse {
+  non_business_days: string[];
+}
+
+export interface TenorDateResponse {
+  maturity_date: string;
+}
+
+export interface SpotDateResponse {
+  spot_date: string;
+}
+
+export interface PortfolioPositionIn {
+  position_id: string;
+  start_date: string;
+  maturity_date: string;
+  notional: number;
+  fixed_rate: number;
+  pay_fixed?: boolean;
+  float_spread?: number;
+}
+
+export interface TradeIn {
+  position_id: string;
+  start_date: string;
+  maturity_date: string;
+  notional: number;
+  fixed_rate: number;
+  pay_fixed?: boolean;
+  float_spread?: number;
+  book?: string | null;
+  ticker?: string | null;
+}
+
+export interface TradeByTenorIn {
+  position_id: string;
+  trade_date: string;
+  tenor_months: number;
+  notional: number;
+  fixed_rate: number;
+  pay_fixed?: boolean;
+  float_spread?: number;
+  book?: string | null;
+  ticker?: string | null;
+}
+
+export interface TradeOut {
+  trade_id: number;
+  external_position_id: string;
+  trade_date: string;
+  start_date: string;
+  maturity_date: string;
+  tenor_months: number | null;
+  notional: number;
+  fixed_rate: number;
+  pay_fixed: boolean;
+  float_spread: number;
+  float_index: string;
+  status: string;
+  book: string | null;
+  ticker: string | null;
+}
+
+export interface LegacyPositionImportRequest {
+  positions: PortfolioPositionIn[];
+}
+
+export interface PortfolioPriceRequest {
+  valuation_date: string;
+  cd_rate: number;
+  on_rate?: number | null;
+  swap_quotes: RateQuoteIn[];
+  positions: PortfolioPositionIn[];
+  data_source?: DataSource;
+}
+
+export interface PositionFairRateRequest {
+  valuation_date: string;
+  cd_rate: number;
+  on_rate?: number | null;
+  swap_quotes: RateQuoteIn[];
+  start_date: string;
+  maturity_date: string;
+  notional: number;
+  float_spread?: number;
+  data_source?: DataSource;
+}
+
+export interface PositionFairRateResponse {
+  fair_rate: number;
+}
+
+export interface HistoricalQuoteResponse {
+  historical_rate: number;
+}
+
+export interface PositionResultOut {
+  position_id: string;
+  clean_npv: number;
+  dirty_npv: number;
+  accrued_interest: number;
+  pv_fixed_leg: number;
+  pv_floating_leg: number;
+  pay_fixed: boolean;
+}
+
+export interface PortfolioCashFlowOut {
+  position_id: string;
+  accrual_start: string;
+  accrual_end: string;
+  payment_date: string;
+  leg: "fixed" | "floating";
+  rate: number | null;
+  is_known: boolean;
+  cashflow: number | null;
+  pv: number;
+}
+
+export interface PortfolioPriceResponse {
+  net_npv: number;
+  payer_npv: number;
+  receiver_npv: number;
+  position_results: PositionResultOut[];
+  cashflows: PortfolioCashFlowOut[];
+}
+
+export interface PositionDeltaOut {
+  position_id: string;
+  total_delta: number;
+  buckets: DeltaBucketOut[];
+}
+
+export interface PortfolioDeltaResponse {
+  total_delta: number;
+  buckets: DeltaBucketOut[];
+  position_deltas: PositionDeltaOut[];
+}
+
+export interface RateHistoryPointOut {
+  valuation_date: string;
+  cd_rate: number;
+  on_rate?: number | null;
+  base_rate?: number | null;
+  tenor_rates: Record<string, number>;
+}
+
+export interface RateHistoryResponse {
+  points: RateHistoryPointOut[];
+}
+
+export interface SpreadPointOut {
+  valuation_date: string;
+  spread_bp: number;
+}
+
+export interface RateSpreadResponse {
+  short: string;
+  long: string;
+  points: SpreadPointOut[];
+}
+
+export interface BacktestPointOut {
+  valuation_date: string;
+  spread_bp: number;
+  z_score: number | null;
+  position: number;
+  daily_pnl: number;
+  cumulative_pnl: number;
+}
+
+export interface BacktestTradeOut {
+  entry_date: string;
+  exit_date: string;
+  direction: number;
+  entry_z: number;
+  exit_z: number;
+  entry_spread_bp: number;
+  exit_spread_bp: number;
+  pnl: number;
+  exit_reason: string;
+}
+
+export interface BacktestSummaryOut {
+  total_pnl: number;
+  max_drawdown: number;
+  win_rate: number | null;
+  sharpe_ratio: number | null;
+  num_trades: number;
+}
+
+export interface SpreadBacktestResponse {
+  short: string;
+  long: string;
+  lookback: number;
+  entry_z: number;
+  exit_z: number;
+  stop_z: number;
+  cost_bp: number;
+  notional: number;
+  points: BacktestPointOut[];
+  trades: BacktestTradeOut[];
+  summary: BacktestSummaryOut;
+}
+
+export interface HistoricalPnlRequest {
+  positions: PortfolioPositionIn[];
+  start_date: string;
+  end_date: string;
+  baseline_date?: string | null;
+}
+
+export interface HistoricalPnlByTradesRequest {
+  trade_ids: number[];
+  start_date: string;
+  end_date: string;
+  baseline_date?: string | null;
+}
+
+export interface PnlPointOut {
+  valuation_date: string;
+  net_npv: number;
+  payer_npv: number;
+  receiver_npv: number;
+  active_position_ids: string[];
+  cumulative_pnl: number;
+}
+
+export interface HistoricalPnlResponse {
+  baseline_date: string;
+  baseline_net_npv: number;
+  points: PnlPointOut[];
+  skipped_dates: string[];
+}
+
+export interface NpvTraceSwapIn {
+  trade_date: string;
+  tenor_years: number;
+  maturity_date?: string;
+  notional: number;
+  fixed_rate: number;
+  pay_fixed?: boolean;
+  float_spread?: number;
+}
+
+export interface NpvTraceRequest {
+  swap: NpvTraceSwapIn;
+  start_date: string;
+  end_date: string;
+}
+
+export interface NpvTracePointOut {
+  valuation_date: string;
+  clean_npv: number;
+  dirty_npv: number;
+  daily_pnl: number;
+  cumulative_pnl: number;
+  delta: number;
+}
+
+export interface NpvTraceResponse {
+  trade_date: string;
+  maturity_date: string;
+  entry_npv: number;
+  points: NpvTracePointOut[];
+  skipped_dates: string[];
+}
+
+export interface DbConnectionIn {
+  host: string;
+  port?: number;
+  user: string;
+  password: string;
+  database: string;
+}
+
+export interface DbConnectionStatusOut {
+  configured: boolean;
+  host?: string | null;
+  port?: number | null;
+  user?: string | null;
+  database?: string | null;
+}
+
+export interface DbConnectionTestResult {
+  ok: boolean;
+  message: string;
+}
