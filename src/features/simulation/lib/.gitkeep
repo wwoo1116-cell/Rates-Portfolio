@@ -1,0 +1,4 @@
+Reserved for Phase 2. The recharts -> lightweight-charts/d3 rewrite lands here as
+chart-theme.ts (protocol §2.2: "Chart theme built once in features/simulation/lib/
+chartTheme.ts reading CSS variables"). Empty in Phase 1 by design — the simulation
+subtree had no Class-B math/util nodes (Phase 0 dep graph: entry -> preview-chart -> types only).

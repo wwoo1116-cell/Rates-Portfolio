@@ -22,6 +22,10 @@ const config: Config = {
         border: {
           subtle: "var(--border-subtle)",
           strong: "var(--border-strong)",
+          // Wired for the simulation migration (Phase 2): --border-dim already
+          // existed in tokens.css (used by AG Grid / dockview) but was never
+          // exposed as a Tailwind utility. Hairline table/row dividers use it.
+          dim: "var(--border-dim)",
         },
         sem: {
           positive: "var(--sem-positive)",
@@ -32,6 +36,21 @@ const config: Config = {
           "negative-soft": "var(--sem-negative-soft)",
           "risk-soft": "var(--sem-risk-soft)",
           "info-soft": "var(--sem-info-soft)",
+          // Subtlest accent tint (7% alpha), for hover/selection backgrounds —
+          // the target's --accent-ghost, matching AG Grid row-hover / dockview
+          // drag-over. Fills the one gap when remapping the source's accent-ghost.
+          "info-ghost": "var(--accent-ghost)",
+        },
+        // Chart series palette exposed as utilities so DOM swatches/legends use
+        // named tokens (bg-chart-berry) instead of arbitrary bg-[var(--chart-*)].
+        // Canvas/SVG series colors are read at runtime via features/simulation/
+        // lib/chart-theme.ts (canvas can't resolve CSS vars). Same --chart-* vars.
+        chart: {
+          ocean: "var(--chart-ocean)",
+          aqua: "var(--chart-aqua)",
+          purple: "var(--chart-purple)",
+          tangerine: "var(--chart-tangerine)",
+          berry: "var(--chart-berry)",
         },
         heat: {
           "pos-1": "var(--heat-pos-1)",
