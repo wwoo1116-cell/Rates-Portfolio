@@ -48,3 +48,17 @@ export const RISK_BUCKET_MIDPOINT_YEARS: Record<TenorBucket, number> = {
   "5-10Y": 7.5,
   "10Y+": 15,
 };
+
+/** DV01-bucket-weighted average of each bucket's representative midpoint-year
+ * -- the only "duration" figure this app computes anywhere without
+ * per-position tenor data. Shared by Backtest's stress-test duration metric
+ * and the manual-position portfolio's overall duration (Home's Status view,
+ * via use-manual-portfolio-metrics.ts). */
+export function weightedDuration(buckets: Record<TenorBucket, number>): number {
+  const totalAbsDv01 = TENOR_BUCKETS.reduce((sum, bucket) => sum + Math.abs(buckets[bucket]), 0);
+  if (totalAbsDv01 === 0) return 0;
+  return (
+    TENOR_BUCKETS.reduce((sum, bucket) => sum + Math.abs(buckets[bucket]) * RISK_BUCKET_MIDPOINT_YEARS[bucket], 0) /
+    totalAbsDv01
+  );
+}

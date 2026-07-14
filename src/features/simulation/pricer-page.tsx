@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import type { IChartApi, MouseEventParams } from "lightweight-charts";
 import { LineSeries } from "lightweight-charts";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
+import { CrosshairReticle, formatCrosshairDate } from "@/components/charts/crosshair-reticle";
 import { NumericCell } from "@/components/ui/numeric-cell";
 import { PriceDisplay } from "@/components/data/price-display";
 import {
@@ -22,12 +23,13 @@ interface TooltipState {
   mid: number;
   bid: number;
   ask: number;
+  paneWidth: number;
 }
 
 export function PricerPage() {
   const chartApiRef = useRef<IChartApi | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState>({
-    visible: false, x: 0, y: 0, date: "", mid: 0, bid: 0, ask: 0,
+    visible: false, x: 0, y: 0, date: "", mid: 0, bid: 0, ask: 0, paneWidth: 0,
   });
   const [inputs, setInputs] = useState<PricerInput[]>(PRICER_INPUTS);
 
@@ -131,6 +133,8 @@ export function PricerPage() {
         ? params.point.x - tooltipW - 12
         : params.point.x + 12;
 
+      // Reticle follows the raw cursor position exactly -- not snapped to
+      // the Mid series line (see rate-history-chart.tsx's identical choice).
       setTooltip({
         visible: true,
         x: safeX,
@@ -139,6 +143,7 @@ export function PricerPage() {
         mid: row.value,
         bid: row.bid,
         ask: row.ask,
+        paneWidth: chartWidth,
       });
     });
 
@@ -182,6 +187,11 @@ export function PricerPage() {
             onChartReady={onChartReady}
             style={{ position: "absolute", inset: 0 }}
           />
+          <CrosshairReticle
+            point={tooltip.visible ? { x: tooltip.x, y: tooltip.y } : null}
+            date={tooltip.visible ? tooltip.date : undefined}
+            paneWidth={tooltip.paneWidth}
+          />
           {tooltip.visible && (
             <div
               style={{
@@ -196,8 +206,8 @@ export function PricerPage() {
                 minWidth: 130,
               }}
             >
-              <div style={{ fontSize: 10, color: "var(--fg-muted)", marginBottom: 4, fontFamily: "var(--font-ui)", letterSpacing: "0.05em" }}>
-                {tooltip.date}
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--fg-primary)", marginBottom: 4, fontFamily: "var(--font-ui)", letterSpacing: "0.02em" }}>
+                {formatCrosshairDate(tooltip.date)}
               </div>
               {[
                 { label: "Mid", value: tooltip.mid, color: "var(--accent)" },

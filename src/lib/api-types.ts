@@ -261,6 +261,40 @@ export interface PortfolioPriceResponse {
   cashflows: PortfolioCashFlowOut[];
 }
 
+// ── Bond cash-flow generation (POST /api/portfolio/bond-cashflows) ──
+// Hydrated frontend-side from the uploaded blotter (blotter-parser.ts): coupon
+// from the 표면이율 column, payment_frequency injected by sector convention. The
+// backend does all CF/day-count/NPV math (bond_valuation.py); yields come from
+// the Credit Matrix.
+export interface BondCashflowIn {
+  asset_id: string;
+  asset_type: string;         // bond sector: 국고채/통안채/은행채/공사채/여전채/회사채…
+  issue_date: string;
+  maturity_date: string;
+  coupon_rate: number;        // percent, e.g. 3.125
+  payment_frequency: number;  // coupons per year (2 = semi-annual, 4 = quarterly)
+  notional: number;           // raw KRW
+  rating?: string | null;     // credit rating for the Credit Matrix yield; null for 국고채/통안채
+}
+
+export interface BondCashflowRequest {
+  bonds: BondCashflowIn[];
+  valuation_date?: string | null; // defaults server-side to the latest Credit Matrix date
+}
+
+export interface BondResultOut {
+  asset_id: string;
+  npv: number;
+  market_yield: number;
+}
+
+export interface BondCashflowResponse {
+  results: BondResultOut[];
+  // Reuses PortfolioCashFlowOut so the Details-panel table renders bonds like
+  // IRS. For bonds `leg` is "coupon" | "principal" and `position_id` = asset_id.
+  cashflows: PortfolioCashFlowOut[];
+}
+
 export interface PositionDeltaOut {
   position_id: string;
   total_delta: number;
@@ -294,6 +328,47 @@ export interface RateSpreadResponse {
   short: string;
   long: string;
   points: SpreadPointOut[];
+}
+
+// --- Credit-curve taxonomy / RV selector ---------------------------------
+
+export interface TaxonomySectorOut {
+  sector: string;
+  ratings: string[]; // empty for unrated sectors (국고채) and IRS
+  tenors: string[];
+}
+
+export interface InstrumentTaxonomyOut {
+  sectors: TaxonomySectorOut[];
+}
+
+export interface CreditSeriesLegIn {
+  sector: string;
+  rating?: string | null;
+  tenor: string;
+}
+
+export interface CreditSeriesRequest {
+  legs: CreditSeriesLegIn[];
+  start_date?: string | null;
+  end_date?: string | null;
+}
+
+export interface CreditSeriesPointOut {
+  valuation_date: string;
+  value: number;
+}
+
+export interface CreditSeriesResultOut {
+  sector: string;
+  rating?: string | null;
+  tenor: string;
+  points: CreditSeriesPointOut[];
+  error?: string | null;
+}
+
+export interface CreditSeriesResponse {
+  results: CreditSeriesResultOut[];
 }
 
 export interface BacktestPointOut {
@@ -421,4 +496,64 @@ export interface DbConnectionStatusOut {
 export interface DbConnectionTestResult {
   ok: boolean;
   message: string;
+}
+
+// ---------------------------------------------------------------------------
+// Market data / portfolio upload
+// ---------------------------------------------------------------------------
+
+export interface FileUploadResult {
+  status: "ready" | "error";
+  message?: string | null;
+  rows?: number | null;
+  min_date?: string | null;
+  max_date?: string | null;
+}
+
+export interface ParsedPositionOut {
+  instrument_type: "bond" | "irs";
+  position_id: string;
+  sector: string;
+  book: string;
+  start_date: string | null;
+  maturity_date: string | null;
+  notional: number | null;
+  fixed_rate: number | null;
+  pay_fixed: boolean | null;
+  float_spread: number | null;
+  evaluation_amount: number | null;
+  remaining_days: number | null;
+  tenor_bucket: string | null;
+  entry_yield: number | null;
+  mtm_yield: number | null;
+  duration: number | null;
+  pvbp: number | null;
+}
+
+export interface MarketDataUploadResponse {
+  success: boolean;
+  irs_data: FileUploadResult;
+  credit_matrix: FileUploadResult;
+  bok_base_rate: FileUploadResult;
+  portfolio: FileUploadResult;
+  positions: ParsedPositionOut[];
+}
+
+export interface PortfolioAnalyticsRequest {
+  valuation_date: string;
+  cd_rate: number;
+  on_rate?: number | null;
+  swap_quotes: RateQuoteIn[];
+  positions: ParsedPositionOut[];
+}
+
+export interface PriorSnapshotRequest extends PortfolioAnalyticsRequest {
+  prior_valuation_date: string;
+  prior_cd_rate: number;
+  prior_on_rate?: number | null;
+  prior_swap_quotes: RateQuoteIn[];
+}
+
+export interface BookSummaryRequest extends PortfolioAnalyticsRequest {
+  daily_pnl_by_book: any[]; // generic dict list
 }

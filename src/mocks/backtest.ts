@@ -1,5 +1,5 @@
 import { TENOR_BUCKETS, type TenorBucket } from "@/lib/constants";
-import { RISK_BUCKET_MIDPOINT_YEARS } from "@/lib/risk-buckets";
+import { weightedDuration } from "@/lib/risk-buckets";
 
 export type ScenarioGroupId = "mpc" | "historical";
 
@@ -111,19 +111,6 @@ function avgShockBp(shock: TenorShock): number {
 const VAR_BP_MULTIPLIER = 6.6;
 function mockVar(dv01: number): number {
   return (Math.abs(dv01) * VAR_BP_MULTIPLIER) / SCALE;
-}
-
-// Duration: DV01-bucket-weighted average of each bucket's representative
-// midpoint-year (RISK_BUCKET_MIDPOINT_YEARS) -- a real, non-fabricated figure
-// computed from the real bucket sums, just coarser than a per-position
-// tenor-weighted average (which needs data that no longer exists).
-function weightedDuration(buckets: TenorShock): number {
-  const totalAbsDv01 = TENOR_BUCKETS.reduce((sum, bucket) => sum + Math.abs(buckets[bucket]), 0);
-  if (totalAbsDv01 === 0) return 0;
-  return (
-    TENOR_BUCKETS.reduce((sum, bucket) => sum + Math.abs(buckets[bucket]) * RISK_BUCKET_MIDPOINT_YEARS[bucket], 0) /
-    totalAbsDv01
-  );
 }
 
 export interface BacktestMetrics {

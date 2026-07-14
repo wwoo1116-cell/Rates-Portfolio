@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    proxyClientMaxBodySize: "100mb",
+    proxyTimeout: 600000,
+  },
   rewrites: async () => [
     {
       source: "/api/:path*",

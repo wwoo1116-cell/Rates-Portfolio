@@ -1,59 +1,48 @@
 "use client";
 
 /**
- * Home's real rate-history chart: GET /api/rate-history (CD91D/IRS-tenor/BOK
- * base rate daily series), the first frontend consumer of a backend endpoint
- * that previously only had a working reference UI in the old
- * IRS Pricer_Mock/web app (OverviewPage.jsx + rateHistory.js).
- *
- * Fetches the FULL available range (min_date -> max_date) from the backend —
- * the /api/market-data/range endpoint returns min_date: 2010-03-02, giving
- * 16+ years of continuous daily data (4,000+ points).
+ * Rates History RV chart: GET /api/rate-history (CD91D/IRS-tenor/BOK-base
+ * daily series) plus GET/POST /api/credit-curve (국고채 + rated credit
+ * sectors). A dynamic instrument selector (InstrumentSelector) lets the user
+ * overlay any number of outright yields (% on the right axis) and spreads
+ * (bp on the left axis) -- curve spreads within one instrument or
+ * inter-market spreads across instruments -- replacing the old fixed toggle
+ * row.
  *
  * The chart container is ALWAYS mounted regardless of loading/error state so
  * the lightweight-charts instance is never destroyed and re-created mid-session
- * (which would lose the subscribeClick registration). Error/loading states are
- * rendered as an overlay inside the chart area instead.
- *
- * Clicking a date opens the PnL Trace dockview panel to the right (see
- * pnl-trace-panel.tsx), passed that date's own market-rate point via
- * dockview's addPanel `params`.
+ * (which would lose the subscribeClick registration). Clicking a date still
+ * opens the PnL Trace dockview panel with that date's raw market point.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DockviewApi } from "dockview-react";
-import type { IChartApi, ISeriesApi } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, MouseEventParams } from "lightweight-charts";
 import { LineSeries } from "lightweight-charts";
 import { LwChartBase, rateFormatter } from "@/components/charts/lw-chart-base";
-import { CHART_SERIES_COLORS, SPREAD_SERIES_COLORS } from "@/lib/chart-colors";
-import { useMarketDataRange, useRateHistory } from "@/hooks/use-api";
+import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
+import { snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
+import { InstrumentSelector } from "@/components/rate-history/instrument-selector";
+import { useCreditCurveSeries, useCreditCurveTaxonomy, useMarketDataRange, useRateHistory } from "@/hooks/use-api";
 import {
-  RATE_SERIES_OPTIONS,
-  SPREAD_DEFS,
-  toLineData,
-  toSpreadLineData,
-  type RateSeriesKey,
-} from "@/lib/rate-history-helpers";
+  buildInstrumentSeries,
+  creditLegsOf,
+  outrightId,
+  type Leg,
+  type SelectedInstrument,
+} from "@/lib/rv-instruments";
 
-const DEFAULT_SERIES = new Set<RateSeriesKey>(["cd_rate", "1Y", "3Y", "10Y"]);
 const PNL_TRACE_PANEL_ID = "home-pnltrace-panel";
 const RATES_PANEL_ID = "home-rates-panel";
 
-function toggleButtonStyle(active: boolean): React.CSSProperties {
-  return {
-    height: 24,
-    padding: "0 8px",
-    fontSize: 11,
-    fontWeight: active ? 700 : 500,
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-    fontFamily: "var(--font-ui)",
-    border: `1px solid ${active ? "var(--accent)" : "var(--border-dim)"}`,
-    background: active ? "var(--accent-soft)" : "transparent",
-    color: active ? "var(--accent)" : "var(--fg-muted)",
-    cursor: "pointer",
-    transition: "background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast)",
-  };
+// A couple of IRS outrights by default (resolve from rate-history immediately,
+// no credit fetch needed) so the chart isn't blank on first load.
+function defaultOutright(tenor: string): SelectedInstrument {
+  const leg: Leg = { sector: "IRS", rating: null, tenor };
+  return { kind: "outright", id: outrightId(leg), leg };
 }
+const DEFAULT_INSTRUMENTS: SelectedInstrument[] = [defaultOutright("3Y"), defaultOutright("10Y")];
+
+const spreadFormatter = (v: number) => v.toFixed(2);
 
 interface RateHistoryChartProps {
   api?: DockviewApi | null;
@@ -61,37 +50,46 @@ interface RateHistoryChartProps {
 
 export function RateHistoryChart({ api }: RateHistoryChartProps) {
   const rangeQuery = useMarketDataRange();
-  // Use the backend's true min/max — /api/market-data/range returns
-  // min_date: 2010-03-02 (16+ years). No artificial lookback window.
   const minDate = rangeQuery.data?.min_date ?? "";
   const maxDate = rangeQuery.data?.max_date ?? "";
 
   const historyQuery = useRateHistory(minDate, maxDate);
   const points = useMemo(() => historyQuery.data?.points ?? [], [historyQuery.data]);
 
-  const [selectedSeries, setSelectedSeries] = useState<Set<RateSeriesKey>>(DEFAULT_SERIES);
-  const [selectedSpreads, setSelectedSpreads] = useState<Set<string>>(new Set());
+  const taxonomyQuery = useCreditCurveTaxonomy();
+
+  const [instruments, setInstruments] = useState<SelectedInstrument[]>(DEFAULT_INSTRUMENTS);
+
+  // Only the credit (non-IRS) legs need a backend fetch; IRS legs come from
+  // the rate-history data already loaded above.
+  const creditLegs = useMemo(() => creditLegsOf(instruments), [instruments]);
+  const creditSeriesQuery = useCreditCurveSeries(creditLegs, minDate, maxDate);
+  const creditResults = useMemo(
+    () => creditSeriesQuery.data?.results ?? [],
+    [creditSeriesQuery.data],
+  );
+
+  const builtSeries = useMemo(
+    () => buildInstrumentSeries(instruments, points, creditResults),
+    [instruments, points, creditResults],
+  );
 
   const chartRef = useRef<IChartApi | null>(null);
-  const rateSeriesRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
-  const spreadSeriesRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
+  const seriesMapRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
+  const prevIdsRef = useRef<string>("");
+  const [reticle, setReticle] = useState<
+    (CrosshairReticlePoint & { date?: string; paneWidth: number }) | null
+  >(null);
 
-  // pointsRef: kept in sync via useLayoutEffect (runs synchronously before
-  // paint, ensuring the subscribeClick handler always sees the latest points
-  // without a stale closure, without the "access ref during render" lint error).
   const pointsRef = useRef(points);
   useLayoutEffect(() => { pointsRef.current = points; }, [points]);
 
-  // Stable ref to the dockview api so onChartReady doesn't need it in deps.
   const apiRef = useRef(api);
   useLayoutEffect(() => { apiRef.current = api; }, [api]);
 
-  // useCallback: stable identity so LwChartBase's mount-time capture is
-  // always valid even if the parent re-renders before the effect fires.
   const onChartReady = useCallback((chart: IChartApi) => {
     chartRef.current = chart;
-    rateSeriesRef.current = new Map();
-    spreadSeriesRef.current = new Map();
+    seriesMapRef.current = new Map();
     chart.subscribeClick((param) => {
       if (!param.time || !apiRef.current) return;
       const date = String(param.time);
@@ -110,91 +108,81 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
         position: reference ? { referencePanel: RATES_PANEL_ID, direction: "right" } : undefined,
       });
     });
-  }, []); // empty deps: chart is created once, click handler reads from refs
 
-  // Rate-level series (right price scale, %).
+    // Crosshair marker snapped to the nearest series' data point, each via its
+    // own price scale (see snap-reticle.ts) so bp/left and %/right series stay
+    // pixel-aligned on this dual-axis chart.
+    chart.subscribeCrosshairMove((params: MouseEventParams) => {
+      if (!params.point) {
+        setReticle(null);
+        return;
+      }
+      const date = params.time ? String(params.time) : undefined;
+      const snapped = snapReticleToNearestSeries(chart, params, seriesMapRef.current.values());
+      const p = snapped ?? { x: params.point.x, y: params.point.y };
+      setReticle({ x: p.x, y: p.y, date, paneWidth: chart.timeScale().width() });
+    });
+  }, []);
+
+  // One effect drives the whole multi-series overlay: diff the live
+  // lightweight-charts series against the built list (add new, drop removed,
+  // update data), set per-series axis + color + format, and toggle the left
+  // (bp) axis based on whether any spread is present.
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart || points.length === 0) return;
-    const seriesMap = rateSeriesRef.current;
+    if (!chart) return;
+    const seriesMap = seriesMapRef.current;
+    const wantIds = new Set(builtSeries.map((b) => b.id));
 
-    // Remove de-selected series
-    for (const [key, series] of seriesMap) {
-      if (!selectedSeries.has(key as RateSeriesKey)) {
+    // Remove series no longer selected.
+    for (const [id, series] of seriesMap) {
+      if (!wantIds.has(id)) {
         chart.removeSeries(series);
-        seriesMap.delete(key);
+        seriesMap.delete(id);
       }
     }
-    // Add / update selected series
-    RATE_SERIES_OPTIONS.forEach((opt, index) => {
-      if (!selectedSeries.has(opt.key)) return;
-      let series = seriesMap.get(opt.key);
+
+    // Add / update each selected series.
+    for (const b of builtSeries) {
+      let series = seriesMap.get(b.id);
       if (!series) {
         series = chart.addSeries(LineSeries, {
-          color: CHART_SERIES_COLORS[index % CHART_SERIES_COLORS.length],
-          lineWidth: 2,
-          title: opt.label,
-          priceFormat: { type: "custom", formatter: rateFormatter },
+          color: b.color,
+          lineWidth: b.kind === "spread" ? 1 : 2,
+          title: b.kind === "spread" ? `${b.label} (bp)` : b.label,
+          priceScaleId: b.priceScaleId,
+          priceFormat: {
+            type: "custom",
+            formatter: b.kind === "spread" ? spreadFormatter : rateFormatter,
+          },
         });
-        seriesMap.set(opt.key, series);
+        seriesMap.set(b.id, series);
       }
-      series.setData(toLineData(points, opt.key) as never);
-    });
-    chart.timeScale().fitContent();
-  }, [points, selectedSeries]);
-
-  // Spread series (left price scale, bp).
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart || points.length === 0) return;
-    const seriesMap = spreadSeriesRef.current;
-
-    for (const [key, series] of seriesMap) {
-      if (!selectedSpreads.has(key)) {
-        chart.removeSeries(series);
-        seriesMap.delete(key);
-      }
+      series.setData(b.lineData as never);
     }
-    SPREAD_DEFS.forEach((def, index) => {
-      if (!selectedSpreads.has(def.key)) return;
-      let series = seriesMap.get(def.key);
-      if (!series) {
-        series = chart.addSeries(LineSeries, {
-          color: SPREAD_SERIES_COLORS[index % SPREAD_SERIES_COLORS.length],
-          lineWidth: 1,
-          lineStyle: 1,
-          title: `${def.label} (bp)`,
-          priceScaleId: "left",
-        });
-        chart.priceScale("left").applyOptions({ visible: true });
-        seriesMap.set(def.key, series);
-      }
-      series.setData(toSpreadLineData(points, def) as never);
-    });
-  }, [points, selectedSpreads]);
 
-  function toggleSeries(key: RateSeriesKey) {
-    setSelectedSeries((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-  function toggleSpread(key: string) {
-    setSelectedSpreads((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
+    // Left (bp) axis visible only while at least one spread is plotted.
+    const hasSpread = builtSeries.some((b) => b.priceScaleId === "left");
+    chart.priceScale("left").applyOptions({ visible: hasSpread });
 
-  // Derived status — shown as overlay inside the chart area, NOT by
-  // conditionally unmounting LwChartBase (which would destroy the chart
-  // instance and lose the subscribeClick registration).
+    // Refit only when the SET of instruments changes (not on every data
+    // refresh), so a user's manual zoom isn't reset when credit data arrives.
+    const idsKey = builtSeries.map((b) => b.id).sort().join("|");
+    if (idsKey !== prevIdsRef.current) {
+      prevIdsRef.current = idsKey;
+      chart.timeScale().fitContent();
+    }
+  }, [builtSeries]);
+
+  const addInstrument = useCallback((inst: SelectedInstrument) => {
+    setInstruments((prev) => (prev.some((p) => p.id === inst.id) ? prev : [...prev, inst]));
+  }, []);
+  const removeInstrument = useCallback((id: string) => {
+    setInstruments((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
   const isLoading = rangeQuery.isLoading || historyQuery.isLoading;
-  const isError   = rangeQuery.isError   || historyQuery.isError;
+  const isError = rangeQuery.isError || historyQuery.isError;
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
@@ -203,38 +191,22 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
         <span className="text-micro text-fg-muted">
           {minDate && maxDate
             ? `${minDate} – ${maxDate} · ${points.length.toLocaleString()} sessions · click a date to trace PnL`
-            : "Click a date to trace a hypothetical trade\u2019s PnL to today"}
+            : "Click a date to trace a hypothetical trade’s PnL to today"}
         </span>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {RATE_SERIES_OPTIONS.map((opt) => (
-          <button
-            key={opt.key}
-            type="button"
-            onClick={() => toggleSeries(opt.key)}
-            style={toggleButtonStyle(selectedSeries.has(opt.key))}
-          >
-            {opt.label}
-          </button>
-        ))}
-        {SPREAD_DEFS.map((def) => (
-          <button
-            key={def.key}
-            type="button"
-            onClick={() => toggleSpread(def.key)}
-            style={toggleButtonStyle(selectedSpreads.has(def.key))}
-          >
-            {def.label}
-          </button>
-        ))}
-      </div>
+      <InstrumentSelector
+        taxonomy={taxonomyQuery.data}
+        selected={instruments}
+        onAdd={addInstrument}
+        onRemove={removeInstrument}
+      />
 
       {/* Chart container is ALWAYS in the DOM — error/loading shown as overlay */}
       <div className="relative min-h-0 flex-1">
-        <LwChartBase onChartReady={onChartReady} formatter={rateFormatter} />
+        <LwChartBase onChartReady={onChartReady} />
+        <CrosshairReticle point={reticle} date={reticle?.date} paneWidth={reticle?.paneWidth} />
 
-        {/* Loading overlay */}
         {isLoading && !isError && (
           <div
             style={{
@@ -249,7 +221,6 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
           </div>
         )}
 
-        {/* Error overlay */}
         {isError && (
           <div
             style={{

@@ -1,11 +1,17 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ColDef, GridOptions, ModuleRegistry } from "ag-grid-community";
+import { Trash2, Upload } from "lucide-react";
 import { usePortfolioFiltersStore } from "@/stores/portfolio-filters-store";
+import { useManualPositionsStore } from "@/stores/manual-positions-store";
+import { useBondPositionsStore } from "@/stores/bond-positions-store";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/stores/toast-store";
 import type { Position } from "@/types/portfolio";
 import { usePortfolioPositions } from "./use-portfolio-positions";
+import { parseBlotterFile } from "./blotter-parser";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-balham.css";
 
@@ -19,11 +25,77 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 // We can use a React cell renderer!
 import { PriceDisplay } from "@/components/data/price-display";
 
+// Only manual rows are deletable (they're the only ones in global client
+// state). Uses the store's imperative getState() rather than the
+// useManualPositionsStore() hook, since this renderer only needs to fire an
+// action, not subscribe/re-render -- avoids any question of whether hooks
+// behave correctly inside an ag-grid-react inline cellRenderer.
+function DeleteCellRenderer(params: { data?: Position }) {
+  if (!params.data?.isManual) return null;
+  const id = params.data.id;
+  return (
+    <button
+      type="button"
+      data-row-action
+      aria-label="Delete position"
+      onClick={(e) => {
+        e.stopPropagation();
+        useManualPositionsStore.getState().removePosition(id);
+      }}
+      className="flex h-full w-full items-center justify-center text-fg-muted hover:text-sem-negative transition-colors"
+    >
+      <Trash2 size={13} strokeWidth={1.5} />
+    </button>
+  );
+}
+
+const DELETE_COLUMN_DEF: ColDef = {
+  colId: "delete",
+  headerName: "",
+  width: 36,
+  minWidth: 36,
+  sortable: false,
+  resizable: false,
+  suppressMovable: true,
+  cellStyle: { padding: 0, textAlign: "center" },
+  cellRenderer: DeleteCellRenderer,
+};
+
 export function PositionsGrid() {
   const filters = usePortfolioFiltersStore((state) => state.filters);
   const rowHeight = usePortfolioFiltersStore((state) => state.rowHeight);
   const setSelectedPositionId = usePortfolioFiltersStore((state) => state.setSelectedPositionId);
-  const { positions, isError } = usePortfolioPositions();
+  const { positions, isLoading, isError } = usePortfolioPositions();
+
+  // Inline blotter import for the empty (No Rows) state -- same client-side
+  // pipeline as filter-bar.tsx's "Import Blotter", surfaced here so a user who
+  // lands on an empty grid (e.g. after clearing storage) can reload positions
+  // without leaving the tab. Positions normally persist across refresh now
+  // (manual-/bond-positions-store), so this is a recovery affordance.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState(false);
+
+  async function handleBlotterFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    setIsImporting(true);
+    try {
+      const bonds = await parseBlotterFile(file);
+      if (bonds.length === 0) {
+        toast({ title: "No bonds found", description: "Could not read any bond rows from this file.", variant: "error" });
+        return;
+      }
+      useBondPositionsStore.getState().setPositions(bonds);
+      toast({ title: `Imported ${bonds.length} bond${bonds.length === 1 ? "" : "s"}`, description: file.name, variant: "success" });
+    } catch (err) {
+      toast({ title: "Import failed", description: err instanceof Error ? err.message : "Could not parse the file.", variant: "error" });
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
+  const showEmptyImport = positions.length === 0 && !isLoading;
 
   const filteredData = useMemo(() => {
     if (filters.length === 0) return positions;
@@ -47,7 +119,8 @@ export function PositionsGrid() {
     cellStyle: { fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" },
   }), []);
 
-  const columnDefs: ColDef[] = useMemo(() => [
+  const columnDefs = useMemo<ColDef[]>(() => [
+    DELETE_COLUMN_DEF,
     { field: "id", headerName: "Trade ID", width: 100, cellStyle: { color: "var(--fg-secondary)" } },
     { field: "book", headerName: "Book", width: 90 },
     { field: "assetClass", headerName: "Asset", width: 130 },
@@ -107,6 +180,8 @@ export function PositionsGrid() {
     rowHeight: rowHeight === "dense" ? 24 : 28,
     headerHeight: 30,
     onRowClicked: (event) => {
+      const target = event.event?.target as HTMLElement | null;
+      if (target?.closest("[data-row-action]")) return;
       if (event.data) setSelectedPositionId(event.data.id);
     }
   }), [rowHeight, setSelectedPositionId]);
@@ -118,7 +193,7 @@ export function PositionsGrid() {
           Could not load positions from the pricing server.
         </div>
       )}
-      <div className="ag-theme-balham-dark" style={{ flex: 1, minHeight: 0, background: "var(--bg-surface)" }}>
+      <div className="ag-theme-balham-dark" style={{ position: "relative", flex: 1, minHeight: 0, background: "var(--bg-surface)" }}>
         <AgGridReact
           // Pin to the classic CSS-file theme (ag-grid.css + ag-theme-balham-dark
           // above). Without this, ag-grid v33's new Theming API kicks in by
@@ -131,6 +206,47 @@ export function PositionsGrid() {
           defaultColDef={defaultColDef}
           {...gridOptions}
         />
+
+        {/* No Rows empty state: import a bond blotter Excel without leaving the
+            tab. Overlays the grid (ag-grid's own noRowsOverlay can't host an
+            interactive file input reliably). */}
+        {showEmptyImport && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 5,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "var(--bg-surface)",
+            }}
+          >
+            <div className="flex max-w-xs flex-col items-center gap-3 text-center">
+              <span className="text-h2 text-fg-primary">No positions loaded</span>
+              <span className="text-body text-fg-muted">
+                포지션이 없습니다. 채권 블로터 엑셀을 불러와 시작하세요. IRS는 상단의
+                Add Position으로 추가할 수 있습니다.
+              </span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={handleBlotterFile}
+              />
+              <Button
+                variant="primary"
+                size="md"
+                loading={isImporting}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload size={14} strokeWidth={1.5} />
+                Import Blotter
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

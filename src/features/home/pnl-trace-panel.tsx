@@ -12,6 +12,8 @@ import type { IChartApi, ISeriesApi, MouseEventParams, SeriesMarker, ISeriesMark
 import { LineSeries, createSeriesMarkers } from "lightweight-charts";
 import type { IDockviewPanelProps } from "dockview-react";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
+import { CrosshairReticle, formatCrosshairDate } from "@/components/charts/crosshair-reticle";
+import { snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
 import { useMarketDataRange, useNpvTrace } from "@/hooks/use-api";
 import { RATE_SERIES_OPTIONS, rateValue } from "@/lib/rate-history-helpers";
 import type { RateHistoryPointOut, NpvTracePointOut } from "@/lib/api-client";
@@ -41,7 +43,9 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
   const [traceChart, setTraceChart] = useState<IChartApi | null>(null);
   const traceSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const traceMarkersRef = useRef<ISeriesMarkersPluginApi<any> | null>(null);
-  const [hoverData, setHoverData] = useState<{ point: NpvTracePointOut; x: number; y: number } | null>(null);
+  const [hoverData, setHoverData] = useState<
+    { point: NpvTracePointOut; x: number; y: number; paneWidth: number } | null
+  >(null);
 
   const tenorYears = useMemo(() => {
     if (!startDate || !maturityDate) return null;
@@ -127,7 +131,11 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
       const timeStr = String(param.time);
       const point = npvTrace.data.points.find((p) => p.valuation_date === timeStr);
       if (point) {
-        setHoverData({ point, x: param.point.x, y: param.point.y });
+        // Reticle snaps to the PnL line's data-point marker (see snap-reticle.ts,
+        // same choice as rate-history-chart.tsx).
+        const snapped = snapReticleToNearestSeries(traceChart, param, [traceSeriesRef.current]);
+        const p = snapped ?? { x: param.point.x, y: param.point.y };
+        setHoverData({ point, x: p.x, y: p.y, paneWidth: traceChart.timeScale().width() });
       } else {
         setHoverData(null);
       }
@@ -241,7 +249,12 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
           </div>
           <div className="relative min-h-0 flex-1">
             <LwChartBase onChartReady={(chart) => { setTraceChart(chart); traceSeriesRef.current = null; }} />
-            
+            <CrosshairReticle
+              point={hoverData ? { x: hoverData.x, y: hoverData.y } : null}
+              date={hoverData?.point.valuation_date}
+              paneWidth={hoverData?.paneWidth}
+            />
+
             {/* Floating Tooltip */}
             {hoverData && (
               <div
@@ -256,7 +269,9 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
               >
                 <div className="flex items-center justify-between gap-6">
                   <span className="text-micro font-bold text-fg-muted uppercase">Date</span>
-                  <span className="text-micro font-normal text-fg-primary">{hoverData.point.valuation_date}</span>
+                  <span className="text-body font-bold text-fg-primary">
+                    {formatCrosshairDate(hoverData.point.valuation_date)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between gap-6">
                   <span className="text-micro font-bold text-fg-muted uppercase">Delta (DV01)</span>

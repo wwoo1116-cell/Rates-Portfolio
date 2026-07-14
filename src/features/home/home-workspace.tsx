@@ -10,9 +10,9 @@ import {
   type IDockviewHeaderActionsProps,
 } from "dockview-react";
 import { StatusView } from "./status-view";
-import { RiskHeatmap } from "./risk-heatmap";
-import { RateHistoryChart } from "./rate-history-chart";
-import { PnlTracePanel } from "./pnl-trace-panel";
+import { PvbpSensitivityTable } from "./pvbp-sensitivity-table";
+import { BookDailyPnlTable } from "./book-daily-pnl-table";
+import { BookSummaryCard } from "./book-summary-card";
 import { DockviewTab } from "@/components/layout/dockview-tab";
 import { DockviewActions } from "@/components/layout/dockview-actions";
 import { useWorkspacePanelsStore } from "@/stores/workspace-panels-store";
@@ -23,35 +23,58 @@ const StatusPanel = memo(function StatusPanel() {
   return <StatusView />;
 });
 
-const RiskHeatmapPanel = memo(function RiskHeatmapPanel() {
-  return <RiskHeatmap />;
+const PvbpSensitivityPanel = memo(function PvbpSensitivityPanel() {
+  return <PvbpSensitivityTable />;
 });
 
-// Not memoized (unlike the other two): needs the live dockview api to open
-// the PnL Trace panel on date-click, which changes identity per DockviewReady.
-function RateHistoryPanel(props: IDockviewPanelProps) {
-  return <RateHistoryChart api={props.containerApi} />;
-}
+const BookDailyPnlPanel = memo(function BookDailyPnlPanel() {
+  return <BookDailyPnlTable />;
+});
+
+const BookSummaryPanel = memo(function BookSummaryPanel() {
+  return <BookSummaryCard />;
+});
 
 const components = {
   status: (props: IDockviewPanelProps) => <StatusPanel {...props} />,
-  heatmap: (props: IDockviewPanelProps) => <RiskHeatmapPanel {...props} />,
-  rates: (props: IDockviewPanelProps) => <RateHistoryPanel {...props} />,
-  pnltrace: (props: IDockviewPanelProps) => <PnlTracePanel {...props} />,
+  pvbp: (props: IDockviewPanelProps) => <PvbpSensitivityPanel {...props} />,
+  bookpnl: (props: IDockviewPanelProps) => <BookDailyPnlPanel {...props} />,
+  booksummary: (props: IDockviewPanelProps) => <BookSummaryPanel {...props} />,
 };
 
 const defaultTabComponent = (props: IDockviewPanelHeaderProps) => <DockviewTab {...props} />;
-const rightHeaderActionsComponent = (props: IDockviewHeaderActionsProps) => <DockviewActions {...props} />;
+const rightHeaderActionsComponent = (props: IDockviewHeaderActionsProps) => (
+  <DockviewActions {...props} />
+);
 
-// v3 -> v4: added the rate-history chart panel -- a new key avoids restoring
-// a v3 layout that doesn't know about the new panel id.
-const STORAGE_KEY = "dockview-layout:home-v4";
+// v6: Removed redundant "Risk Heatmap" panel (which was client-side Tenor x DV01), 
+// as it is superseded by the new backend-computed "PVBP Sensitivity" panel.
+const STORAGE_KEY = "dockview-layout:home-v6";
 const WORKSPACE_ID = "home";
 
 const MANAGED_PANELS: ManagedPanelDef[] = [
   { id: "home-status-panel", title: "Status", component: "status" },
-  { id: "home-heatmap-panel", title: "Risk Heatmap", component: "heatmap", referencePanelId: "home-status-panel", direction: "below" },
-  { id: "home-rates-panel", title: "Rate History", component: "rates", referencePanelId: "home-heatmap-panel", direction: "right" },
+  {
+    id: "home-pvbp-panel",
+    title: "PVBP (DV01) Sensitivity",
+    component: "pvbp",
+    referencePanelId: "home-status-panel",
+    direction: "below",
+  },
+  {
+    id: "home-bookpnl-panel",
+    title: "Daily P&L by Book",
+    component: "bookpnl",
+    referencePanelId: "home-pvbp-panel",
+    direction: "right",
+  },
+  {
+    id: "home-booksummary-panel",
+    title: "Book Summary",
+    component: "booksummary",
+    referencePanelId: "home-pvbp-panel",
+    direction: "right",
+  },
 ];
 
 function addDefaultPanels(api: DockviewApi) {
@@ -60,19 +83,25 @@ function addDefaultPanels(api: DockviewApi) {
     id: "home-status-panel",
     component: "status",
     title: "Status",
-    initialHeight: 180,
+    initialHeight: 160,
   });
-  const heatmapPanel = api.addPanel({
-    id: "home-heatmap-panel",
-    component: "heatmap",
-    title: "Risk Heatmap",
+  const pvbpPanel = api.addPanel({
+    id: "home-pvbp-panel",
+    component: "pvbp",
+    title: "PVBP (DV01) Sensitivity",
     position: { referencePanel: statusPanel, direction: "below" },
   });
+  const bookpnlPanel = api.addPanel({
+    id: "home-bookpnl-panel",
+    component: "bookpnl",
+    title: "Daily P&L by Book",
+    position: { referencePanel: pvbpPanel, direction: "right" },
+  });
   api.addPanel({
-    id: "home-rates-panel",
-    component: "rates",
-    title: "Rate History",
-    position: { referencePanel: heatmapPanel, direction: "right" },
+    id: "home-booksummary-panel",
+    component: "booksummary",
+    title: "Book Summary",
+    position: { referencePanel: bookpnlPanel, direction: "below" },
   });
 }
 

@@ -9,15 +9,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   calendarApi,
+  creditCurveApi,
   marketDataApi,
   mtmApi,
   portfolioApi,
   rateHistoryApi,
+  spreadBacktestApi,
   tradesApi,
+  type CreditSeriesLegIn,
   type HistoricalPnlRequest,
   type NpvTraceRequest,
   type PortfolioPriceRequest,
   type PositionFairRateRequest,
+  type SpreadBacktestParams,
   type TradeByTenorIn,
   type TradeIn,
 } from "@/lib/api-client";
@@ -31,6 +35,11 @@ const queryKeys = {
   portfolioDelta: (req: PortfolioPriceRequest | undefined) => ["portfolio", "delta", req] as const,
   historicalPnl: (req: HistoricalPnlRequest | undefined) => ["portfolio", "historical-pnl", req] as const,
   rateHistory: (start: string, end: string) => ["rate-history", start, end] as const,
+  positionMtmHistory: (req: NpvTraceRequest | null) => ["mtm", "npv-trace", req] as const,
+  creditTaxonomy: () => ["credit-curve", "taxonomy"] as const,
+  creditSeries: (legs: CreditSeriesLegIn[], start: string, end: string) =>
+    ["credit-curve", "series", legs, start, end] as const,
+  spreadBacktest: (params: SpreadBacktestParams) => ["spread-backtest", params] as const,
 };
 
 export function useTrades(asOfDate?: string) {
@@ -164,6 +173,29 @@ export function useRateHistory(start: string, end: string) {
   });
 }
 
+/** Static instrument taxonomy (sector -> ratings -> tenors) for the RV
+ * selector dropdowns. Fetched once; the tree never changes at runtime. */
+export function useCreditCurveTaxonomy() {
+  return useQuery({
+    queryKey: queryKeys.creditTaxonomy(),
+    queryFn: () => creditCurveApi.taxonomy(),
+    staleTime: Infinity,
+  });
+}
+
+/** Batch time-series fetch for the selected credit_matrix-backed legs
+ * (국고채 + the four rated sectors). IRS legs are NOT sent here -- they're
+ * resolved client-side from useRateHistory's full-curve data. Re-fetches
+ * whenever the leg list or date range changes; disabled when there are no
+ * credit legs to fetch. */
+export function useCreditCurveSeries(legs: CreditSeriesLegIn[], start: string, end: string) {
+  return useQuery({
+    queryKey: queryKeys.creditSeries(legs, start, end),
+    queryFn: () => creditCurveApi.series({ legs, start_date: start, end_date: end }),
+    enabled: legs.length > 0 && Boolean(start && end),
+  });
+}
+
 /** Hypothetical-swap PnL trace from trade_date to end_date (services/
  * npv_trace_service.py) -- a mutation since it's triggered by an explicit
  * "trace this hypothetical trade" user action (Home's rate-history chart
@@ -174,8 +206,37 @@ export function useNpvTrace() {
   });
 }
 
+/** Real historical MTM (clean_npv) trace for an already-booked position --
+ * unlike useNpvTrace() above (a mutation for an ad hoc hypothetical trade),
+ * this is derived from ambient state (whichever position is selected in the
+ * Portfolio grid), so it's a query: re-fetches automatically when the
+ * request (i.e. the selected position) changes. `req: null` means "no
+ * position selected" or "this position can't be priced" (bonds have no
+ * pricing engine) -- disables the query rather than firing a bad request. */
+export function usePositionMtmHistory(req: NpvTraceRequest | null) {
+  return useQuery({
+    queryKey: queryKeys.positionMtmHistory(req),
+    queryFn: () => mtmApi.npvTrace(req as NpvTraceRequest),
+    enabled: req !== null,
+  });
+}
+
 export function usePositionFairRate() {
   return useMutation({
     mutationFn: (req: PositionFairRateRequest) => portfolioApi.fairRate(req),
+  });
+}
+
+/** Mean-reversion z-score backtest of an IRS curve spread (short vs long
+ * tenor) -- services/spread_backtest_service.py via GET /api/spread-backtest.
+ * The first UI consumer of this previously-orphaned endpoint (Entry Signals
+ * tab). Deterministic per parameter set, so cache it aggressively; `enabled`
+ * is left to the caller (only fire for a valid IRS spread + date range). */
+export function useSpreadBacktest(params: SpreadBacktestParams | null) {
+  return useQuery({
+    queryKey: queryKeys.spreadBacktest(params as SpreadBacktestParams),
+    queryFn: () => spreadBacktestApi.run(params as SpreadBacktestParams),
+    enabled: params !== null && Boolean(params.start && params.end && params.short && params.long),
+    staleTime: 5 * 60_000,
   });
 }

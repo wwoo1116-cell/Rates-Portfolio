@@ -30,7 +30,7 @@ export function Sidebar() {
         event.preventDefault();
         toggle();
       }
-      if (isCmd && ["1", "2", "3", "4", "5"].includes(event.key)) {
+      if (isCmd && ["1", "2", "3", "4", "5", "6"].includes(event.key)) {
         event.preventDefault();
         const idx = parseInt(event.key, 10) - 1;
         if (NAV_ITEMS[idx]) {
@@ -105,14 +105,14 @@ export function Sidebar() {
                   height: 34,
                   padding: "0 10px",
                   color: active ? "var(--fg-primary)" : "var(--fg-muted)",
-                  background: active ? "var(--accent-soft)" : "transparent",
+                  background: "transparent",
                   textDecoration: "none",
                   fontSize: "var(--text-sm)",
                   fontFamily: "var(--font-ui)",
-                  fontWeight: active ? 500 : 400,
+                  fontWeight: active ? 700 : 400,
                   whiteSpace: "nowrap",
                   overflow: "hidden",
-                  borderLeft: active ? "2px solid var(--accent)" : "2px solid transparent",
+                  borderLeft: active ? "2px solid var(--fg-primary)" : "2px solid transparent",
                   transition: "background-color var(--transition-fast), color var(--transition-fast), border-left-color var(--transition-fast)",
                 }}
               >
@@ -155,7 +155,7 @@ export function Sidebar() {
                           padding: "0 6px",
                           border: "none",
                           background: "transparent",
-                          color: isOpen ? "var(--accent)" : "var(--fg-muted)",
+                          color: isOpen ? "var(--fg-primary)" : "var(--fg-muted)",
                           fontFamily: "var(--font-ui)",
                           fontSize: 11,
                           fontWeight: isOpen ? 700 : 400,
@@ -168,7 +168,7 @@ export function Sidebar() {
                             width: 5,
                             height: 5,
                             flexShrink: 0,
-                            background: isOpen ? "var(--accent)" : "var(--fg-dim)",
+                            background: isOpen ? "var(--fg-primary)" : "var(--fg-dim)",
                           }}
                         />
                         {def.title}

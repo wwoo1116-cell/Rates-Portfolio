@@ -1,75 +1,89 @@
 "use client";
 
 /**
- * Home's minimal overall-status view (MIGRATION_PLAN.md Phase 5), replacing
- * the removed KPI tile row/Top Movers/curve-compare (§2.2). IRS-only --
- * cross-asset (KTB/KTBF) P&L aggregation isn't computable until that
- * separate project exists (§2.2/§5 non-goals).
+ * Home's minimal overall-status view, bound to manually-entered positions
+ * (manual-positions-store.ts) priced by the real backend's stateless,
+ * DB-independent portfolio endpoints -- see use-manual-portfolio-metrics.ts.
+ * Each stat's 1-year trend (use-manual-portfolio-trend.ts) fills the space
+ * below the figure.
  */
-import { format, parseISO, subDays } from "date-fns";
-import { useMemo } from "react";
-import { PriceDisplay } from "@/components/data/price-display";
-import { useHistoricalPnlQuery, useMarketDataRange, useTrades } from "@/hooks/use-api";
-import { tradesToPositionsIn } from "@/lib/portfolio-request";
-import type { HistoricalPnlRequest } from "@/lib/api-client";
+import { Spinner } from "@blueprintjs/core";
+import { formatDuration, formatKrw, formatNotionalKrw } from "@/lib/format";
+import { useManualPortfolioMetrics } from "@/hooks/use-manual-portfolio-metrics";
+import { useManualPortfolioTrend } from "@/hooks/use-manual-portfolio-trend";
+import { Sparkline, type SparklinePoint } from "@/components/charts/sparkline";
+import { format as formatDate, parseISO } from "date-fns";
 
-const LOOKBACK_DAYS = 30;
-
-function StatField({ label, children }: { label: string; children: React.ReactNode }) {
+function StatField({
+  label,
+  value,
+  trend,
+  trendColor,
+  formatValue,
+}: {
+  label: string;
+  value: string;
+  trend: SparklinePoint[];
+  trendColor?: string;
+  formatValue: (value: number) => string;
+}) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex h-full flex-col gap-1">
       <span className="text-label font-bold text-fg-muted">{label}</span>
-      <span className="text-body font-normal text-fg-primary">{children}</span>
+      <span className="text-body font-normal text-fg-primary font-mono tabular-nums">{value}</span>
+      <div className="flex-1 min-h-[40px]">
+        {trend.length >= 2 && (
+          <Sparkline
+            points={trend}
+            color={trendColor}
+            formatValue={formatValue}
+            formatDate={(d) => formatDate(parseISO(d), "MMM d, yyyy")}
+          />
+        )}
+      </div>
     </div>
   );
 }
 
 export function StatusView() {
-  const tradesQuery = useTrades();
-  const rangeQuery = useMarketDataRange();
-  const trades = useMemo(() => tradesQuery.data ?? [], [tradesQuery.data]);
-  const maxDate = rangeQuery.data?.max_date;
+  const { hasPositions, totalNotional, totalPnl, overallDuration, isLoading } = useManualPortfolioMetrics();
+  const { pnlTrend, durationTrend, notionalTrend } = useManualPortfolioTrend();
 
-  const pnlRequest: HistoricalPnlRequest | undefined = useMemo(() => {
-    if (!maxDate || trades.length === 0) return undefined;
-    return {
-      positions: tradesToPositionsIn(trades),
-      start_date: format(subDays(parseISO(maxDate), LOOKBACK_DAYS), "yyyy-MM-dd"),
-      end_date: maxDate,
-    };
-  }, [maxDate, trades]);
-
-  const pnlQuery = useHistoricalPnlQuery(pnlRequest);
-  const latestPoint = pnlQuery.data?.points.at(-1);
-
-  const isLoading = tradesQuery.isLoading || rangeQuery.isLoading || (Boolean(pnlRequest) && pnlQuery.isLoading);
-  const isError = tradesQuery.isError || rangeQuery.isError || pnlQuery.isError;
-  const hasIrsPositions = trades.length > 0;
+  const pnlColor = totalPnl >= 0 ? "var(--sem-positive)" : "var(--sem-negative)";
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
       <span className="text-h2 text-fg-primary">Status</span>
 
-      {!hasIrsPositions || !latestPoint ? (
+      {!hasPositions ? (
         <div className="flex flex-1 items-center justify-center text-center text-body text-fg-muted">
-          {isError
-            ? "Could not load IRS positions from the pricing server."
-            : isLoading
-              ? "Loading…"
-              : "No IRS positions booked yet."}
+          No positions added yet — add one from the Positions tab.
+        </div>
+      ) : isLoading ? (
+        <div className="flex flex-1 items-center justify-center gap-2 text-center text-body text-fg-muted">
+          <Spinner size={16} /> Pricing…
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4">
-          <StatField label="Net NPV (IRS)">
-            <PriceDisplay value={latestPoint.net_npv} unit="KRW" />
-          </StatField>
-          <StatField label="Cumulative P&L (IRS)">
-            <PriceDisplay value={latestPoint.cumulative_pnl} unit="KRW" />
-          </StatField>
-          <StatField label="As Of">{format(parseISO(latestPoint.valuation_date), "MMM d, yyyy")}</StatField>
-          <StatField label="Baseline">
-            {pnlQuery.data ? format(parseISO(pnlQuery.data.baseline_date), "MMM d, yyyy") : "—"}
-          </StatField>
+        <div className="grid flex-1 min-h-0 grid-cols-3 gap-4">
+          <StatField
+            label="Overall Duration"
+            value={formatDuration(overallDuration)}
+            trend={durationTrend}
+            formatValue={formatDuration}
+          />
+          <StatField
+            label="Cumulative P&L"
+            value={formatKrw(totalPnl)}
+            trend={pnlTrend}
+            trendColor={pnlColor}
+            formatValue={formatKrw}
+          />
+          <StatField
+            label="Total Notional"
+            value={formatNotionalKrw(totalNotional)}
+            trend={notionalTrend}
+            formatValue={formatNotionalKrw}
+          />
         </div>
       )}
     </div>

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, FormGroup, InputGroup, Intent } from "@blueprintjs/core";
+import { useAuthStore } from "@/stores/auth-store";
 
 export default function RootPage() {
   const router = useRouter();
@@ -18,10 +19,13 @@ export default function RootPage() {
     }
   }, [view]);
 
+  const login = useAuthStore((s) => s.login);
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // 임시 로그인 처리 후 워크스페이스(대시보드)로 이동
-    router.push("/portfolio");
+    // 임시 로그인 처리 후 데이터 업로드 화면으로 이동 (대시보드 진입 전 필수 단계)
+    login();
+    router.push("/upload");
   };
 
   const handleSignup = (e: React.FormEvent) => {
@@ -45,7 +49,7 @@ export default function RootPage() {
             filter: grayscale(80%) brightness(30%) blur(0px);
           }
         }
-        
+
         @keyframes textFadeIn {
           0% {
             opacity: 0;
@@ -74,9 +78,9 @@ export default function RootPage() {
       `}</style>
 
       {/* Background Image Container */}
-      <div 
+      <div
         className={`absolute inset-0 w-full h-full bg-top bg-no-repeat bg-cover ${view === 'splash' ? 'animate-image-reveal' : ''}`}
-        style={{ 
+        style={{
           backgroundImage: "url('/Mirae_Asset_Center1.png')",
           // 로그인 화면 전환 시 배경을 살짝 더 흐리게 하여 폼 가독성 극대화
           filter: view === 'splash' ? "grayscale(80%) brightness(30%)" : "grayscale(80%) brightness(20%) blur(8px)",
@@ -87,22 +91,22 @@ export default function RootPage() {
       {/* 1. Splash Screen Content */}
       {view === "splash" && (
         <div className="relative z-10 flex flex-col items-center text-center animate-text-reveal">
-          <h1 
+          <h1
             className="text-white font-extrabold tracking-tight"
-            style={{ 
-              fontFamily: "var(--font-ui), 'Inter', sans-serif", 
-              fontSize: "clamp(2.5rem, 5vw, 4.5rem)", 
-              lineHeight: 1.1 
+            style={{
+              fontFamily: "var(--font-ui), 'Inter', sans-serif",
+              fontSize: "clamp(2.5rem, 5vw, 4.5rem)",
+              lineHeight: 1.1
             }}
           >
             Project Future
           </h1>
-          <p 
+          <p
             className="text-white/70 font-medium mt-4 uppercase"
-            style={{ 
-              fontFamily: "var(--font-ui), 'Inter', sans-serif", 
-              fontSize: "clamp(0.875rem, 2vw, 1rem)", 
-              letterSpacing: "0.15em" 
+            style={{
+              fontFamily: "var(--font-ui), 'Inter', sans-serif",
+              fontSize: "clamp(0.875rem, 2vw, 1rem)",
+              letterSpacing: "0.15em"
             }}
           >
             Portfolio Management System
@@ -119,10 +123,10 @@ export default function RootPage() {
             </h1>
           </div>
 
-          <div 
+          <div
             className="w-full p-8"
-            style={{ 
-              backgroundColor: "var(--bg-surface)", 
+            style={{
+              backgroundColor: "var(--bg-surface)",
               border: "1px solid rgba(255, 255, 255, 0.1)",
               borderRadius: "0px" // 기관용 UI: No rounded edges
             }}
@@ -130,20 +134,20 @@ export default function RootPage() {
             {view === "login" ? (
               <form onSubmit={handleLogin} className="flex flex-col gap-2">
                 <h2 className="text-lg font-semibold text-white mb-4">Sign In</h2>
-                
+
                 <FormGroup label="Username ID" labelFor="username">
                   <InputGroup id="username" placeholder="Enter your ID" fill large />
                 </FormGroup>
-                
+
                 <FormGroup label="Password" labelFor="password">
                   <InputGroup id="password" type="password" placeholder="Enter your password" fill large />
                 </FormGroup>
 
-                <Button 
-                  type="submit" 
-                  intent={Intent.PRIMARY} 
-                  fill 
-                  large 
+                <Button
+                  type="submit"
+                  intent={Intent.PRIMARY}
+                  fill
+                  large
                   className="mt-6"
                 >
                   Log In
@@ -151,9 +155,9 @@ export default function RootPage() {
 
                 <div className="mt-6 text-center text-sm text-[var(--fg-muted)]">
                   Don&apos;t have an account?{" "}
-                  <button 
-                    type="button" 
-                    onClick={() => setView("signup")} 
+                  <button
+                    type="button"
+                    onClick={() => setView("signup")}
                     className="text-[var(--chart-ocean)] hover:text-[var(--chart-aqua)] transition-colors font-medium"
                   >
                     Register here
@@ -163,11 +167,11 @@ export default function RootPage() {
             ) : (
               <form onSubmit={handleSignup} className="flex flex-col gap-2">
                 <h2 className="text-lg font-semibold text-white mb-4">Register Account</h2>
-                
+
                 <FormGroup label="Username ID" labelFor="reg-username">
                   <InputGroup id="reg-username" placeholder="Choose an ID" fill large />
                 </FormGroup>
-                
+
                 <FormGroup label="Password" labelFor="reg-password">
                   <InputGroup id="reg-password" type="password" placeholder="Choose a password" fill large />
                 </FormGroup>
@@ -176,11 +180,11 @@ export default function RootPage() {
                   <InputGroup id="reg-password-confirm" type="password" placeholder="Re-enter password" fill large />
                 </FormGroup>
 
-                <Button 
-                  type="submit" 
-                  intent={Intent.PRIMARY} 
-                  fill 
-                  large 
+                <Button
+                  type="submit"
+                  intent={Intent.PRIMARY}
+                  fill
+                  large
                   className="mt-6"
                 >
                   Create Account
@@ -188,9 +192,9 @@ export default function RootPage() {
 
                 <div className="mt-6 text-center text-sm text-[var(--fg-muted)]">
                   Already have an account?{" "}
-                  <button 
-                    type="button" 
-                    onClick={() => setView("login")} 
+                  <button
+                    type="button"
+                    onClick={() => setView("login")}
                     className="text-[var(--chart-ocean)] hover:text-[var(--chart-aqua)] transition-colors font-medium"
                   >
                     Log In

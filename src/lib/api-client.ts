@@ -10,6 +10,10 @@
  */
 import type {
   BacktestSummaryOut,
+  BondCashflowRequest,
+  BondCashflowResponse,
+  CreditSeriesRequest,
+  CreditSeriesResponse,
   CurveRequest,
   CurveResponse,
   DateRangeResponse,
@@ -21,8 +25,10 @@ import type {
   HistoricalPnlRequest,
   HistoricalPnlResponse,
   HistoricalQuoteResponse,
+  InstrumentTaxonomyOut,
   LegacyPositionImportRequest,
   MarketDataResponse,
+  MarketDataUploadResponse,
   MtmFairRateRequest,
   MtmFairRateResponse,
   MtmRequest,
@@ -116,6 +122,19 @@ async function apiPost<T>(path: string, payload: unknown): Promise<T> {
   return handleResponse<T>(res);
 }
 
+// Multipart form POST -- deliberately does not set Content-Type, so the
+// browser fills in the multipart boundary itself (setting it manually
+// produces a malformed request the server can't parse).
+async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { method: "POST", body: form });
+  } catch {
+    throw new ApiError(NETWORK_ERROR_MESSAGE, 0);
+  }
+  return handleResponse<T>(res);
+}
+
 async function apiDelete<T>(path: string): Promise<T> {
   let res: Response;
   try {
@@ -192,6 +211,16 @@ export const portfolioApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Portfolio Analytics (Aggregated summaries by book/sector)
+// ---------------------------------------------------------------------------
+
+export const portfolioAnalyticsApi = {
+  pvbpSensitivity: (req: any) => apiPost<any[]>("/api/portfolio/pvbp-sensitivity", req),
+  bookDailyPnl: (req: any) => apiPost<any[]>("/api/portfolio/book-daily-pnl", req),
+  bookSummary: (req: any) => apiPost<any[]>("/api/portfolio/book-summary", req),
+};
+
+// ---------------------------------------------------------------------------
 // Trades (persisted trade_specification rows)
 // ---------------------------------------------------------------------------
 
@@ -224,6 +253,24 @@ export const rateHistoryApi = {
   history: (start: string, end: string) => apiGet<RateHistoryResponse>(`/api/rate-history${qs({ start, end })}`),
   spread: (start: string, end: string, short: string, long: string) =>
     apiGet<RateSpreadResponse>(`/api/rate-history/spread${qs({ start, end, short, long })}`),
+};
+
+// ---------------------------------------------------------------------------
+// Credit-curve taxonomy / RV instrument selector
+// ---------------------------------------------------------------------------
+
+export const creditCurveApi = {
+  taxonomy: () => apiGet<InstrumentTaxonomyOut>("/api/credit-curve/taxonomy"),
+  series: (req: CreditSeriesRequest) => apiPost<CreditSeriesResponse>("/api/credit-curve/series", req),
+};
+
+// ---------------------------------------------------------------------------
+// Bond cash-flow generation (uploaded blotter -> CF schedule + NPV)
+// ---------------------------------------------------------------------------
+
+export const bondApi = {
+  cashflows: (req: BondCashflowRequest) =>
+    apiPost<BondCashflowResponse>("/api/portfolio/bond-cashflows", req),
 };
 
 // ---------------------------------------------------------------------------
@@ -271,6 +318,37 @@ export const dbSettingsApi = {
   status: () => apiGet<DbConnectionStatusOut>("/api/db-settings"),
   test: (req: DbConnectionIn) => apiPost<DbConnectionTestResult>("/api/db-settings/test", req),
   save: (req: DbConnectionIn) => apiPost<DbConnectionStatusOut>("/api/db-settings", req),
+};
+
+// ---------------------------------------------------------------------------
+// Market data / portfolio upload (mandatory gate before the dashboard)
+// ---------------------------------------------------------------------------
+
+export const uploadApi = {
+  marketData: async (files: { irsData: File; creditMatrix: File; bokBaseRate: File; portfolioData: File }) => {
+    const form = new FormData();
+    form.set("irs_data", files.irsData);
+    form.set("credit_matrix", files.creditMatrix);
+    form.set("bok_base_rate", files.bokBaseRate);
+    form.set("portfolio", files.portfolioData);
+    
+    // Bypass Next.js proxy specifically for large multipart uploads to avoid ECONNRESET / socket hang ups.
+    // Use window.location.hostname to ensure the request is routed to the correct server IP
+    // without triggering Chrome's Private Network Access block (which happens if we hardcode 127.0.0.1).
+    const baseUrl = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://127.0.0.1:8000";
+    const res = await fetch(`${baseUrl}/api/upload/market-data`, {
+      method: "POST",
+      body: form,
+    }).catch(() => {
+      throw new ApiError(NETWORK_ERROR_MESSAGE, 0);
+    });
+
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new ApiError(detailToMessage(body?.detail, res.status), res.status);
+    }
+    return body as MarketDataUploadResponse;
+  },
 };
 
 export * from "./api-types";

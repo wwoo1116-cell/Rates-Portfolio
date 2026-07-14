@@ -238,6 +238,27 @@ body {
   font-size: var(--text-sm);
 }
 
+/* Blueprint Dialog */
+.bp5-dark .bp5-dialog {
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  /* DESIGN.md Shadow Vocabulary "sm": dark-mode popovers/modals -- overrides
+     Blueprint's default heavier multi-layer elevation shadow. */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.bp5-dark .bp5-dialog-header {
+  background: var(--bg-overlay);
+  border-bottom: 1px solid var(--border-subtle);
+  box-shadow: none;
+}
+.bp5-dark .bp5-dialog-header .bp5-heading {
+  color: var(--fg-primary);
+}
+.bp5-dark .bp5-dialog-footer {
+  color: var(--fg-secondary);
+}
+
 /* ─────────────────────────────────────────────
    AG GRID: balham-dark institutional overrides
    ───────────────────────────────────────────── */

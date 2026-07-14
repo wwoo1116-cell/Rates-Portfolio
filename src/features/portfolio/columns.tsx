@@ -10,8 +10,10 @@ import { getTenorBucket, type AssetClass } from "@/lib/constants";
 import type { Position } from "@/types/portfolio";
 
 // Asset class badge accent: all map to accent (#F58220) per color spec
-// (non-directional categorical data → accent only, not green/red/blue)
-export const ASSET_CLASS_TONE: Record<AssetClass, "accent"> = {
+// (non-directional categorical data → accent only, not green/red/blue).
+// Partial: AssetClass now also spans bond sectors (국고채/…) which default to
+// accent via the lookup site's fallback.
+export const ASSET_CLASS_TONE: Partial<Record<AssetClass, "accent">> = {
   KTB: "accent",
   IRS: "accent",
   CRS: "accent",

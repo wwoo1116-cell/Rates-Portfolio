@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Plus } from "lucide-react";
+import { useRef, useState } from "react";
+import { Plus, Upload } from "lucide-react";
 import { Chip } from "@/components/ui/chip";
+import { Button } from "@/components/ui/button";
 import { HTMLSelect, SegmentedControl } from "@blueprintjs/core";
 import { ASSET_CLASSES, BOOKS, IRS_TENORS } from "@/lib/constants";
 import {
@@ -10,7 +11,11 @@ import {
   type ActiveFilter,
   type FilterKey,
 } from "@/stores/portfolio-filters-store";
+import { useBondPositionsStore } from "@/stores/bond-positions-store";
+import { toast } from "@/stores/toast-store";
 import type { GroupByOption } from "@/types/portfolio";
+import { AddPositionModal } from "./add-position-modal";
+import { parseBlotterFile } from "./blotter-parser";
 
 const FILTER_META: Record<FilterKey, { label: string; options: readonly string[] }> = {
   book: { label: "BOOK", options: BOOKS },
@@ -37,6 +42,29 @@ export function FilterBar() {
   const setRowHeight = usePortfolioFiltersStore((state) => state.setRowHeight);
 
   const [pendingKey, setPendingKey] = useState<FilterKey | null>(null);
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleBlotterFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    setIsImporting(true);
+    try {
+      const bonds = await parseBlotterFile(file);
+      if (bonds.length === 0) {
+        toast({ title: "No bonds found", description: "Could not read any bond rows from this file.", variant: "error" });
+        return;
+      }
+      useBondPositionsStore.getState().setPositions(bonds);
+      toast({ title: `Imported ${bonds.length} bond${bonds.length === 1 ? "" : "s"}`, description: file.name, variant: "success" });
+    } catch (err) {
+      toast({ title: "Import failed", description: err instanceof Error ? err.message : "Could not parse the file.", variant: "error" });
+    } finally {
+      setIsImporting(false);
+    }
+  }
 
   // Every filter key stays selectable so users can keep stacking values onto
   // an already-active chip (e.g. TENOR 3Y, then TENOR 5Y) — see handleAddValue,
@@ -94,6 +122,28 @@ export function FilterBar() {
 
       <div className="flex-1" />
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        className="hidden"
+        onChange={handleBlotterFile}
+      />
+      <Button
+        variant="secondary"
+        size="sm"
+        loading={isImporting}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <Upload size={14} strokeWidth={1.5} />
+        Import Blotter
+      </Button>
+
+      <Button variant="primary" size="sm" onClick={() => setIsAddOpen(true)}>
+        <Plus size={14} strokeWidth={1.5} />
+        Add Position
+      </Button>
+
       <HTMLSelect
         value={groupBy}
         onChange={(e) => setGroupBy(e.target.value as GroupByOption)}
@@ -108,6 +158,8 @@ export function FilterBar() {
         value={rowHeight}
         onValueChange={(value) => setRowHeight(value as "dense" | "comfortable")}
       />
+
+      <AddPositionModal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} />
     </div>
   );
 }

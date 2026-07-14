@@ -36,20 +36,13 @@ export const BASE_CHART_OPTIONS: DeepPartial<ChartOptions> = {
     horzLines: { color: "rgba(255,255,255,0.07)", style: 0 },
   },
   crosshair: {
-    // Precision reticle: 1px solid white
+    // Native line/label rendering fully disabled -- superseded by
+    // CrosshairReticle (src/components/charts/crosshair-reticle.tsx), a
+    // DOM/SVG overlay each consumer renders as a sibling to <LwChartBase />.
+    // Per-series crosshairMarkerVisible dots are unaffected.
     mode: CrosshairMode.Normal,
-    vertLine: {
-      width: 1,
-      color: "#ffffff",
-      style: 0,            // solid
-      labelBackgroundColor: "rgba(22,28,38,0.90)",
-    },
-    horzLine: {
-      width: 1,
-      color: "#ffffff",
-      style: 0,
-      labelBackgroundColor: "rgba(22,28,38,0.90)",
-    },
+    vertLine: { visible: false, labelVisible: false },
+    horzLine: { visible: false, labelVisible: false },
   },
   timeScale: {
     borderColor: "rgba(255,255,255,0.11)",
