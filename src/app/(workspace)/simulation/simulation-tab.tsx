@@ -28,6 +28,7 @@ import {
 } from "dockview-react";
 import { useThemeStore } from "@/stores/theme-store";
 import { useWorkspacePanelsStore } from "@/stores/workspace-panels-store";
+import { useBondPositionsStore } from "@/stores/bond-positions-store";
 import type { ManagedPanelDef } from "@/lib/workspace-panels";
 import { DockviewTab } from "@/components/layout/dockview-tab";
 import { DockviewActions } from "@/components/layout/dockview-actions";
@@ -36,6 +37,7 @@ import {
   ResultsGridPanel,
   useSimulationDataStore,
 } from "@/features/simulation";
+import { buildSimulationInputs } from "./position-bridge";
 import "dockview-react/dist/styles/dockview.css";
 
 // Chart panels: SSR-disabled dynamic imports. Today they render staged placeholders;
@@ -144,14 +146,18 @@ function addDefaultPanels(api: DockviewApi) {
   });
 }
 
-/** Seeds the port's ambient inputs. Phase-3 stub: base date only, positions empty
- * (run stays disabled). S6 maps the target portfolio stores + market snapshot ->
- * SimulationInputs and resolves the two-backend /api/simulate origin. */
+/** S6 — feeds the port's ambient inputs from the target's real bond ledger
+ * (useBondPositionsStore) via buildSimulationInputs. Positions carry real pvbp/
+ * duration/entryYield, so the run is enabled whenever the bond ledger is non-empty.
+ * Swaps + daily shock matrix + IRS par curve are documented gaps (see position-bridge.ts).
+ * Two-backend origin: /api/simulate resolves via NEXT_PUBLIC_SIMULATION_API_BASE_URL
+ * (falls back to the shared API_BASE) — set it if the sim backend is a different origin. */
 function useSimulationInputsBridge() {
+  const bonds = useBondPositionsStore((s) => s.positions);
   const setInputs = useSimulationDataStore((s) => s.setInputs);
   useEffect(() => {
-    setInputs({ baseDate: new Date().toISOString().slice(0, 10) });
-  }, [setInputs]);
+    setInputs(buildSimulationInputs(bonds));
+  }, [bonds, setInputs]);
 }
 
 export function SimulationTab() {
