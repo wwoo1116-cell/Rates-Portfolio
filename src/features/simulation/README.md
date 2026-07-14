@@ -45,13 +45,16 @@ No streaming/websocket — a single request/response (Phase 0 runtime audit).
   in **S4/S5**, and the recharts → lightweight-charts/d3 rewrite in **S5** — not yet done.
 - **Phase 3:** ✅ dockview mount host + 4 panels + persistence (`simulation.layout.v1`) + `next/dynamic
   ssr:false` + min constraints + focus regions; route flag-switch with placeholder retained (§4.3).
-- **Phase 4 (in progress):** ✅ S2/S3 (Vitest + MSW), ✅ S4 (full Scenario Config input UI, port-wired,
-  restyled), ✅ S5 (recharts→lightweight-charts for curve preview + Total-Return trace).
-  Deferred to the S5 **visual-baseline** pass (Playwright, not yet set up — I can't see rendered output):
-  the 커브형/term-structure toggle + sector selector (tenor-axis → needs d3), rich hover tooltips, inline
-  legend chips, and the full source result tables (BOK 분해 / IRS 정산·대사 sticky grids) in Results.
-  Remaining: **S6** live input bridge (portfolio stores → `SimulationInputs`) + two-backend origin,
-  **S7** remove placeholder + enable by default, **S8** dedup.
+- **Phase 4:** ✅ S2/S3 (Vitest + MSW) · ✅ S4 (full Scenario Config input UI) · ✅ S5 (recharts→
+  lightweight-charts) · ✅ S6 (input bridge — real bond ledger `useBondPositionsStore` →
+  `SimulationInputs` via `app/(workspace)/simulation/position-bridge.ts`; two-backend origin via
+  `NEXT_PUBLIC_SIMULATION_API_BASE_URL`) · ✅ S7 (migrated screen is the sole route path; flag retired;
+  legacy files orphaned-not-deleted, pending WIP commit) · ✅ S8 (dedup review — no merge; see
+  `rates-simulator-main/docs/migration/s8-dedup-review.md`).
+  **Still open (needs a running app + backend, which I can't drive here):** the §4.2 **visual/interaction
+  validation** (Playwright, deferred) and these fidelity items — 커브형/term-structure toggle + sector
+  selector (tenor-axis → d3), rich hover tooltips, and the full source result tables (BOK 분해 / IRS
+  정산·대사 sticky grids); swap positions in the bridge (need backend-derived pvbp/duration).
 - **Phase 4:** move request-body assembly (incl. `generateShockCurves`) into the port so
   the screen only sets params; wire `<ScenarioSimulator>` to `useSimulationPort()`.
 - **S8:** dedup review of this slice's `types/portfolio.ts` vs the app's `@/types/portfolio`.

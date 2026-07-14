@@ -1,15 +1,16 @@
 import { SimulationTab } from "./simulation-tab";
-import { SimulationWorkspace } from "@/features/simulation/simulation-workspace";
 
 /**
- * §4.3 rollback: the legacy pricer-sandbox placeholder (SimulationWorkspace) is
- * RETAINED behind this flag, not deleted, until the S7 checkpoint suite is green.
- * Default = the migrated dockview screen (adjustment #3: replace the tab, don't append).
- * Set NEXT_PUBLIC_SIMULATION_V2=0 to instantly fall back to the placeholder. S7 deletes
- * the legacy path and this switch.
+ * S7 — the migrated dockview Simulation screen is now the sole path (placeholder
+ * removed from the route; `NEXT_PUBLIC_SIMULATION_V2` flag retired).
+ *
+ * The legacy pricer-sandbox files (features/simulation/{simulation-workspace,
+ * pricer-page,impact-grid,trade-entry}.tsx + stores/simulation-store.ts) are left
+ * ON DISK but orphaned (imported by nothing), NOT deleted — `pricer-page.tsx` carries
+ * uncommitted WIP, so physically removing them is left to a follow-up once that WIP is
+ * committed. Rollback now lives in git (this is on feat/simulation-migration), gated on
+ * your review since the §4.2 visual checkpoints aren't wired yet (Playwright deferred).
  */
-const USE_MIGRATED = process.env.NEXT_PUBLIC_SIMULATION_V2 !== "0";
-
 export default function SimulationPage() {
-  return USE_MIGRATED ? <SimulationTab /> : <SimulationWorkspace />;
+  return <SimulationTab />;
 }
