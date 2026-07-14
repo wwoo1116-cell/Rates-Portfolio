@@ -1,4 +1,7 @@
 allowBuilds:
+  # msw's postinstall only copies the browser service-worker (mockServiceWorker.js),
+  # which the simulation tests don't use — they run via msw/node's setupServer. Skip it.
+  msw: false
   sharp: true
   unrs-resolver: true
 onlyBuiltDependencies:
