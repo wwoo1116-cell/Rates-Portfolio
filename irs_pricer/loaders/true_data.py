@@ -146,3 +146,42 @@ def load_fixing_history_xlsx(data_dir: Path | str) -> dict[date, float]:
     if not history:
         raise ValueError(f"{XLSX_NAME}에서 CD91D 픽싱 이력을 찾을 수 없습니다.")
     return history
+
+
+def daily_shift(data_dir: Path | str) -> dict[str, float]:
+    """Return the day-over-day shift in basis points (latest row - previous row)
+    for each IRS tenor, plus CD91D.
+    Tenor keys match the standard bucket labels (e.g. '6M', '1Y', '3M' for CD91D)."""
+    indexed = _load_indexed_rows(data_dir)
+    if len(indexed) < 2:
+        return {}
+
+    dates = sorted(indexed.keys(), reverse=True)
+    latest_row = indexed[dates[0]]
+    prev_row = indexed[dates[1]]
+
+    shift: dict[str, float] = {}
+
+    # CD91D maps to 3M bucket
+    cd_latest = latest_row[_COL_CD_91D]
+    cd_prev = prev_row[_COL_CD_91D]
+    if cd_latest is not None and cd_prev is not None:
+        # Rates are in percentages (e.g. 2.92). Diff is %, so multiply by 100 for bps.
+        shift["3M"] = (cd_latest - cd_prev) * 100.0
+
+    for ty, tm, col in _IRS_TENORS:
+        val_latest = latest_row[col]
+        val_prev = prev_row[col]
+        if val_latest is not None and val_prev is not None:
+            if tm == 6:
+                label = "6M"
+            elif tm == 9:
+                label = "9M"
+            elif tm == 18:
+                label = "1.5Y"
+            else:
+                label = f"{ty}Y"
+            
+            shift[label] = (val_latest - val_prev) * 100.0
+
+    return shift

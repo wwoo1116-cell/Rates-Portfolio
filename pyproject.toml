@@ -17,6 +17,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "pymysql",
     "alembic",
+    "python-multipart",
 ]
 
 [tool.setuptools]

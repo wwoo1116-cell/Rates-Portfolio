@@ -29,6 +29,7 @@ from ..core.errors import CurveBootstrapError
 from ..db.connection_settings import DatabaseNotConfiguredError
 from .routers import (
     calendar,
+    credit_curve,
     db_settings,
     historical_pnl,
     market_data,
@@ -39,6 +40,8 @@ from .routers import (
     rate_history,
     spread_backtest,
     trades,
+    upload,
+    portfolio_analytics,
 )
 
 app = FastAPI(title="IRS Pricer API")
@@ -126,3 +129,6 @@ app.include_router(spread_backtest.router)
 app.include_router(npv_trace.router)
 app.include_router(db_settings.router)
 app.include_router(trades.router)
+app.include_router(upload.router)
+app.include_router(portfolio_analytics.router)
+app.include_router(credit_curve.router)

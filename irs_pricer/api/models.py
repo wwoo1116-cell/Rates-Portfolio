@@ -158,6 +158,26 @@ class PortfolioPositionIn(BaseModel):
     float_spread: float = 0.0
 
 
+class ParsedPositionOut(BaseModel):
+    instrument_type: Literal["bond", "irs"]
+    position_id: str
+    sector: str
+    book: str
+    start_date: date | None = None
+    maturity_date: date | None = None
+    notional: float | None = None
+    fixed_rate: float | None = None
+    pay_fixed: bool | None = None
+    float_spread: float | None = None
+    evaluation_amount: float | None = None
+    remaining_days: int | None = None
+    tenor_bucket: str | None = None
+    entry_yield: float | None = None
+    mtm_yield: float | None = None
+    duration: float | None = None
+    pvbp: float | None = None
+
+
 class TradeIn(BaseModel):
     """Explicit-date trade booking -- same shape as PortfolioPositionIn."""
 
@@ -305,6 +325,47 @@ class RateSpreadResponse(BaseModel):
     points: list[SpreadPointOut]
 
 
+# --- Credit-curve taxonomy / RV selector ---------------------------------
+
+class TaxonomySectorOut(BaseModel):
+    sector: str
+    ratings: list[str]  # empty for unrated sectors (국고채) and IRS
+    tenors: list[str]
+
+
+class InstrumentTaxonomyOut(BaseModel):
+    sectors: list[TaxonomySectorOut]
+
+
+class CreditSeriesLegIn(BaseModel):
+    sector: str
+    rating: str | None = None  # None/omitted for unrated sectors
+    tenor: str
+
+
+class CreditSeriesRequest(BaseModel):
+    legs: list[CreditSeriesLegIn]
+    start_date: date | None = None
+    end_date: date | None = None
+
+
+class CreditSeriesPointOut(BaseModel):
+    valuation_date: date
+    value: float
+
+
+class CreditSeriesResultOut(BaseModel):
+    sector: str
+    rating: str | None = None
+    tenor: str
+    points: list[CreditSeriesPointOut]
+    error: str | None = None  # set (with empty points) if this leg couldn't resolve
+
+
+class CreditSeriesResponse(BaseModel):
+    results: list[CreditSeriesResultOut]
+
+
 class BacktestPointOut(BaseModel):
     valuation_date: date
     spread_bp: float
@@ -447,6 +508,26 @@ class DbConnectionStatusOut(BaseModel):
 class DbConnectionTestResult(BaseModel):
     ok: bool
     message: str
+
+
+class FileUploadResult(BaseModel):
+    status: Literal["ready", "error"]
+    message: str | None = None
+    rows: int | None = None
+    min_date: date | None = None
+    max_date: date | None = None
+
+
+class MarketDataUploadResponse(BaseModel):
+    success: bool
+    irs_data: FileUploadResult
+    credit_matrix: FileUploadResult
+    bok_base_rate: FileUploadResult
+    portfolio: FileUploadResult
+    # Parsed from the portfolio file on success, empty otherwise. Not
+    # persisted server-side (no DB in this deployment) -- the frontend loads
+    # these into its own client-side manual-positions-store.ts.
+    positions: list[ParsedPositionOut] = Field(default_factory=list)
 
 
 def _to_snapshot(request) -> MarketSnapshot:

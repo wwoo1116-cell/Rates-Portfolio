@@ -18,9 +18,8 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from ..core.errors import NonBusinessDayError
-from ..core.conventions import to_ql_date
 from ..db import trace_repository, trade_repository
-from ..engine.context import managed_quantlib_env
+# QuantLib dependencies removed
 from ..engine.curve import build_curve
 from ..engine.instruments import VanillaSwap
 from ..engine.mtm_valuation import value_booked_trade
@@ -81,13 +80,24 @@ def compute_npv_trace(swap: VanillaSwap, start_date: date, end_date: date) -> Np
             skipped_dates.append(valuation_date)
             continue
 
-        with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-            curve = build_curve(snapshot)
-            result = value_booked_trade(swap, curve, fixings)
-            # DV01 (Fixed Leg BPS): computed directly from the already-evaluated
-            # fixed leg PV to avoid QuantLib 2nd-leg missing fixing errors (which
-            # occur when .fixedLegBPS() forces a full swap calculation).
-            delta_val = result.pv_fixed_leg / (swap.fixed_rate * 10000.0)
+        curve = build_curve(snapshot)
+        
+        current_float_rate = None
+        if fixings:
+            # We can use the fixing before or on valuation_date
+            past_fixings = {k: v for k, v in fixings.items() if k <= valuation_date}
+            if past_fixings:
+                current_float_rate = past_fixings[max(past_fixings.keys())]
+                
+        result = value_booked_trade(swap, curve, current_float_rate)
+        # DV01 (Fixed Leg BPS): computed directly from the already-evaluated
+        # fixed leg PV to avoid QuantLib 2nd-leg missing fixing errors (which
+        # occur when .fixedLegBPS() forces a full swap calculation). At
+        # fixed_rate == 0, pv_fixed_leg is also 0 (fixed leg PV scales
+        # linearly with the rate), so this is a 0/0 rather than a genuine
+        # zero-sensitivity swap -- reported as 0.0 since the annuity-based
+        # BPS isn't cheaply available here.
+        delta_val = result.pv_fixed_leg / (swap.fixed_rate * 10000.0) if swap.fixed_rate != 0 else 0.0
 
         if prev_result is not None:
             # Add any cashflows that paid out between prev_date and valuation_date
