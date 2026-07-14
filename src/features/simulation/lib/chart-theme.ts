@@ -17,6 +17,8 @@ import { resolveCssVar } from "@/lib/canvas-color";
 /** Source hardcoded hex → target token (var name) → literal fallback (SSR/first paint).
  * Fallbacks equal the live tokens.css values, which are byte-identical to the source. */
 export interface SimulationChartTheme {
+  /** Chart canvas background — matches the panel surface (--bg-surface). */
+  background: string;
   /** CartesianGrid stroke — was rgba(16,22,26,0.3). */
   grid: string;
   /** Axis line + tick label fill — was #8A9BA8. */
@@ -52,6 +54,7 @@ export function getSimulationChartTheme(): SimulationChartTheme {
   const accent = resolveCssVar("--accent", "#137CBD");
 
   return {
+    background: resolveCssVar("--bg-surface", "#202B33"),
     grid: resolveCssVar("--border-subtle", "rgba(16,22,26,0.30)"),
     axis: resolveCssVar("--fg-muted", "#8A9BA8"),
     tooltipBg: resolveCssVar("--bg-raised", "#30404D"),

@@ -14,8 +14,9 @@ point (Phase 3).
 | `store/` | `simulation-data-store.ts` (Zustand slice backing the port + cross-screen selectors) | ✅ ready, type-checked |
 | `hooks/` | `use-simulation.ts` (`useRunSimulation` mutation + `useSimulationPort`) | ✅ ready, type-checked |
 | `components/` | `scenario-simulator.tsx` (entry), `scenario-preview-chart.tsx` | ⏳ staged verbatim, `@ts-nocheck` (S5) |
-| `components/panels/` | `scenario-config` · `results-grid` · `curve-view` · `distribution-chart` (Phase 3 dockview panel bodies, port-driven) | ✅ live (charts staged for S5) |
-| `lib/` | `chart-theme.ts` (Phase 2 — chart colors from CSS-var tokens) | ✅ ready, type-checked |
+| `components/panels/` | `scenario-config` (S4 full input UI) · `results-grid` · `curve-view` · `distribution-chart` (S5 lightweight-charts) — port-driven | ✅ live |
+| `components/charts/` | `lw-line-chart.tsx` (S5 — slice-local lightweight-charts multi-line wrapper) | ✅ |
+| `lib/` | `chart-theme.ts` (chart colors from CSS-var tokens), `scenario-curves.ts` (S4 request assembly + tests), `scenario-preview.ts` (S5 preview path) | ✅ type-checked + unit-tested |
 
 **Mount host (app layer, not in slice):** `src/app/(workspace)/simulation/simulation-tab.tsx` composes the
 panels into the dockview tab (persistence `simulation.layout.v1`, `next/dynamic ssr:false` charts, min
@@ -42,10 +43,15 @@ No streaming/websocket — a single request/response (Phase 0 runtime audit).
   ✅ `lib/chart-theme.ts`; ✅ Tailwind config exposes `border-dim`/`sem-info-ghost`/`chart-*`; ✅ ESLint
   block C bans hex + arbitrary color in the slice. The actual component restyle (apply the map) happens
   in **S4/S5**, and the recharts → lightweight-charts/d3 rewrite in **S5** — not yet done.
-- **Phase 3 (this phase — mount mechanism):** ✅ dockview mount host + 4 panels + persistence
-  (`simulation.layout.v1`) + `next/dynamic ssr:false` + min constraints + focus regions; route flag-switch
-  with placeholder retained (§4.3); `next build` clean, `/simulation` prerenders, 0 SSR/hydration errors.
-  Chart panels are staged placeholders; full config inputs and result tables are not yet ported.
+- **Phase 3:** ✅ dockview mount host + 4 panels + persistence (`simulation.layout.v1`) + `next/dynamic
+  ssr:false` + min constraints + focus regions; route flag-switch with placeholder retained (§4.3).
+- **Phase 4 (in progress):** ✅ S2/S3 (Vitest + MSW), ✅ S4 (full Scenario Config input UI, port-wired,
+  restyled), ✅ S5 (recharts→lightweight-charts for curve preview + Total-Return trace).
+  Deferred to the S5 **visual-baseline** pass (Playwright, not yet set up — I can't see rendered output):
+  the 커브형/term-structure toggle + sector selector (tenor-axis → needs d3), rich hover tooltips, inline
+  legend chips, and the full source result tables (BOK 분해 / IRS 정산·대사 sticky grids) in Results.
+  Remaining: **S6** live input bridge (portfolio stores → `SimulationInputs`) + two-backend origin,
+  **S7** remove placeholder + enable by default, **S8** dedup.
 - **Phase 4:** move request-body assembly (incl. `generateShockCurves`) into the port so
   the screen only sets params; wire `<ScenarioSimulator>` to `useSimulationPort()`.
 - **S8:** dedup review of this slice's `types/portfolio.ts` vs the app's `@/types/portfolio`.
