@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Simplified "rising-rates lightbulb" for 16px tab strips: bulb silhouette
+       + ONE arrow (the original's three thin arrows alias to noise at 16px, and
+       any arrow exiting the rim reads as a gender symbol at this size, so the
+       arrow sits INSIDE the closed glass). Strokes thickened ~2.7x vs the
+       original's scale. Orange sampled from the owner asset (#F58220). -->
+  <g fill="none" stroke="#F58220" stroke-width="1.5">
+    <!-- glass -->
+    <circle cx="8" cy="6.4" r="4.7" stroke-width="1.6"/>
+    <!-- neck + screw cap: the two-bar base is what keys "lightbulb" -->
+    <path d="M 5.9 13.1 H 10.1" stroke-width="1.6"/>
+    <path d="M 6.7 15.2 H 9.3"/>
+    <!-- rising arrow, corner-style head as in the original -->
+    <path d="M 5.9 8.5 L 9.7 4.7"/>
+    <path d="M 7.9 4.7 H 9.7 V 6.5"/>
+  </g>
+</svg>
