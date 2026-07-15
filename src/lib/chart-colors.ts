@@ -106,6 +106,10 @@ export const SECTOR_ORDER: readonly SectorKey[] = [
  * mis-keyed sector reads as "unmapped", never as some other sector. */
 const UNKNOWN_KEY_COLOR = "#5C7080"; // --fg-dim
 
+/** y=0 baseline on P&L charts — recessive guide, not a data series. Canvas
+ * literal for the same reason as everything else in this file. */
+export const ZERO_LINE_COLOR = "#5C7080"; // --fg-dim
+
 const warnedKeys = new Set<string>();
 function warnUnknownKey(kind: string, key: string): void {
   if (process.env.NODE_ENV === "production" || warnedKeys.has(key)) return;

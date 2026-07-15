@@ -9,18 +9,21 @@
  * inter-market spreads across instruments -- replacing the old fixed toggle
  * row.
  *
- * The chart container is ALWAYS mounted regardless of loading/error state so
- * the lightweight-charts instance is never destroyed and re-created mid-session
- * (which would lose the subscribeClick registration). Clicking a date still
- * opens the PnL Trace dockview panel with that date's raw market point.
+ * Chart mechanics (series diffing, crosshair reticle, dual-axis snapping,
+ * click resolution) live in the canonical SeriesChart (S7 extraction); this
+ * host keeps only the data plumbing and the click ROUTING policy: clicking a
+ * spread line opens the Position sizer, anything else opens PnL Trace with
+ * that date's raw market point. Pills stay off — the InstrumentSelector's
+ * removable chips already fill that role on this panel.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { DockviewApi } from "dockview-react";
-import type { IChartApi, ISeriesApi, MouseEventParams } from "lightweight-charts";
-import { LineSeries } from "lightweight-charts";
-import { LwChartBase, rateFormatter } from "@/components/charts/lw-chart-base";
-import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
-import { paneOffsetX, seriesDistanceY, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
+import { rateFormatter } from "@/components/charts/lw-chart-base";
+import {
+  SeriesChart,
+  type SeriesChartClickContext,
+  type SeriesChartSeriesDef,
+} from "@/components/charts/series-chart";
 import { InstrumentSelector } from "@/components/rate-history/instrument-selector";
 import { useCreditCurveSeries, useCreditCurveTaxonomy, useMarketDataRange, useRateHistory } from "@/hooks/use-api";
 import {
@@ -40,26 +43,6 @@ const RATES_PANEL_ID = "home-rates-panel";
  * Trace behavior -- without a cap, a chart showing only spreads would route
  * EVERY click to the Position panel and make PnL Trace unreachable. */
 const SERIES_CLICK_RADIUS_PX = 24;
-
-/**
- * Which plotted series did the click land nearest, and how far away?
- *
- * lightweight-charts' click reports a time and a pixel point but not a series,
- * and this chart overlays several. seriesDistanceY resolves each candidate
- * through ITS OWN price scale (bp/left for spreads, %/right for outrights) --
- * the same shared rule snap-reticle's crosshair snapping uses.
- */
-function nearestSeriesAtClick(
-  param: MouseEventParams,
-  seriesMap: Map<string, ISeriesApi<"Line">>,
-): { id: string; dist: number } | null {
-  let best: { id: string; dist: number } | null = null;
-  for (const [id, series] of seriesMap) {
-    const hit = seriesDistanceY(param, series);
-    if (hit && (best == null || hit.dist < best.dist)) best = { id, dist: hit.dist };
-  }
-  return best;
-}
 
 // A couple of IRS outrights by default (resolve from rate-history immediately,
 // no credit fetch needed) so the chart isn't blank on first load.
@@ -101,31 +84,27 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
     [instruments, points, creditResults],
   );
 
-  const chartRef = useRef<IChartApi | null>(null);
-  const seriesMapRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
-  const prevIdsRef = useRef<string>("");
-  const [reticle, setReticle] = useState<
-    (CrosshairReticlePoint & { date?: string; paneWidth: number }) | null
-  >(null);
+  const chartSeries = useMemo<SeriesChartSeriesDef[]>(
+    () =>
+      builtSeries.map((b) => ({
+        id: b.id,
+        // Same string the pre-extraction series passed as its lw `title`, so
+        // the price-scale badge text is pixel-identical.
+        label: b.kind === "spread" ? `${b.label} (bp)` : b.label,
+        color: b.color,
+        data: b.lineData as SeriesChartSeriesDef["data"],
+        lineWidth: (b.kind === "spread" ? 1 : 2) as 1 | 2,
+        priceScaleId: b.priceScaleId as "left" | "right",
+        formatter: b.kind === "spread" ? spreadFormatter : rateFormatter,
+      })),
+    [builtSeries],
+  );
 
-  // onChartReady is mounted once with empty deps (re-registering subscribeClick
-  // would leak handlers), so anything the click needs is read through a ref.
-  const instrumentsRef = useRef(instruments);
-  useLayoutEffect(() => { instrumentsRef.current = instruments; }, [instruments]);
-
-  const pointsRef = useRef(points);
-  useLayoutEffect(() => { pointsRef.current = points; }, [points]);
-
-  const apiRef = useRef(api);
-  useLayoutEffect(() => { apiRef.current = api; }, [api]);
-
-  const onChartReady = useCallback((chart: IChartApi) => {
-    chartRef.current = chart;
-    seriesMapRef.current = new Map();
-    chart.subscribeClick((param) => {
-      if (!param.time || !apiRef.current) return;
-      const date = String(param.time);
-      const api = apiRef.current;
+  // SeriesChart keeps the latest onClick in a ref, so this callback can read
+  // fresh state directly — no instrumentsRef/pointsRef/apiRef dance.
+  const handleClick = useCallback(
+    ({ date, nearest }: SeriesChartClickContext) => {
+      if (!date || !api) return;
       const reference = api.getPanel(RATES_PANEL_ID);
       const position = reference
         ? ({ referencePanel: RATES_PANEL_ID, direction: "right" } as const)
@@ -134,10 +113,9 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
       // Clicking ON a SPREAD line (within the hit radius) opens the position
       // sizer for that spread at that date (B4); everything else -- outright
       // lines and empty chart area -- keeps the original raw-market PnL Trace.
-      const nearest = nearestSeriesAtClick(param, seriesMapRef.current);
       const clicked =
         nearest && nearest.dist <= SERIES_CLICK_RADIUS_PX
-          ? instrumentsRef.current.find((i) => i.id === nearest.id)
+          ? instruments.find((i) => i.id === nearest.id)
           : undefined;
       if (clicked?.kind === "spread") {
         api.getPanel(SPREAD_POSITION_PANEL_ID)?.api.close();
@@ -151,7 +129,7 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
         return;
       }
 
-      const point = pointsRef.current.find((p) => p.valuation_date === date);
+      const point = points.find((p) => p.valuation_date === date);
       if (!point) return;
       api.getPanel(PNL_TRACE_PANEL_ID)?.api.close();
       api.addPanel({
@@ -161,72 +139,9 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
         params: { point },
         position,
       });
-    });
-
-    // Crosshair marker snapped to the nearest series' data point, each via its
-    // own price scale (see snap-reticle.ts) so bp/left and %/right series stay
-    // pixel-aligned on this dual-axis chart.
-    chart.subscribeCrosshairMove((params: MouseEventParams) => {
-      if (!params.point) {
-        setReticle(null);
-        return;
-      }
-      const date = params.time ? String(params.time) : undefined;
-      const snapped = snapReticleToNearestSeries(chart, params, seriesMapRef.current.values());
-      const p = snapped ?? { x: params.point.x, y: params.point.y };
-      setReticle({ x: p.x, y: p.y, date, paneWidth: paneOffsetX(chart) + chart.timeScale().width() });
-    });
-  }, []);
-
-  // One effect drives the whole multi-series overlay: diff the live
-  // lightweight-charts series against the built list (add new, drop removed,
-  // update data), set per-series axis + color + format, and toggle the left
-  // (bp) axis based on whether any spread is present.
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart) return;
-    const seriesMap = seriesMapRef.current;
-    const wantIds = new Set(builtSeries.map((b) => b.id));
-
-    // Remove series no longer selected.
-    for (const [id, series] of seriesMap) {
-      if (!wantIds.has(id)) {
-        chart.removeSeries(series);
-        seriesMap.delete(id);
-      }
-    }
-
-    // Add / update each selected series.
-    for (const b of builtSeries) {
-      let series = seriesMap.get(b.id);
-      if (!series) {
-        series = chart.addSeries(LineSeries, {
-          color: b.color,
-          lineWidth: b.kind === "spread" ? 1 : 2,
-          title: b.kind === "spread" ? `${b.label} (bp)` : b.label,
-          priceScaleId: b.priceScaleId,
-          priceFormat: {
-            type: "custom",
-            formatter: b.kind === "spread" ? spreadFormatter : rateFormatter,
-          },
-        });
-        seriesMap.set(b.id, series);
-      }
-      series.setData(b.lineData as never);
-    }
-
-    // Left (bp) axis visible only while at least one spread is plotted.
-    const hasSpread = builtSeries.some((b) => b.priceScaleId === "left");
-    chart.priceScale("left").applyOptions({ visible: hasSpread });
-
-    // Refit only when the SET of instruments changes (not on every data
-    // refresh), so a user's manual zoom isn't reset when credit data arrives.
-    const idsKey = builtSeries.map((b) => b.id).sort().join("|");
-    if (idsKey !== prevIdsRef.current) {
-      prevIdsRef.current = idsKey;
-      chart.timeScale().fitContent();
-    }
-  }, [builtSeries]);
+    },
+    [api, instruments, points],
+  );
 
   const addInstrument = useCallback((inst: SelectedInstrument) => {
     setInstruments((prev) => (prev.some((p) => p.id === inst.id) ? prev : [...prev, inst]));
@@ -258,8 +173,7 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
 
       {/* Chart container is ALWAYS in the DOM — error/loading shown as overlay */}
       <div className="relative min-h-0 flex-1">
-        <LwChartBase onChartReady={onChartReady} />
-        <CrosshairReticle point={reticle} date={reticle?.date} paneWidth={reticle?.paneWidth} />
+        <SeriesChart series={chartSeries} onClick={handleClick} />
 
         {isLoading && !isError && (
           <div

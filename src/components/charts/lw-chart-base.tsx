@@ -72,6 +72,10 @@ export interface LwChartBaseProps {
   style?: React.CSSProperties;
   className?: string;
   formatter?: (price: number) => string;
+  /** Mount-time overrides merged over BASE_CHART_OPTIONS (e.g. a host whose
+   * canvas must sit on the canonical --bg-surface rather than the base
+   * background). Read once at mount, like onChartReady. */
+  options?: DeepPartial<ChartOptions>;
 }
 
 /**
@@ -82,7 +86,7 @@ export interface LwChartBaseProps {
  * - ResizeObserver for responsive layout
  */
 export const LwChartBase = forwardRef<LwChartHandle, LwChartBaseProps>(
-  ({ onChartReady, style, className, formatter }, ref) => {
+  ({ onChartReady, style, className, formatter, options }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef     = useRef<IChartApi | null>(null);
 
@@ -102,6 +106,7 @@ export const LwChartBase = forwardRef<LwChartHandle, LwChartBaseProps>(
       const chart = createChart(container, {
         ...BASE_CHART_OPTIONS,
         ...(formatter ? { localization: { ...BASE_CHART_OPTIONS.localization, priceFormatter: formatter } } : {}),
+        ...(options ?? {}),
         width:  container.clientWidth,
         height: container.clientHeight,
       });
