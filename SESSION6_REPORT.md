@@ -6,13 +6,19 @@ with MySQL force-disabled, off `Data/` (True Data.xlsx through 2026-07-15).
 
 ## 0. Sequencing precondition (Session 2)
 
-**Neither stated precondition held cleanly; proceeded after verifying the intent was satisfied.**
-`SESSION2_REPORT.md` does not exist anywhere under `Rates Portfolio/`, but Session 2 *was*
-dispatched and its work is merged: commit `951a58c` "fix(portfolio-loader): … (S2)" landed on `v2`
-at 13:21 KST today, SESSION4_REPORT §2 records S1/S3 integration on top of it, and at session
-start (15:05 KST) the backend tree was clean except the S5 diagnosis artifacts — no concurrent
-edits in the shared services layer. Assumption proceeded on: **Session 2 completed without writing
-its report file.** Flagged as an open question (§9).
+**Neither stated precondition held cleanly; proceeded after verifying the main tree was isolated.**
+`SESSION2_REPORT.md` does not exist anywhere under `Rates Portfolio/`. Session 2 *was* dispatched
+and is in fact **still active during this session** — verified by the second executor (§11): one
+S2 slice is merged on `v2` (`951a58c` "fix(portfolio-loader): … (S2)", 13:21 KST), and S2's
+remaining work is running in the **`wt-s2-be` git worktree** on branch `s2/home-analytics`
+(unmerged tip `5684094` "feat(analytics): period PnL (WTD/MTD/YTD)…", with its own uvicorn on
+`:8002`). So the strict "not concurrent" precondition was violated by the orchestration, but the
+worktree isolates it: the main tree's services layer had no concurrent edits, and the conflict is
+deferred to S2's merge. **Merge-time watch item:** this session changed
+`services/portfolio_analytics_service.py` on `v2` (`_swap_pnl` now returns
+`(legs, fixing_warnings)`; `build_book_daily_pnl` surfaces `fixing_warnings`), and S2's branch
+extends the same module with period-PnL analytics — expect a textual conflict whose correct
+resolution keeps both.
 
 ## 1. Verdict and headline numbers
 
@@ -235,10 +241,9 @@ live discount/accrual PnL and the tooltip decays instead of freezing.
 
 ## 9. Open questions and adjacent defects (observed, deliberately not fixed)
 
-1. **Session 2's report is missing** while its commit (`951a58c`) is merged — proceeded assuming
-   S2 completed; if S2 is in fact still open somewhere, its scope (portfolio loader) is disjoint
-   from this session's diff except `portfolio_analytics_service.py`, which was clean before I
-   touched it.
+1. **Session 2 is still open** (no report; live worktree `wt-s2-be` on `s2/home-analytics`, see
+   §0) — its eventual merge must reconcile `portfolio_analytics_service.py` with this session's
+   `fixing_warnings` threading. Until S2 lands, the `v2` copy of that module is the corrected one.
 2. **KRD/PVBP stub ignores the fixing** (`engine/risk.py::_krd_args` derives
    `current_float_rate_pct` from the forward; `price_portfolio_delta` ignores `fixings` by design,
    pinned by `test_delta_is_independent_of_fixings`). Sensitivities are barely affected (a fixed
@@ -284,6 +289,30 @@ live discount/accrual PnL and the tooltip decays instead of freezing.
 | `d7330f2` | T1 — decimal contract at the engine boundary + unit-guard tests |
 | `8305d73` | T2 — engine/fixings.py reset-date selection, warnings surfaced, services rewired |
 | `a3fe691` | T3 — bump-reval DV01 replacing the annuity proxy |
-| `149ac1b` | T4 capture script + before/after artifacts (committed concurrently by the owner while this session ran — the repo's known concurrent-session pattern; contents match this session's captures) |
+| `149ac1b` | T4 capture script + before/after artifacts — committed by the **second S6 executor** (§11), not the owner: it fixed the capture script for the T2 tuple return, ran the post-fix capture, and verified the identities/negative controls independently |
 | `219addd` | T5 — regression matrix + adapted repro script + post-fix dump |
 | `a6aa1b7` | T4 — impact quantification + SESSION6_REPORT.md |
+| `5127036` | ledger amendment for `149ac1b` (superseded by §11's account) |
+
+## 11. Execution note — this session ran twice, concurrently
+
+The owner dispatched the Session 6 prompt to **two** Claude Code instances: the first at ~15:00
+KST (which produced T1–T3, T5, and this report), and a second at ~15:25 into a fresh context.
+The second executor detected the first mid-T2 (live mtime progression on `mtm_valuation.py` /
+`mtm_service.py` / `portfolio_service.py` plus the T1 commit), **stood down from writing** to
+avoid corrupting a live sibling's work, and supervised via a filesystem/commit monitor. On the
+owner's mid-run instruction ("restart from task 4") it took over Task 4 — commit `149ac1b` and
+the `after` capture are its work — then, finding the first executor had concurrently completed
+T5 (`219addd`), reverted to independent verification rather than duplicate execution.
+
+Practical consequence for the deliverable: every load-bearing number in this report was produced
+or re-derived **twice, independently** — the full suite (278 passed + 4 xfailed) was run by both
+executors, the dashboard identities and bond negative controls were checked from both the `.txt`
+captures and the raw JSON, the 7Y −23,947,945 convention delta was derived by both, and the
+PVBP/hedged-duration zero-delta was independently traced to the fixings-free
+`price_portfolio_delta` path by each. Discrepancies found by the cross-check and fixed in place:
+the capture script's stale `_swap_pnl` call (fixed in `149ac1b`) and this report's §0/§10 claims
+about Session 2 and the `149ac1b` attribution (corrected in this commit). This section was
+written by the second executor; the double dispatch is recorded so future sessions treat
+same-prompt siblings as a real possibility (check for live mtime progression before assuming
+uncommitted work is abandoned).
