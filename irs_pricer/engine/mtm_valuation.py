@@ -1,6 +1,24 @@
 ﻿"""
 Mark-to-market valuation of a historically booked VanillaSwap.
 Rewritten using quant_engine's IRS_Trade logic.
+
+UNIT CONVENTION -- DECIMAL AT THIS BOUNDARY (enforced here, not just documented)
+--------------------------------------------------------------------------------
+Every rate that crosses into this module is an annualized DECIMAL fraction
+(0.0251 == 2.51%): the loaders convert workbook percents to decimal exactly
+once (loaders/true_data.py::load_fixing_history_xlsx et al.), the curve
+consumes decimal par rates (quant_engine.bootstrap_zero_curve), and the CD
+fixing argument here is a decimal taken straight from
+market_data_service.load_fixings(). Percent exists only inside quant_engine's
+`*_pct` arguments, and VanillaSwap.to_irs_trade() performs that single
+decimal->percent conversion (fixed_rate * 100).
+
+Do NOT add a /100 or *100 to any rate in this module. The 2026-07 PnL-Trace
+cliff (DIAG_PNL_TRACE.md) was exactly a second /100 applied here to an
+already-decimal CD fixing, which crushed the floating stub ~100x and silently
+corrupted every MtM/PnL surface downstream. tests/test_unit_guard.py pins the
+contract from both sides (a double division AND a missing division each move
+the settlement by ~100x and fail it).
 """
 
 from __future__ import annotations
@@ -38,7 +56,12 @@ class MTMResult:
     cashflows: list[CashFlowDetail]
 
 
-def value_booked_trade(swap: VanillaSwap, curve: CurveBundle, current_float_rate: float | None = None) -> MTMResult:
+def value_booked_trade(
+    swap: VanillaSwap, curve: CurveBundle, current_float_rate_decimal: float | None = None
+) -> MTMResult:
+    """Revalue `swap` on `curve`. `current_float_rate_decimal` is the current
+    floating-period CD fixing as an annualized DECIMAL (0.0251 == 2.51%) --
+    see the module docstring; None falls back to the curve's own forward."""
     irs_trade = swap.to_irs_trade(curve.valuation_date)
     val_date = curve.valuation_date
     zc = curve.yield_curve
@@ -49,12 +72,14 @@ def value_booked_trade(swap: VanillaSwap, curve: CurveBundle, current_float_rate
 
     first_i = rem[0]
     t_next = max((irs_trade.pay_dates[first_i] - val_date).days / 365.0, 1.0 / 365.0)
-    
-    if current_float_rate is None:
-        current_float_rate = forward_rate_simple(0.0, t_next, zc) * 100.0
-        
+
+    if current_float_rate_decimal is None:
+        current_float_rate_decimal = forward_rate_simple(0.0, t_next, zc)
+
+    # IRS_Trade carries the fixed rate in percent (quant_engine's *_pct
+    # discipline); this is the one sanctioned percent->decimal conversion here.
     fixed_rate = irs_trade.fixed_rate_pct / 100.0
-    float_rate0 = current_float_rate / 100.0
+    float_rate0 = current_float_rate_decimal
     
     cashflows: list[CashFlowDetail] = []
     
