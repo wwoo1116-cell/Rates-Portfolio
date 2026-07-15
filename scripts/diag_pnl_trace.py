@@ -1,5 +1,10 @@
 """
-DIAGNOSIS ONLY -- PnL Trace first-reset valuation cliff.
+PnL Trace repro harness -- originally the Session-5 diagnosis script for the
+first-reset valuation cliff; adapted in Session 6 to the corrected engine API
+(value_booked_trade now takes the whole fixings dict; selection is
+reset-date-based in engine/fixings.py) so the same sections re-run post-fix.
+Diff scripts/diag_pnl_trace_out.txt (buggy baseline, pre-fix) against
+scripts/diag_pnl_trace_out_postfix.txt to see the valuation impact.
 
 Headless reproduction of the UI runs (no HTTP, no MySQL -- the DB path is
 force-disabled below so everything reads from Data/True Data.xlsx exactly
@@ -8,7 +13,7 @@ like a fresh install).
 Fixture (Run C): trade 2025-04-15, maturity 2025-10-15, pay-fixed 3%,
 notional 10bn KRW. Also reproduces Run A / Run B / 7Y for cross-checking.
 
-Usage:  python scripts/diag_pnl_trace.py > scripts/diag_pnl_trace_out.txt
+Usage:  python scripts/diag_pnl_trace.py > scripts/diag_pnl_trace_out_postfix.txt
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ from irs_pricer.services import market_data_service as mds
 mds._db_market_data_unavailable = True
 
 from irs_pricer.engine.curve import build_curve
+from irs_pricer.engine.fixings import select_fixing
 from irs_pricer.engine.instruments import VanillaSwap
 from irs_pricer.engine.mtm_valuation import value_booked_trade
 from irs_pricer.engine.quant_engine import (
@@ -88,14 +94,17 @@ def dump_valuation(swap: VanillaSwap, val_date: date, fixings: dict[date, float]
           + f"  | shortest par node T={min(t for t, _ in curve.par_rates):.5f}")
 
     irs = swap.to_irs_trade(val_date)
-    # what value_booked_trade will actually use as the current-stub rate
-    if raw is not None:
-        used_pct_label = f"current_float_rate={raw!r} passed AS-IS; engine does /100 -> float_rate0={raw/100.0:.6f} (decimal)"
-    else:
-        used_pct_label = "current_float_rate=None -> engine computes forward*100 (percent) itself"
-    print(f"[stub  ] {used_pct_label}")
+    # POST-FIX: the whole fixings dict goes to the engine; each period fixes
+    # at F(R) = reset - 1 Seoul BD (engine/fixings.py). The valuation-date
+    # ffill above is printed only to show what the OLD selection would have
+    # used.
+    print(f"[stub  ] old val-date ffill would have used {raw!r}; "
+          f"engine now resolves per-period reset-date fixings itself")
 
-    res = value_booked_trade(swap, curve, raw)
+    res = value_booked_trade(swap, curve, fixings)
+    for fr in res.fixing_resolutions:
+        print(f"[fixing] reset={fr.reset_date} F(R)={fr.fixing_date} -> "
+              f"{fr.resolved_date} rate={fr.rate!r} exact={fr.is_exact}")
 
     print(f"\n{'leg':8} {'accr_start':>10} {'accr_end':>10} {'pay_date':>10} {'adj?':>5} "
           f"{'dcf':>8} {'rate_used':>10} {'known':>5} {'cashflow':>16} {'DF(t_pay)':>10} {'PV':>16}")
@@ -110,15 +119,15 @@ def dump_valuation(swap: VanillaSwap, val_date: date, fixings: dict[date, float]
     print(f"\n  pv_fixed_leg={res.pv_fixed_leg:16,.0f}   pv_floating_leg={res.pv_floating_leg:16,.0f}")
     print(f"  dirty_npv   ={res.dirty_npv:16,.0f}   clean_npv     ={res.clean_npv:16,.0f}   accrued={res.accrued_interest:14,.0f}")
     delta = res.pv_fixed_leg / (swap.fixed_rate * 10000.0) if swap.fixed_rate else 0.0
-    print(f"  tooltip DV01 (pv_fixed_leg/(rate*1e4)) = {delta:14,.0f} KRW/bp")
+    print(f"  OLD proxy DV01 (pv_fixed_leg/(rate*1e4)) = {delta:14,.0f} KRW/bp  "
+          f"(tooltip now reports bump-reval; see DV01 CHECK section)")
 
-    # -- counterfactuals ----------------------------------------------------
-    if raw is not None:
-        res_pct = value_booked_trade(swap, curve, raw * 100.0)  # fixing passed as PERCENT (what engine expects)
-        res_fwd = value_booked_trade(swap, curve, None)         # engine's own forward fallback
-        print(f"  [counterfactual] dirty if fixing passed as PERCENT ({raw*100.0:.4f}): {res_pct.dirty_npv:16,.0f}")
-        print(f"  [counterfactual] dirty if fixing=None (forward fallback)      : {res_fwd.dirty_npv:16,.0f}")
-        print(f"  => unit-mismatch impact on dirty_npv: {res.dirty_npv - res_pct.dirty_npv:16,.0f}")
+    # -- counterfactual -----------------------------------------------------
+    # The percent/double-division counterfactuals of the diagnosis run are no
+    # longer expressible: the engine consumes the decimal store verbatim.
+    res_fwd = value_booked_trade(swap, curve, None)  # forward-only fallback
+    print(f"  [counterfactual] dirty if fixings=None (forward fallback): {res_fwd.dirty_npv:16,.0f}")
+    print(f"  => fixing-vs-forward impact on dirty_npv: {res.dirty_npv - res_fwd.dirty_npv:16,.0f}")
     return res
 
 
@@ -164,7 +173,7 @@ def main() -> None:
     print(f"n={len(fixings)}  range=[{fdates[0]} .. {fdates[-1]}]")
     sample = fdates[len(fdates)//2]
     print(f"sample: fixings[{fdates[-1]}]={fixings[fdates[-1]]!r}  fixings[{sample}]={fixings[sample]!r}")
-    print("UNIT CHECK: values ~0.02-0.04 => DECIMAL. mtm_valuation.value_booked_trade divides by 100 again.")
+    print("UNIT CHECK: values ~0.02-0.04 => DECIMAL. POST-FIX: the engine consumes the decimal store verbatim.")
 
     avail = mds.list_available_dates()
     print(f"\navailable market dates: n={len(avail)} range=[{avail[0]} .. {avail[-1]}]")
@@ -191,8 +200,8 @@ def main() -> None:
     curve_u, curve_v = build_curve(snap_u), build_curve(snap_v)
     _, fix_u = fixing_lookup(fixings, u)
     _, fix_v = fixing_lookup(fixings, v)
-    res_u = value_booked_trade(runC, curve_u, fix_u)
-    res_v = value_booked_trade(runC, curve_v, fix_v)
+    res_u = value_booked_trade(runC, curve_u, fixings)
+    res_v = value_booked_trade(runC, curve_v, fixings)
 
     credits = 0.0
     print("cashflows credited on v (from prev_result=res_u, payment_date <= v):")
@@ -210,19 +219,19 @@ def main() -> None:
     print(f"  daily_pnl(v) = dirty(v) + credits - dirty(u) = {daily:16,.0f}")
     print(f"  service's own daily_pnl({v}) = {pts[v].daily_pnl:16,.0f}   (must match)")
 
-    # tie the jump to the unit-mismatch term
-    t_next_v = (irsC.pay_dates[1] - v).days / 365.0
-    df_v = df_linear_rate(t_next_v, curve_v.yield_curve)
-    alpha1 = irsC.accruals[1]
-    print(f"\n  error-term prediction:")
-    print(f"    (a) missing float CREDIT: alpha0={irsC.accruals[0]:.6f}, fixing_used(u)={fix_u!r} -> credited N*({fix_u}/100)*a0")
-    print(f"        credited float = {1e10*(fix_u/100.0)*irsC.accruals[0]:16,.0f}   vs true N*fix*a0 = {1e10*fix_u*irsC.accruals[0]:16,.0f}")
-    print(f"    (b) new stub mispricing on v: N*fix(v)*a1*DF = 10bn*{fix_v}*{alpha1:.6f}*{df_v:.6f}")
-    print(f"        = {1e10*fix_v*alpha1*df_v:16,.0f}  (this PV goes missing from dirty(v))")
-    cf_fixed_pay = 1e10 * 0.03 * irsC.accruals[0]
-    true_credit = 1e10 * (fix_u - 0.03) * irsC.accruals[0]
-    print(f"    true net settlement would be N*(fix-3%)*a0 = {true_credit:16,.0f}")
-    print(f"    bug net settlement          = {credits:16,.0f}")
+    # POST-FIX: settlement identity against the reset-date fixing convention.
+    r1 = irsC.start_date  # first period's reset date
+    fr1 = select_fixing(fixings, r1, u)
+    print(f"\n  settlement identity (F(R) convention):")
+    print(f"    reset R1={r1} -> F(R1)={fr1.fixing_date} -> fixing {fr1.rate!r} "
+          f"(exact={fr1.is_exact})")
+    true_float_credit = 1e10 * fr1.rate * irsC.accruals[0]
+    credited_float = next(cf.cashflow for cf in res_u.cashflows
+                          if cf.leg == "floating" and cf.payment_date <= v)
+    print(f"    N*fix(F(R1))*a0 = {true_float_credit:16,.0f}   credited float = {credited_float:16,.0f}"
+          f"   diff = {credited_float - true_float_credit:.2f}")
+    print(f"    net settlement N*(fix-3%)*a0 = {1e10*(fr1.rate-0.03)*irsC.accruals[0]:16,.0f}"
+          f"   (old val-date ffill would have used {fix_u!r})")
 
     # ── freeze mechanism ───────────────────────────────────────────────────
     hr("RUN C -- POST-CLIFF 'FREEZE' (daily PnL after first pay date)")
@@ -247,22 +256,18 @@ def main() -> None:
             continue
         snap = mds.load_snapshot(d)
         curve = build_curve(snap)
-        _, fx = fixing_lookup(fixings, d)
-        res = value_booked_trade(runB, curve, fx)
-        delta = res.pv_fixed_leg / (runB.fixed_rate * 10000.0)
-        # true DV01: rebuild curve with all par rates +1bp, keep the (broken) stub fixing input identical
+        res = value_booked_trade(runB, curve, fixings)
+        proxy = res.pv_fixed_leg / (runB.fixed_rate * 10000.0)
+        # the tooltip's new definition: all par nodes +1bp, re-bootstrap,
+        # revalue with the same fixings (date-based selection holds them
+        # constant across the bump), DV01 = -(NPV_up - NPV_base).
         bumped = type(snap)(valuation_date=snap.valuation_date, cd_rate=snap.cd_rate + 1e-4,
                             swap_quotes=[type(q)(tenor_years=q.tenor_years, rate=q.rate + 1e-4,
                                                  tenor_months=q.tenor_months) for q in snap.swap_quotes],
                             on_rate=(snap.on_rate + 1e-4) if snap.on_rate is not None else None)
-        res_up = value_booked_trade(runB, build_curve(bumped), fx)
+        res_up = value_booked_trade(runB, build_curve(bumped), fixings)
         true_dv01 = -(res_up.dirty_npv - res.dirty_npv)
-        # and the true DV01 of a CORRECTLY priced swap (fixing in percent)
-        res_ok = value_booked_trade(runB, curve, fx * 100.0)
-        res_ok_up = value_booked_trade(runB, build_curve(bumped), fx * 100.0)
-        true_dv01_ok = -(res_ok_up.dirty_npv - res_ok.dirty_npv)
-        print(f"{d}: tooltip delta={delta:12,.0f} | bump-reval DV01 (buggy stub)={true_dv01:12,.0f} | "
-              f"bump-reval DV01 (percent stub)={true_dv01_ok:12,.0f}")
+        print(f"{d}: OLD proxy delta={proxy:12,.0f} | bump-reval DV01 (now the tooltip)={true_dv01:12,.0f}")
 
     # ── Runs A & B full traces ─────────────────────────────────────────────
     runA = VanillaSwap(tenor_years=0.5, notional=1e10, fixed_rate=0.03, pay_fixed=True,
@@ -285,30 +290,30 @@ def main() -> None:
     res7 = trace_and_report("7Y (UI: 'no cliff', peak +473.7m, final -1,070.43m)",
                             run7, date(2019, 5, 28), date(2026, 5, 28), show_all_crossings=True)
 
-    # counterfactual 7Y: same loop but fixing passed as PERCENT
-    hr("7Y COUNTERFACTUAL -- same trace with fixing passed as percent (unit bug fixed)")
-    window = [d for d in avail if date(2019, 5, 28) <= d <= date(2026, 5, 28)]
-    cum, prev_total, cum_cf, prev_res = 0.0, None, 0.0, None
-    firsts = {}
-    for vd in window:
-        try:
-            snap = mds.load_snapshot(vd)
-        except Exception:
+    # POST-FIX: the primary path above IS the corrected trace. Reconcile it
+    # against the diagnosis's +500,828,297 counterfactual, which fixed the
+    # UNITS but kept the OLD selection (stub re-fixed daily off the
+    # valuation-date CD => each settlement credited at ~the period-END print).
+    # The desk convention credits at the period-START print fix(F(R_k)); the
+    # analytic difference is sum_k N*(fix(F(R_k)) - fix(F(pay_k)))*alpha_k.
+    hr("7Y -- selection reconciliation vs the diagnosis's corrected-units counterfactual (+500,828,297)")
+    DIAG_COUNTERFACTUAL = 500_828_297.0
+    sel_delta = 0.0
+    last7 = res7.points[-1].valuation_date
+    for k, pay in enumerate(irs7.pay_dates):
+        if pay > last7:
             continue
-        curve = build_curve(snap)
-        _, fx = fixing_lookup(fixings, vd)
-        res = value_booked_trade(run7, curve, fx * 100.0 if fx is not None else None)
-        if prev_res is not None:
-            for cf in prev_res.cashflows:
-                if cf.payment_date <= vd:
-                    s = (-1.0 if run7.pay_fixed else 1.0) if cf.leg == "fixed" else (1.0 if run7.pay_fixed else -1.0)
-                    cum_cf += s * (cf.cashflow or 0.0)
-        total = res.dirty_npv + cum_cf
-        if prev_total is not None:
-            cum += total - prev_total
-        prev_total, prev_res = total, res
-    print(f"7Y corrected-units final cum = {cum:,.0f}  (buggy path final = {res7.points[-1].cumulative_pnl:,.0f})")
-    print(f"difference attributable to the unit bug across all resets = {res7.points[-1].cumulative_pnl - cum:,.0f}")
+        reset = irs7.pay_dates[k - 1] if k > 0 else irs7.start_date
+        f_start = select_fixing(fixings, reset, last7)
+        f_end = select_fixing(fixings, pay, last7)  # ~ the print the old loop credited
+        if f_start and f_end and f_start.rate is not None and f_end.rate is not None:
+            sel_delta += 1e10 * (f_start.rate - f_end.rate) * irs7.accruals[k]
+    measured = res7.points[-1].cumulative_pnl
+    print(f"measured 7Y final cum (corrected engine)             = {measured:,.0f}")
+    print(f"diagnosis counterfactual (val-date selection)        = {DIAG_COUNTERFACTUAL:,.0f}")
+    print(f"difference                                           = {measured - DIAG_COUNTERFACTUAL:,.0f}")
+    print(f"analytic start-vs-end-print settlement delta         = {sel_delta:,.0f}")
+    print("(the two should be the same order; residual = stub-marking differences between resets)")
 
     # ── H2 sanity: curve coverage below shortest node ──────────────────────
     hr("H2 SANITY -- sub-3M interpolation on cliff dates (must be smooth, no 0/NaN)")
