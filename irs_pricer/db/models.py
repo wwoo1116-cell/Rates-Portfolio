@@ -131,6 +131,17 @@ class MarketData(Base):
         ),
         Index("idx_market_data_date", "valuation_date"),
         Index("idx_market_data_tenor", "tenor_unit", "tenor_count"),
+        # repository.get_cd_fixing_history() filters on instrument_type alone
+        # (the whole CD91D history, every date). No other index can serve that:
+        # uq_market_data does contain instrument_type but leads with
+        # valuation_date, and a composite index is only usable on a leftmost
+        # prefix -- so the query fell back to a full table scan of every quote
+        # ever loaded (~64k rows at 4,000 dates x ~16 tenors, and growing daily).
+        # Verified via EXPLAIN: "SCAN market_data" before, "SEARCH market_data
+        # USING INDEX idx_market_data_type_date" after.
+        # valuation_date is the second column because the fixing history is
+        # consumed date-ordered, so this also supplies the sort.
+        Index("idx_market_data_type_date", "instrument_type", "valuation_date"),
         ForeignKeyConstraint(
             ["tenor_unit", "tenor_count"],
             ["tenor_pillar.tenor_unit", "tenor_pillar.tenor_count"],

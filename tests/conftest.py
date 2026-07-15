@@ -25,7 +25,24 @@ from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
+from irs_pricer.core import ttl_cache
 from irs_pricer.db import models, repository, trace_repository
+
+
+@pytest.fixture(autouse=True)
+def _isolate_caches():
+    """Reset the process-global TTL cache around every test.
+
+    market_data_service's load_snapshot/load_fixings/list_available_dates are
+    TTL-cached, and these tests deliberately swap the underlying source
+    (monkeypatched DB vs Excel) between cases. Without this, one test's cached
+    snapshot answers the next test's differently-mocked call and the failure
+    lands somewhere unrelated. Autouse because it's needed by any test that
+    touches market data, directly or transitively.
+    """
+    ttl_cache.clear()
+    yield
+    ttl_cache.clear()
 
 
 @compiles(BIGINT, "sqlite")

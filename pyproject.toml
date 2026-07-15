@@ -7,7 +7,12 @@ name = "irs-pricer"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
-    "QuantLib",
+    # Pricing engine: hand-rolled Full-Revaluation (quant_engine.py). QuantLib
+    # fully removed -- the engine bootstraps zero curves and prices IRS/OIS
+    # with numpy/scipy only.
+    "numpy",
+    "scipy",
+    "holidays",
     "fastapi",
     "uvicorn[standard]",
     "openpyxl",

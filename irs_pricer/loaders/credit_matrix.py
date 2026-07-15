@@ -176,6 +176,34 @@ def category_series(
     return out
 
 
+def curve_at(
+    data_dir: Path | str,
+    category: str,
+    val_date: date | None = None,
+) -> dict[str, float]:
+    """One category's whole curve as {raw_tenor: decimal_rate}, each tenor
+    carrying its latest value at or before val_date (latest overall when
+    val_date is None).
+
+    Equivalent to calling category_series() once per tenor and taking each
+    one's last point, but walks the date index a single time instead of
+    re-sorting it per tenor -- the curve for a (category, val_date) pair is
+    identical for every bond sharing that sector+rating, so callers pricing a
+    book would otherwise rebuild the same curve once per position.
+
+    A tenor absent on the newest date keeps its own last known value, which is
+    exactly what the per-tenor series[-1] lookup yields: gaps are skipped, not
+    zero-filled.
+    """
+    indexed = _load_indexed_rows(data_dir)
+    out: dict[str, float] = {}
+    for d in sorted(d for d in indexed if val_date is None or d <= val_date):
+        # Ascending, so a later date overwrites an earlier one and each tenor
+        # ends on its own latest value.
+        out.update(indexed[d].get(category, {}))
+    return out
+
+
 def categories(data_dir: Path | str) -> set[str]:
     """Every category label present across the workbook -- lets a caller
     validate a taxonomy's raw-category strings against the live file."""

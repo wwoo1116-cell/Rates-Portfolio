@@ -1,14 +1,13 @@
-"""Swap instrument definition -- parameters only; the QuantLib object is built on demand."""
+"""
+Swap instrument definition -- parameters only; the IRS_Trade object is built on demand.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
-import QuantLib as ql
-
-from ..core.conventions import BUSINESS_CONVENTION, CALENDAR, DAY_COUNT, FLOAT_LEG_TENOR, to_ql_date, SPOT_DAYS
-from .curve import CurveBundle
+from .quant_engine import IRS_Trade, next_kr_business_day
 
 
 @dataclass
@@ -19,49 +18,42 @@ class VanillaSwap:
     pay_fixed: bool = True  # True = pay fixed / receive float
     float_spread: float = 0.0
     trade_date: date | None = None
-    maturity_date: date | None = None  # if set, overrides tenor_years for the leg schedule (MTM repricing)
+    maturity_date: date | None = None  # if set, overrides tenor_years
 
-    def to_ql_swap(self, curve: CurveBundle) -> ql.VanillaSwap:
+    def to_irs_trade(self, valuation_date: date) -> IRS_Trade:
+        """
+        Converts this instrument definition into an executable IRS_Trade schedule
+        for pricing. Replaces the old `to_ql_swap` method.
+        """
+        # Determine effective date (start date)
         if self.trade_date is not None:
-            effective_date = CALENDAR.advance(to_ql_date(self.trade_date), SPOT_DAYS, ql.Days)
+            # SPOT_DAYS=1 logic: T+1 business day
+            start_dt = next_kr_business_day(self.trade_date)
         else:
-            effective_date = curve.settlement_date
+            # If no trade date is provided, assume standard spot from valuation
+            start_dt = next_kr_business_day(valuation_date)
 
+        # Determine maturity date
         if self.maturity_date is not None:
-            maturity_date = to_ql_date(self.maturity_date)
+            mat_dt = self.maturity_date
         else:
-            # Unadjusted (raw) termination date -- ql.Schedule's own terminationDateConvention
-            # (BUSINESS_CONVENTION, below) rolls it to a business day while generating the
-            # backward date grid. Passing an already-adjusted date here instead anchors the
-            # backward walk one day off the true period grid, which inserts a spurious extra
-            # stub period -- exactly what SwapRateHelper's internal swap (curve.py bootstrap)
-            # does NOT do, causing a small but nonzero NPV at the quoted par rate.
-            maturity_date = CALENDAR.advance(
-                effective_date,
-                ql.Period(self.tenor_years, ql.Years),
-                ql.Unadjusted,
-                False,
-            )
-        schedule = ql.Schedule(
-            effective_date,
-            maturity_date,
-            FLOAT_LEG_TENOR,
-            CALENDAR,
-            BUSINESS_CONVENTION,
-            BUSINESS_CONVENTION,
-            ql.DateGeneration.Backward,
-            False,
+            # Unadjusted raw termination date, IRS_Trade handles the modified following
+            # internally via _modfol_bd
+            mat_dt = start_dt + timedelta(days=round(self.tenor_years * 365))
+
+        direction = -1 if self.pay_fixed else 1
+        
+        # quant_engine's IRS_Trade expects fixed_rate_pct.
+        # Assuming fixed_rate is provided as a decimal (e.g. 0.03 for 3%).
+        fixed_rate_pct = self.fixed_rate * 100.0
+
+        return IRS_Trade(
+            start_date=start_dt,
+            maturity_date=mat_dt,
+            fixed_rate_pct=fixed_rate_pct,
+            direction=direction,
+            notional=self.notional,
+            sector="IRS",
+            fixed_freq=0.25,
+            float_freq=0.25
         )
-        swap = ql.VanillaSwap(
-            ql.Swap.Payer if self.pay_fixed else ql.Swap.Receiver,
-            self.notional,
-            schedule,
-            self.fixed_rate,
-            DAY_COUNT,
-            schedule,
-            curve.float_index,
-            self.float_spread,
-            DAY_COUNT,
-        )
-        swap.setPricingEngine(ql.DiscountingSwapEngine(curve.yield_curve_handle))
-        return swap

@@ -1,25 +1,19 @@
 """
-QuantLib conventions shared by curve construction and pricing.
-Calendar/holiday handling is fully delegated to QuantLib (SouthKorea calendar).
+Conventions shared by curve construction and pricing.
+(QuantLib dependency removed)
 """
 
 from __future__ import annotations
 
 from datetime import date
 
-import QuantLib as ql
-
-CALENDAR = ql.SouthKorea()
-DAY_COUNT = ql.Actual365Fixed()
+# Placeholder constants for any external callers during migration
 SPOT_DAYS = 1
-FIXED_LEG_FREQUENCY = ql.Quarterly
-FLOAT_LEG_TENOR = ql.Period(3, ql.Months)
-BUSINESS_CONVENTION = ql.ModifiedFollowing
 
+def to_ql_date(d: date) -> date:
+    # Dummy pass-through to keep api/services from failing on imports immediately
+    return d
 
-def to_ql_date(d: date) -> ql.Date:
-    return ql.Date(d.day, d.month, d.year)
-
-
-def from_ql_date(d: ql.Date) -> date:
-    return date(d.year(), d.month(), d.dayOfMonth())
+def from_ql_date(d: date) -> date:
+    # Dummy pass-through
+    return d

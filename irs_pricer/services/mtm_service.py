@@ -14,10 +14,7 @@ from ..engine.instruments import VanillaSwap
 from ..engine.mtm_valuation import MTMResult, value_booked_trade
 from . import portfolio_service
 
-
-from ..core.conventions import to_ql_date
-from ..engine.context import managed_quantlib_env
-
+# QuantLib dependencies removed
 
 def trade_maturity_date(trade_date: date, tenor_years: int) -> date:
     """A booked trade's maturity from its trade_date and tenor -- the single
@@ -34,9 +31,15 @@ def value_trade(
     fixings: dict[date, float],
 ) -> MTMResult:
     """Build curve, revalue the booked swap using injected historical fixings."""
-    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-        curve = build_curve(snapshot)
-        return value_booked_trade(swap, curve, fixings)
+    curve = build_curve(snapshot)
+    
+    # Extract the most recent fixing for current_float_rate if available
+    current_float_rate = None
+    if fixings:
+        latest_date = max(fixings.keys())
+        current_float_rate = fixings[latest_date]
+        
+    return value_booked_trade(swap, curve, current_float_rate)
 
 
 def fair_rate(

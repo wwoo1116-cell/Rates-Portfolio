@@ -3,30 +3,54 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
 from ..core.market_data import MarketSnapshot, RateQuote
 
+# Rates cross this boundary as DECIMALS (0.0305 = 3.05%). Feeding the percent
+# form (3.05) reads as 305%, and the failure that follows is silent by
+# construction: the par rate lands outside the brentq bracket [-0.10, 1.00] in
+# quant_engine.bootstrap_zero_curve, the solver's failure is caught, and the
+# node falls back to `r_T = -log(1e-12)/T` -- i.e. the discount factor is
+# pinned to a 1e-12 floor from ~1.5Y out (measured: 10Y DF 0.667 -> 1e-12).
+# Nothing raises. The long end is economically annihilated, the KRD there
+# vanishes, and the caller gets a confident, wrong number back.
+# These bounds exist to turn that silent corruption into a 422.
+#
+# The 0.30 (=30%) ceiling is deliberately far above any plausible KRW rate: it
+# is here to catch a unit error, not to express a view on the market, so stress
+# scenarios stay expressible. It does not catch a percent-typed value that
+# happens to fall under 30% (0.25 meaning 25bp reads as a valid 25%) -- that
+# ambiguity is unresolvable at this layer, but the realistic ~3.0 case is not.
+# The floor allows genuinely negative rates without allowing -305%.
+#
+# NOT for percent-convention fields (BondCashflowIn.coupon_rate) or basis
+# points (funding_spread_bp).
+DecimalRate = Annotated[float, Field(ge=-0.10, le=0.30)]
+
+# Same ceiling, but keeps an existing `gt=0` where a field already had one.
+PositiveDecimalRate = Annotated[float, Field(gt=0, le=0.30)]
+
 
 class RateQuoteIn(BaseModel):
     tenor_years: int = Field(gt=0)
-    rate: float
+    rate: DecimalRate
     tenor_months: int | None = Field(default=None, gt=0)
 
 
 class SwapIn(BaseModel):
     tenor_years: int = Field(gt=0)
     notional: float = Field(gt=0)
-    fixed_rate: float
+    fixed_rate: DecimalRate
     pay_fixed: bool = True
 
 
 class PriceRequest(BaseModel):
     valuation_date: date
-    cd_rate: float
-    on_rate: float | None = None
+    cd_rate: DecimalRate
+    on_rate: DecimalRate | None = None
     swap_quotes: list[RateQuoteIn]
     swap: SwapIn
 
@@ -53,28 +77,28 @@ class MtmSwapIn(BaseModel):
     trade_date: date
     tenor_years: int = Field(gt=0)
     notional: float = Field(gt=0)
-    fixed_rate: float
+    fixed_rate: DecimalRate
     pay_fixed: bool = True
-    float_spread: float = 0.0
+    float_spread: DecimalRate = 0.0
 
 
 class MtmRequest(BaseModel):
     valuation_date: date
-    cd_rate: float
-    on_rate: float | None = None
+    cd_rate: DecimalRate
+    on_rate: DecimalRate | None = None
     swap_quotes: list[RateQuoteIn]
     swap: MtmSwapIn
 
 
 class MtmFairRateRequest(BaseModel):
     valuation_date: date
-    cd_rate: float
-    on_rate: float | None = None
+    cd_rate: DecimalRate
+    on_rate: DecimalRate | None = None
     swap_quotes: list[RateQuoteIn]
     trade_date: date
     tenor_years: int = Field(gt=0)
     notional: float = Field(gt=0)
-    float_spread: float = 0.0
+    float_spread: DecimalRate = 0.0
 
 
 class MtmFairRateResponse(BaseModel):
@@ -105,16 +129,21 @@ class MtmResponse(BaseModel):
 
 
 class MarketDataResponse(BaseModel):
+    # Dual-use: response model of GET /api/market-data/{valuation_date} AND
+    # request body of POST /api/market-data/live. The DecimalRate bound
+    # therefore also asserts the loaders never hand back percent-scaled rates
+    # -- pinned at test time by test_api_robustness.py's real-workbook canary
+    # so it surfaces there rather than as a runtime ResponseValidationError.
     valuation_date: date
-    cd_rate: float
-    on_rate: float | None = None
+    cd_rate: DecimalRate
+    on_rate: DecimalRate | None = None
     swap_quotes: list[RateQuoteIn]
 
 
 class CurveRequest(BaseModel):
     valuation_date: date
-    cd_rate: float
-    on_rate: float | None = None
+    cd_rate: DecimalRate
+    on_rate: DecimalRate | None = None
     swap_quotes: list[RateQuoteIn]
 
 
@@ -153,9 +182,9 @@ class PortfolioPositionIn(BaseModel):
     start_date: date
     maturity_date: date
     notional: float = Field(gt=0)
-    fixed_rate: float
+    fixed_rate: DecimalRate
     pay_fixed: bool = True
-    float_spread: float = 0.0
+    float_spread: DecimalRate = 0.0
 
 
 class ParsedPositionOut(BaseModel):
@@ -176,6 +205,18 @@ class ParsedPositionOut(BaseModel):
     mtm_yield: float | None = None
     duration: float | None = None
     pvbp: float | None = None
+    # 채권 정적 파라미터. blotter-parser.ts가 이미 채워 두고 있고
+    # /api/portfolio/allocation-history에는 보내던 값들이다(AllocationHistoryPositionIn
+    # 참고). book-daily-pnl이 채권을 실제로 재평가하려면(= 세타를 구하려면) 쿠폰
+    # 스케줄이 필요하고, 그러려면 이 값들이 있어야 한다.
+    #
+    # 전부 Optional: 스왑은 해당이 없고, 블로터에 발행일이 비어 오는 채권도 실제로
+    # 있다. 없으면 build_book_daily_pnl이 해석적 폴백으로 내려갈 뿐 포지션이 손익에서
+    # 사라지지는 않는다. Optional이라 이 필드를 안 보내는 기존 호출과도 하위호환.
+    issue_date: date | None = None
+    coupon_rate: float | None = None      # 퍼센트, e.g. 3.125 (표면이율)
+    payment_frequency: int | None = None  # 2 (국고/통안) 또는 4 (크레딧)
+    rating: str | None = None             # 국고채/통안채는 None
 
 
 class TradeIn(BaseModel):
@@ -185,9 +226,9 @@ class TradeIn(BaseModel):
     start_date: date
     maturity_date: date
     notional: float = Field(gt=0)
-    fixed_rate: float = Field(gt=0)
+    fixed_rate: PositiveDecimalRate
     pay_fixed: bool = True
-    float_spread: float = 0.0
+    float_spread: DecimalRate = 0.0
     book: str | None = None
     ticker: str | None = None
 
@@ -199,9 +240,9 @@ class TradeByTenorIn(BaseModel):
     trade_date: date
     tenor_months: int = Field(gt=0)
     notional: float = Field(gt=0)
-    fixed_rate: float = Field(gt=0)
+    fixed_rate: PositiveDecimalRate
     pay_fixed: bool = True
-    float_spread: float = 0.0
+    float_spread: DecimalRate = 0.0
     book: str | None = None
     ticker: str | None = None
 
@@ -229,8 +270,8 @@ class LegacyPositionImportRequest(BaseModel):
 
 class PortfolioPriceRequest(BaseModel):
     valuation_date: date
-    cd_rate: float
-    on_rate: float | None = None
+    cd_rate: DecimalRate
+    on_rate: DecimalRate | None = None
     swap_quotes: list[RateQuoteIn]
     positions: list[PortfolioPositionIn] = Field(min_length=1)
     # "true_data": already-reset periods use True Data's real historical
@@ -242,13 +283,13 @@ class PortfolioPriceRequest(BaseModel):
 
 class PositionFairRateRequest(BaseModel):
     valuation_date: date
-    cd_rate: float
-    on_rate: float | None = None
+    cd_rate: DecimalRate
+    on_rate: DecimalRate | None = None
     swap_quotes: list[RateQuoteIn]
     start_date: date
     maturity_date: date
     notional: float = Field(gt=0)
-    float_spread: float = 0.0
+    float_spread: DecimalRate = 0.0
     data_source: Literal["true_data", "ccp"] = "true_data"
 
 
@@ -288,6 +329,69 @@ class PortfolioPriceResponse(BaseModel):
     receiver_npv: float
     position_results: list[PositionResultOut]
     cashflows: list[PortfolioCashFlowOut]
+
+
+class BondCashflowIn(BaseModel):
+    """One uploaded bond, hydrated frontend-side (blotter-parser.ts): coupon from
+    the 표면이율 column, payment_frequency injected by sector convention. The
+    backend does all CF/day-count/NPV math from these static fields."""
+
+    asset_id: str
+    asset_type: str                        # bond sector: 국고채/통안채/은행채/공사채/여전채/회사채…
+    issue_date: date
+    maturity_date: date
+    coupon_rate: float                     # percent, e.g. 3.125
+    payment_frequency: int = Field(gt=0)   # coupons per year (2 = semi-annual, 4 = quarterly)
+    notional: float = Field(gt=0)          # raw KRW
+    rating: str | None = None              # credit rating for the Credit Matrix yield; None for 국고채/통안채
+
+
+class BondCashflowRequest(BaseModel):
+    bonds: list[BondCashflowIn] = Field(min_length=1)
+    valuation_date: date | None = None     # defaults to the latest Credit Matrix date
+
+
+class BondResultOut(BaseModel):
+    asset_id: str
+    npv: float
+    market_yield: float                    # decimal yield used to discount (from Credit Matrix)
+
+
+class BondCashflowResponse(BaseModel):
+    results: list[BondResultOut]
+    # Reuses PortfolioCashFlowOut so the frontend renders bond CF in the same
+    # Details-panel table as IRS (position_id carries the asset_id).
+    cashflows: list[PortfolioCashFlowOut]
+
+
+class AllocationHistoryPositionIn(BaseModel):
+    """One uploaded bond for the allocation-history charts. Same static-field
+    contract as BondCashflowIn (hydrated frontend-side by blotter-parser.ts),
+    plus `book` for the RP Fund filter and `sector` in the blotter's own
+    vocabulary (loaders/portfolio.py:_BOND_SECTOR_MAP).
+
+    Deliberately a separate model from ParsedPositionOut rather than an
+    extension of it: that type is mirrored in three places (models.py, the
+    PositionData dataclass, and _to_position_data) and every added field has to
+    land in all three. These charts are bond-only and need no IRS legs, so a
+    dedicated model sidesteps the mirror entirely.
+    """
+
+    position_id: str
+    book: str
+    sector: str                            # 국고채/통안채/특은채/시은채/공사채/여전채/회사채/기타
+    issue_date: date
+    maturity_date: date
+    coupon_rate: float                     # percent, e.g. 3.125
+    payment_frequency: int = Field(gt=0)   # coupons per year (2 = semi-annual, 4 = quarterly)
+    notional: float = Field(gt=0)          # raw KRW
+    rating: str | None = None              # None for 국고채/통안채
+
+
+class AllocationHistoryRequest(BaseModel):
+    positions: list[AllocationHistoryPositionIn]
+    book: str | None = None                # filter, e.g. "RP Fund"; None = all books
+    as_of_date: date | None = None         # defaults to the latest available market date
 
 
 class PositionDeltaOut(BaseModel):
@@ -456,9 +560,9 @@ class NpvTraceSwapIn(BaseModel):
     # deriving maturity from tenor_years + relativedelta rounding.
     maturity_date: date | None = None
     notional: float = Field(gt=0)
-    fixed_rate: float
+    fixed_rate: DecimalRate
     pay_fixed: bool = True
-    float_spread: float = 0.0
+    float_spread: DecimalRate = 0.0
 
 
 class NpvTraceRequest(BaseModel):

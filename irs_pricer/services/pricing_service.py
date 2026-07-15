@@ -1,21 +1,19 @@
 """
 Pricing service: curve building, NPV computation, DV01, and curve sampling.
+QuantLib-free -- prices exclusively through engine/*, which wraps quant_engine.py.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-
-import QuantLib as ql
 
 from ..core.market_data import MarketSnapshot
 from ..engine.curve import build_curve
 from ..engine.instruments import VanillaSwap
 from ..engine.pricing import price_swap
-from ..engine.risk import curve_bump_scenarios, dv01
-
-from ..core.conventions import to_ql_date
-from ..engine.context import managed_quantlib_env
+from ..engine.quant_engine import df_linear_rate
+from ..engine.risk import bucketed_dv01, dv01
 
 _CURVE_STEP_YEARS = 0.25
 _CURVE_MAX_YEARS = 10.0
@@ -29,11 +27,10 @@ def price(
 
     Returns a plain dict with keys: npv, fixed_leg_pv, float_leg_pv, par_rate, dv01.
     """
-    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-        curve = build_curve(snapshot)
-        result = price_swap(swap, curve)
-        result["dv01"] = dv01(swap, curve)
-        return result
+    curve = build_curve(snapshot)
+    result = price_swap(swap, curve)
+    result["dv01"] = dv01(swap, curve)
+    return result
 
 
 @dataclass
@@ -44,7 +41,7 @@ class DeltaBucket:
 
 @dataclass
 class DeltaResult:
-    total_delta: float  # sum of the bucket deltas -- see engine/risk.py's module docstring for why
+    total_delta: float  # sum of the bucket deltas -- see engine/risk.py's module docstring
     buckets: list[DeltaBucket]
 
 
@@ -52,25 +49,18 @@ def delta(
     snapshot: MarketSnapshot,
     swap: VanillaSwap,
 ) -> DeltaResult:
-    """Bucketed + total key-rate delta for a hypothetical (new-trade) swap.
+    """Bucketed + total key-rate delta (KRD) for a hypothetical (new-trade) swap,
+    computed by engine.risk.bucketed_dv01 (quant_engine's compute_irs_krd_map).
+    total_delta is the sum of the buckets."""
+    curve = build_curve(snapshot)
+    buckets_dict = bucketed_dv01(swap, curve)
 
-    For each curve pillar in turn, that pillar's own market quote is bumped
-    and the whole curve is re-bootstrapped from scratch, then `swap` is
-    repriced against that curve; see engine/risk.py's module docstring for
-    why a market-quote bump + full rebootstrap (not a direct discount-factor
-    perturbation) is the convention that matches the reference system here,
-    and why total_delta is the sum of the buckets rather than a
-    separately-priced parallel scenario.
-    """
-    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-        base_curve = build_curve(snapshot)
-        base_npv = price_swap(swap, base_curve)["npv"]
+    buckets: list[DeltaBucket] = []
+    for label, val in buckets_dict.items():
+        if abs(val) > 1e-9:
+            buckets.append(DeltaBucket(label, val))
 
-        buckets: list[DeltaBucket] = []
-        for label, curve in curve_bump_scenarios(snapshot):
-            bumped_npv = price_swap(swap, curve)["npv"]
-            buckets.append(DeltaBucket(label, bumped_npv - base_npv))
-        return DeltaResult(total_delta=sum(b.delta for b in buckets), buckets=buckets)
+    return DeltaResult(total_delta=sum(b.delta for b in buckets), buckets=buckets)
 
 
 @dataclass
@@ -89,20 +79,22 @@ def sample_curve(
     Tenors carrying a real market quote (the CD91 3M deposit plus each
     swap-quote tenor) are marked is_knot=True.
     """
-    with managed_quantlib_env(to_ql_date(snapshot.valuation_date)):
-        curve = build_curve(snapshot)
-        knot_years = {0.25} | {float(q.tenor_years) for q in snapshot.swap_quotes}
+    curve = build_curve(snapshot)
+    knot_years = {0.25} | {float(q.tenor_years) for q in snapshot.swap_quotes}
 
-        steps = round(_CURVE_MAX_YEARS / _CURVE_STEP_YEARS)
-        points = []
-        for i in range(1, steps + 1):
-            t = round(i * _CURVE_STEP_YEARS, 2)
-            points.append(
-                CurvePoint(
-                    tenor_years=t,
-                    zero_rate=curve.yield_curve.zeroRate(t, ql.Continuous).rate(),
-                    discount_factor=curve.yield_curve.discount(t),
-                    is_knot=any(abs(t - k) < 1e-6 for k in knot_years),
-                )
+    steps = round(_CURVE_MAX_YEARS / _CURVE_STEP_YEARS)
+    points = []
+    for i in range(1, steps + 1):
+        t = round(i * _CURVE_STEP_YEARS, 2)
+        df = df_linear_rate(t, curve.yield_curve)
+        zr = -math.log(df) / t if t > 0 else 0.0
+
+        points.append(
+            CurvePoint(
+                tenor_years=t,
+                zero_rate=zr,
+                discount_factor=df,
+                is_knot=any(abs(t - k) < 1e-6 for k in knot_years),
             )
-        return points
+        )
+    return points

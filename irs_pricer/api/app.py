@@ -20,14 +20,20 @@ logging.config.dictConfig({
     },
 })
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.middleware.base import BaseHTTPMiddleware
 
+from ..core import ttl_cache
 from ..core.errors import CurveBootstrapError
 from ..db.connection_settings import DatabaseNotConfiguredError
+from ..engine import curve_cache
 from .routers import (
+    bond_cashflows,
     calendar,
     credit_curve,
     db_settings,
@@ -44,8 +50,66 @@ from .routers import (
     portfolio_analytics,
 )
 
-app = FastAPI(title="IRS Pricer API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Memoises the pure curve bootstrap that every pricing/risk path funnels
+    # through -- see engine/curve_cache.py for the measurements. Installed here
+    # rather than at import so tests and scripts opt in explicitly and can A/B
+    # against the unmemoised engine.
+    curve_cache.install()
+    yield
 
+
+app = FastAPI(title="IRS Pricer API", lifespan=lifespan)
+
+
+@app.get("/api/health")
+def health() -> dict:
+    """Liveness plus cache counters.
+
+    Doubles as the cheapest way to confirm the event loop is actually free: if
+    this doesn't answer instantly while the dashboard is computing, something
+    heavy is back on the loop again.
+    """
+    return {"status": "ok", "curve_cache": curve_cache.stats(), "ttl_cache": ttl_cache.stats()}
+
+class _UnhandledErrorMiddleware(BaseHTTPMiddleware):
+    """Last-resort net for exception types no registered handler covers.
+
+    The handlers below cover the types we know about (CurveBootstrapError,
+    SQLAlchemyError, RuntimeError...), but a KeyError/TypeError/IndexError, a
+    numpy or scipy error, or any new domain exception still escapes to
+    ServerErrorMiddleware and comes back as a bare 500 with no
+    Access-Control-Allow-Origin -- the browser then blames CORS and
+    api-client.ts reports "cannot reach the server" though the server answered.
+
+    This has to be middleware rather than @app.exception_handler(Exception),
+    for the exact reason the SQLAlchemyError handler documents: Starlette
+    special-cases a handler keyed `Exception` (or 500) and hoists it into
+    ServerErrorMiddleware, which sits *outside* CORSMiddleware. Middleware can
+    sit inside it; that handler never can.
+
+    ExceptionMiddleware sits inside this, so HTTPException and every registered
+    handler still resolve normally -- only genuinely unhandled exceptions get
+    here.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as exc:  # noqa: BLE001 -- being the last net is the point
+            logging.getLogger("irs_pricer").exception("Unhandled error")
+            return JSONResponse(status_code=500, content={"detail": f"서버 오류: {exc}"})
+
+
+# ORDER IS LOAD-BEARING, and reads backwards: add_middleware() does
+# user_middleware.insert(0, ...) and build_middleware_stack() wraps the list in
+# reverse, so the LAST middleware added ends up OUTERMOST (verified against the
+# installed starlette 1.3.1). CORS must therefore be added last to stay outside
+# the catch-all -- otherwise the catch-all's 500 goes out without CORS headers
+# and re-creates the very bug it exists to prevent. tests/test_api_robustness.py
+# asserts the header is actually present rather than trusting this reasoning.
+app.add_middleware(_UnhandledErrorMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -132,3 +196,4 @@ app.include_router(trades.router)
 app.include_router(upload.router)
 app.include_router(portfolio_analytics.router)
 app.include_router(credit_curve.router)
+app.include_router(bond_cashflows.router)

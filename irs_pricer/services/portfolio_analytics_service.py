@@ -1,16 +1,20 @@
 import logging
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import astuple, dataclass
 from datetime import date
 from pathlib import Path
 from typing import Literal
 
+from ..core import ttl_cache
 from ..core.market_data import MarketSnapshot
+from ..engine import bond_valuation
 from ..engine.instruments import VanillaSwap
+from ..engine.quant_engine import next_kr_business_day
+from . import allocation_history_service
+from . import credit_curve_service
+from . import market_data_service
 from . import portfolio_service
-from . import historical_pnl_service
 from ..loaders import base_rate
-from ..loaders import true_data
 from ..loaders import credit_matrix
 
 logger = logging.getLogger(__name__)
@@ -18,6 +22,44 @@ logger = logging.getLogger(__name__)
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent
 
 _TENOR_COLUMNS = ["1D", "3M", "6M", "9M", "1Y", "1.5Y", "2Y", "3Y", "4Y", "5Y", "6Y", "7Y", "8Y", "9Y", "10Y", "30Y"]
+
+# PVBP 섹터 행 순서: 신용도 내림차순(국고채 → 회사채), IRS는 항상 마지막, 그 뒤 합계.
+# 이름순 정렬이 아니라 명시적 순서다 -- 이름순은 신용도와 아무 관계가 없고,
+# 'IRS'(라틴 문자, U+0049)가 모든 한글(U+AC00~)보다 앞서 정렬되어 맨 위로 올라온다.
+_SECTOR_ORDER = ["국고채", "통안채", "공사채", "특은채", "시은채", "여전채", "회사채"]
+_IRS_SECTOR = "IRS"
+_TOTAL_SECTOR = "합계"
+
+_SECTOR_RANK = {sector: i for i, sector in enumerate(_SECTOR_ORDER)}
+# 알 수 없는 섹터는 회사채와 IRS 사이에 들어간다 (loaders/portfolio.py의
+# _map_bond_sector가 매핑 실패 시 "기타"를 반환하므로 실제로 발생할 수 있다).
+_RANK_KNOWN, _RANK_UNKNOWN, _RANK_IRS = 0, 1, 2
+
+
+def _sector_sort_key(sector: str) -> tuple[int, int, str]:
+    if sector == _IRS_SECTOR:
+        return (_RANK_IRS, 0, "")
+    rank = _SECTOR_RANK.get(sector)
+    if rank is None:
+        # 미지 섹터끼리는 이름순 -- 순서를 정할 근거가 없으니 최소한 결정적으로.
+        return (_RANK_UNKNOWN, 0, sector)
+    return (_RANK_KNOWN, rank, "")
+
+
+def _sort_sector_rows(rows: list[dict]) -> list[dict]:
+    """_SECTOR_ORDER 순서로 정렬. 데이터에 없는 섹터는 그냥 빠지고 순서는 유지된다.
+
+    경고는 정렬 키 함수가 아니라 여기서 한 번만 찍는다: 키 함수는 sort가
+    원소마다 여러 번 호출하므로 그 안에서 로깅하면 같은 섹터가 반복 출력된다.
+    """
+    unknown = sorted({r["sector"] for r in rows} - _SECTOR_RANK.keys() - {_IRS_SECTOR})
+    if unknown:
+        logger.warning(
+            "PVBP 민감도: _SECTOR_ORDER에 없는 섹터 %s -- 회사채와 IRS 사이에 표시합니다. "
+            "의도한 섹터라면 _SECTOR_ORDER에 신용도 순서로 추가하세요.",
+            ", ".join(unknown),
+        )
+    return sorted(rows, key=lambda r: _sector_sort_key(r["sector"]))
 
 
 @dataclass
@@ -41,6 +83,13 @@ class PositionData:
     mtm_yield: float | None = None
     duration: float | None = None
     pvbp: float | None = None
+    # 채권 정적 파라미터 (blotter-parser.ts가 채워 보낸다). 쿠폰 스케줄을 만들려면
+    # 반드시 있어야 하며, 없으면 채권을 재평가할 수 없다 -- build_book_daily_pnl이
+    # 해석적(analytic) 폴백으로 내려간다. 스왑에는 해당 없음.
+    issue_date: date | None = None
+    coupon_rate: float | None = None      # 퍼센트, e.g. 3.125
+    payment_frequency: int | None = None  # 2 (국고/통안) 또는 4 (크레딧)
+    rating: str | None = None             # 국고채/통안채는 None
 
 
 def _to_swap(p: PositionData) -> tuple[str, VanillaSwap]:
@@ -54,6 +103,52 @@ def _to_swap(p: PositionData) -> tuple[str, VanillaSwap]:
         trade_date=p.start_date,
         maturity_date=p.maturity_date,
     ))
+
+
+def _shared_delta(
+    snapshot: MarketSnapshot,
+    swaps: list[tuple[str, VanillaSwap]],
+    fixings: dict[date, float],
+) -> portfolio_service.PortfolioDeltaResult:
+    """price_portfolio_delta, memoised across the three Home analytics panels.
+
+    All three (/pvbp-sensitivity, /book-daily-pnl, /book-summary) are fired at
+    once by the same dashboard render, against the same snapshot and the same
+    positions, and each used to recompute this from scratch -- the single most
+    expensive call in the request, done three times for one identical answer.
+
+    The key is content-addressed (the snapshot's own rates + every swap field
+    via astuple), not an id() or a date, so it self-invalidates: any change to
+    a quote or a position produces a different key rather than a stale hit.
+    astuple() rather than a hand-listed field tuple means a field added to
+    VanillaSwap later is picked up automatically instead of silently aliasing
+    two different swaps onto one entry.
+
+    `fixings` is deliberately NOT part of the key: price_portfolio_delta
+    ignores it (it prices sensitivities off the curve alone). It stays in the
+    signature because the underlying call takes it, and
+    test_delta_is_independent_of_fixings pins the assumption so this key stops
+    being valid loudly rather than silently.
+    """
+    key = (
+        "portfolio-delta",
+        snapshot.valuation_date,
+        snapshot.cd_rate,
+        snapshot.on_rate,
+        tuple(astuple(q) for q in snapshot.swap_quotes),
+        tuple((pid, astuple(s)) for pid, s in swaps),
+    )
+    return ttl_cache.get_or_compute(
+        key, lambda: portfolio_service.price_portfolio_delta(snapshot, swaps, fixings)
+    )
+
+
+def _credit_shifts() -> dict[str, dict[str, float]]:
+    """Day-over-day credit shift by sector x tenor -- shared reference data,
+    identical for every position in every request against the same workbook."""
+    return ttl_cache.get_or_compute(("credit-shifts",), lambda: credit_matrix.daily_shift(_DATA_DIR))
+
+
 
 def build_pvbp_sensitivity(
     positions: list[PositionData],
@@ -72,8 +167,8 @@ def build_pvbp_sensitivity(
 
     if irs_positions:
         swaps = [_to_swap(p) for p in irs_positions]
-        delta_result = portfolio_service.price_portfolio_delta(snapshot, swaps, fixings)
-        
+        delta_result = _shared_delta(snapshot, swaps, fixings)
+
         pid_to_sector = {p.position_id: p.sector for p in irs_positions}
         for pd in delta_result.position_deltas:
             sec = pid_to_sector[pd.position_id]
@@ -89,119 +184,337 @@ def build_pvbp_sensitivity(
         row["total"] = sum(values.values())
         result.append(row)
         
-    result.sort(key=lambda x: x["sector"])
-    
-    total_row = {"sector": "합계", "total": sum(r["total"] for r in result)}
+    result = _sort_sector_rows(result)
+
+    total_row = {"sector": _TOTAL_SECTOR, "total": sum(r["total"] for r in result)}
     for c in _TENOR_COLUMNS:
         total_row[c] = sum(r[c] for r in result)
     result.append(total_row)
-    
+
     return result
+
+@dataclass
+class _PositionPnl:
+    """한 포지션의 일간 손익 분해 결과."""
+    position_id: str
+    instrument_type: str
+    book: str
+    mtm: float
+    theta: float
+    funding: float = 0.0
+    # 재평가 불가로 해석적 폴백을 쓴 경우 사유. None이면 정상 재평가.
+    degraded_reason: str | None = None
+
+
+def _snapshot_or_none(valuation_date: date) -> MarketSnapshot | None:
+    """해당 일자의 시장 스냅샷. 없으면 None (예외를 삼키는 게 아니라 '아직
+    호가가 없다'는 정상 상태를 표현한다)."""
+    try:
+        return market_data_service.load_snapshot(valuation_date)
+    except Exception:
+        return None
+
+
+def _roll_quotes_to(snapshot: MarketSnapshot, valuation_date: date) -> MarketSnapshot:
+    """같은 호가(par quotes)를 그대로 둔 채 평가일만 옮긴 스냅샷.
+
+    세타의 정의 그 자체다: 커브 호가는 전일 종가에 고정하고 날짜만 하루 굴린다.
+    par rate를 고정하므로 커브가 날짜와 함께 롤다운되며(캐리 + 롤다운 모두 포착),
+    '할인커브를 절대적으로 고정'하는 다른 관행(캐리만 포착)과는 다르다.
+    """
+    return MarketSnapshot(
+        valuation_date=valuation_date,
+        cd_rate=snapshot.cd_rate,
+        on_rate=snapshot.on_rate,
+        swap_quotes=snapshot.swap_quotes,
+    )
+
+
+def _swap_pnl(
+    irs_positions: list[PositionData],
+    close_snapshot: MarketSnapshot,
+    rolled_snapshot: MarketSnapshot,
+    today_snapshot: MarketSnapshot | None,
+    fixings: dict[date, float],
+) -> list[_PositionPnl]:
+    """스왑 MtM/세타. 세 번의 실제 재평가로 구하며, 잔차 버킷이 없다.
+
+        theta = V(T,   c_close) - V(close, c_close)
+        mtm   = V(T,   c_T)     - V(T,     c_close)
+        합     = V(T,   c_T)     - V(close, c_close)  = ΔNPV (정의상 정확)
+
+    이전 구현은 theta = (실제 ΔNPV) - (델타×시프트 1차 추정)의 **잔차**였다.
+    즉 커브 형태 변화와 2차 효과가 전부 '세타'로 흘러들어갔다. 위 분해는
+    잔차가 생길 수 없다 -- 두 항이 망원급수로 상쇄되어 합이 곧 ΔNPV다.
+
+    clean_npv 기준(price_portfolio.net_npv)을 쓴다: 이 코드베이스가 ΔNPV를
+    정의해 온 방식(historical_pnl_service)과 같아야 기존 총액이 보존되기 때문이다.
+    실제로 (구 swapValuation + 구 swapThetaPnL) == (신 mtm + theta)가 대수적으로
+    성립한다 -- test_swap_total_is_unchanged_by_decomposition이 이를 고정한다.
+    """
+    swaps = [_to_swap(p) for p in irs_positions]
+    pid_to_book = {p.position_id: p.book for p in irs_positions}
+
+    def npv_by_pid(snap: MarketSnapshot) -> dict[str, float]:
+        res = portfolio_service.price_portfolio(snap, swaps, fixings)
+        return {r.position_id: r.clean_npv for r in res.position_results}
+
+    v_close = npv_by_pid(close_snapshot)
+    v_rolled = npv_by_pid(rolled_snapshot)
+    # 호가가 없으면 c_T == c_close이므로 V(T,c_T) == V(T,c_close) -> mtm은 정확히 0.
+    # 그 경우 세 번째 평가를 아예 건너뛴다(같은 값이 나올 계산을 반복할 이유가 없다).
+    v_today = npv_by_pid(today_snapshot) if today_snapshot is not None else v_rolled
+
+    out: list[_PositionPnl] = []
+    for pid in v_close:
+        out.append(_PositionPnl(
+            position_id=pid,
+            instrument_type="irs",
+            book=pid_to_book[pid],
+            theta=v_rolled[pid] - v_close[pid],
+            mtm=v_today[pid] - v_rolled[pid],
+            # 스왑 조달비용은 의도적으로 모델링하지 않는다 (채권만 해당).
+            funding=0.0,
+        ))
+    return out
+
+
+def _bond_market_yield(p: PositionData, val_date: date, maturity: date) -> float:
+    remaining_years = max((maturity - val_date).days / 365.0, 0.0)
+    return credit_curve_service.market_yield_for(p.sector, p.rating, remaining_years, val_date)
+
+
+def _bond_pnl(
+    bond_positions: list[PositionData],
+    close_date: date,
+    as_of: date,
+    quotes_available: bool,
+    funding_rate: float,
+) -> list[_PositionPnl]:
+    """채권 MtM/세타. 스왑과 같은 분해를 쓰되 할인은 커브가 아니라 Credit Matrix의
+    단일 시장수익률(민평)로 한다.
+
+    정적 파라미터(발행일/표면이율/지급주기)가 있으면 실제 재평가:
+        theta = V(T, y_close) - V(close, y_close)
+        mtm   = V(T, y_T)     - V(T,     y_close)
+    없으면 해석적 폴백(캐리 + 1차 PVBP). 폴백 포지션도 결과에서 빠지지 않는다 --
+    손익에서 조용히 사라지면 북 전체를 과소계상하게 된다.
+    """
+    accrual_days = (as_of - close_date).days
+    out: list[_PositionPnl] = []
+
+    for p in bond_positions:
+        eval_amt = p.evaluation_amount or 0.0
+        # 조달비용: 총액(ΔNPV) 밖의 별도 항목. 실제 경과일수로 계산한다
+        # (금~월이면 하루가 아니라 3일치 -- 고정 1/365는 주말을 놓친다).
+        funding = -eval_amt * funding_rate * accrual_days / 365.0
+
+        schedulable = (
+            p.issue_date is not None
+            and p.maturity_date is not None
+            and p.coupon_rate is not None
+            and p.payment_frequency is not None
+        )
+
+        theta = 0.0
+        mtm = 0.0
+        reason: str | None = None
+
+        if schedulable:
+            try:
+                y_close = _bond_market_yield(p, close_date, p.maturity_date)
+                v_close = bond_valuation.value_bond(
+                    asset_id=p.position_id, issue_date=p.issue_date,
+                    maturity_date=p.maturity_date, coupon_rate=p.coupon_rate,
+                    payment_frequency=p.payment_frequency, notional=p.notional or 0.0,
+                    market_yield=y_close, val_date=close_date,
+                ).npv
+                v_rolled = bond_valuation.value_bond(
+                    asset_id=p.position_id, issue_date=p.issue_date,
+                    maturity_date=p.maturity_date, coupon_rate=p.coupon_rate,
+                    payment_frequency=p.payment_frequency, notional=p.notional or 0.0,
+                    market_yield=y_close, val_date=as_of,
+                ).npv
+                theta = v_rolled - v_close
+
+                if quotes_available:
+                    y_today = _bond_market_yield(p, as_of, p.maturity_date)
+                    v_today = bond_valuation.value_bond(
+                        asset_id=p.position_id, issue_date=p.issue_date,
+                        maturity_date=p.maturity_date, coupon_rate=p.coupon_rate,
+                        payment_frequency=p.payment_frequency, notional=p.notional or 0.0,
+                        market_yield=y_today, val_date=as_of,
+                    ).npv
+                    mtm = v_today - v_rolled
+            except ValueError as e:
+                # 알 수 없는 섹터/등급이거나 커브 값 부재 -> 재평가 불가.
+                schedulable = False
+                reason = f"신용커브 조회 실패: {e}"
+
+        if not schedulable:
+            # 해석적 폴백: 세타 ≈ 경과일수만큼의 캐리(민평수익률 기준).
+            if reason is None:
+                reason = "정적 파라미터(발행일/표면이율/지급주기) 없음"
+            theta = eval_amt * ((p.mtm_yield or 0.0) / 100.0) * accrual_days / 365.0
+            if quotes_available:
+                try:
+                    dy_bp = (
+                        _bond_market_yield(p, as_of, p.maturity_date)
+                        - _bond_market_yield(p, close_date, p.maturity_date)
+                    ) * 10_000.0 if p.maturity_date is not None else 0.0
+                    mtm = (p.pvbp or 0.0) * (-dy_bp)
+                except ValueError:
+                    mtm = 0.0
+
+        out.append(_PositionPnl(
+            position_id=p.position_id, instrument_type="bond", book=p.book,
+            mtm=mtm, theta=theta, funding=funding, degraded_reason=reason,
+        ))
+    return out
+
 
 def build_book_daily_pnl(
     positions: list[PositionData],
-    snapshot: MarketSnapshot,
-    prior_snapshot: MarketSnapshot,
-    fixings: dict[date, float]
-) -> list[dict]:
-    funding_rate = 0.0
+    close_snapshot: MarketSnapshot,
+    fixings: dict[date, float],
+    funding_spread_bp: float = 10.0,
+) -> dict:
+    """일간 손익을 ΔNPV = MtM + 세타로 분해한다.
+
+        theta : 커브/호가를 전일 종가에 고정한 채 평가일만 1영업일 굴린 값의 변화
+                (결정적 시간가치 감소 -- T 시점 개장 전에 이미 확정되어 있다)
+        mtm   : 같은 날짜(T)에서 호가만 종가 -> 당일로 바꾼 값의 변화
+
+    두 항은 망원급수로 상쇄되어 합이 정확히 ΔNPV가 된다. 잔차 버킷이 없다.
+
+    `close_snapshot`은 **마지막 종가**다(호출자가 보내는 최신 스냅샷). 평가일 T는
+    여기서 직접 구한다: T = 다음 영업일(종가일). 이렇게 두면 실시간 피드가 붙었을 때
+    (종가 = 7/14 -> T = 7/15) 자동으로 맞아떨어진다.
+
+    개장 전 상태(A2): T의 호가가 아직 없으면 quotes_available=False이고 MtM은 모든
+    상품에서 **정확히** 0이다. 0을 실제 값인 양 보여주지 않도록 프론트가 muted 상태로
+    렌더한다. 나중에 DB/실시간 호가가 붙으면 플래그가 뒤집히고 MtM이 채워질 뿐,
+    프론트 계약은 바뀌지 않는다.
+
+    주의: 채권의 Credit Matrix는 IRS 데이터와 커버리지가 다르다(측정 시점 기준
+    Matrix는 7/13, IRS는 7/6까지). 그래서 quotes_available=False일 때 채권 수익률을
+    **명시적으로** 종가일로 고정한다 -- Matrix에 T 데이터가 있어도 쓰지 않는다.
+    "호가 없으면 모든 상품의 MtM은 0"이라는 요구를 만족시키려면 이게 유일하게
+    일관된 처리다(그렇지 않으면 채권만 MtM이 붙어 플래그와 어긋난다).
+    """
+    close_date = close_snapshot.valuation_date
+    as_of = next_kr_business_day(close_date)
+    today_snapshot = _snapshot_or_none(as_of)
+    quotes_available = today_snapshot is not None
+    rolled_snapshot = _roll_quotes_to(close_snapshot, as_of)
+
+    # Funding rate = BOK 기준금리 + spread(bp). 실무 관행상 기준금리 위에 스프레드를
+    # 얹어 조달비용을 잡으며, 기본값은 +10bp (대시보드 Settings에서 조정 가능).
+    # load_base_rate는 파일/해당일 데이터가 없으면 None을 반환하므로 `or 0.0`로 방어.
+    base = 0.0
     try:
-        funding_rate = base_rate.load_base_rate(_DATA_DIR, snapshot.valuation_date)
+        base = ttl_cache.get_or_compute(
+            ("bok-base-rate", close_date),
+            lambda: base_rate.load_base_rate(_DATA_DIR, close_date),
+        ) or 0.0
     except Exception:
         pass
-        
-    credit_shifts = credit_matrix.daily_shift(_DATA_DIR)
-    irs_shifts = true_data.daily_shift(_DATA_DIR)
-    
-    books = {p.book for p in positions}
-    book_pnl = {b: {"book": b, "dailyCarry": 0.0, "fundingCost": 0.0, "bondValuation": 0.0, 
-                    "swapValuation": 0.0, "swapThetaPnL": 0.0, "total": 0.0} for b in books}
-                    
-    for p in positions:
-        if p.instrument_type == "bond":
-            carry = (p.evaluation_amount or 0.0) * ((p.mtm_yield or 0.0) / 100.0) / 365.0
-            funding = -(p.evaluation_amount or 0.0) * funding_rate / 365.0
-            
-            shift_bp = 0.0
-            if p.sector in credit_shifts and p.tenor_bucket in credit_shifts[p.sector]:
-                shift_bp = credit_shifts[p.sector][p.tenor_bucket]
-            valuation = (p.pvbp or 0.0) * (-shift_bp)
-            
-            book_pnl[p.book]["dailyCarry"] += carry
-            book_pnl[p.book]["fundingCost"] += funding
-            book_pnl[p.book]["bondValuation"] += valuation
-            book_pnl[p.book]["total"] += carry + funding + valuation
+    funding_rate = base + (funding_spread_bp or 0.0) / 10000.0
 
     irs_positions = [p for p in positions if p.instrument_type == "irs"]
-    if irs_positions:
-        swaps = [_to_swap(p) for p in irs_positions]
-        delta_result = portfolio_service.price_portfolio_delta(snapshot, swaps, fixings)
-        
-        swap_vals = {b: 0.0 for b in books}
-        for pd in delta_result.position_deltas:
-            p_book = next(p.book for p in irs_positions if p.position_id == pd.position_id)
-            for bkt in pd.buckets:
-                col = "3M" if bkt.pillar == "CD91D" else bkt.pillar
-                shift_bp = irs_shifts.get(col, 0.0)
-                swap_vals[p_book] += bkt.delta * shift_bp
-                
-        for b, v in swap_vals.items():
-            book_pnl[b]["swapValuation"] += v
-            book_pnl[b]["total"] += v
-            
-        by_book = defaultdict(list)
-        for p in irs_positions:
-            by_book[p.book].append(_to_swap(p))
-            
-        for book_name, book_swaps in by_book.items():
-            try:
-                hist_res = historical_pnl_service.compute_historical_pnl(
-                    book_swaps,
-                    prior_snapshot.valuation_date,
-                    snapshot.valuation_date,
-                    prior_snapshot.valuation_date
-                )
-                today_pt = next((pt for pt in hist_res.points if pt.valuation_date == snapshot.valuation_date), None)
-                total_swap_pnl = today_pt.cumulative_pnl if today_pt else 0.0
-                
-                theta = total_swap_pnl - swap_vals[book_name]
-                book_pnl[book_name]["swapThetaPnL"] += theta
-                book_pnl[book_name]["total"] += theta
-            except Exception as e:
-                logger.error("Error computing swap theta for %s: %s", book_name, e)
+    bond_positions = [p for p in positions if p.instrument_type == "bond"]
 
-    result = list(book_pnl.values())
-    result.sort(key=lambda x: x["book"])
-    
-    total_row = {"book": "Total", "dailyCarry": sum(r["dailyCarry"] for r in result),
-                 "fundingCost": sum(r["fundingCost"] for r in result),
-                 "bondValuation": sum(r["bondValuation"] for r in result),
-                 "swapValuation": sum(r["swapValuation"] for r in result),
-                 "swapThetaPnL": sum(r["swapThetaPnL"] for r in result),
-                 "total": sum(r["total"] for r in result)}
-    result.append(total_row)
-    
-    return result
+    legs: list[_PositionPnl] = []
+    if irs_positions:
+        legs += _swap_pnl(irs_positions, close_snapshot, rolled_snapshot, today_snapshot, fixings)
+    if bond_positions:
+        legs += _bond_pnl(bond_positions, close_date, as_of, quotes_available, funding_rate)
+
+    degraded = [l.position_id for l in legs if l.degraded_reason is not None]
+    if degraded:
+        logger.warning(
+            "일간 손익: %d개 채권을 재평가하지 못해 해석적 폴백을 적용했습니다 (예: %s). "
+            "사유: %s",
+            len(degraded), ", ".join(degraded[:3]),
+            next(l.degraded_reason for l in legs if l.degraded_reason),
+        )
+
+    books = {p.book for p in positions}
+    by_book_acc = {
+        b: {"book": b, "mtm": 0.0, "theta": 0.0, "total": 0.0, "funding": 0.0}
+        for b in books
+    }
+    for leg in legs:
+        row = by_book_acc[leg.book]
+        row["mtm"] += leg.mtm
+        row["theta"] += leg.theta
+        row["funding"] += leg.funding
+        row["total"] += leg.mtm + leg.theta  # total = mtm + theta. funding은 총액 밖.
+
+    by_book = sorted(by_book_acc.values(), key=lambda r: r["book"])
+    by_book.append({
+        "book": "Total",
+        "mtm": sum(r["mtm"] for r in by_book),
+        "theta": sum(r["theta"] for r in by_book),
+        "total": sum(r["total"] for r in by_book),
+        "funding": sum(r["funding"] for r in by_book),
+    })
+
+    by_instrument = [
+        {
+            "id": l.position_id,
+            "type": "swap" if l.instrument_type == "irs" else "bond",
+            "mtm": l.mtm,
+            "theta": l.theta,
+            "total": l.mtm + l.theta,
+            **({"degraded_reason": l.degraded_reason} if l.degraded_reason else {}),
+        }
+        for l in legs
+    ]
+
+    return {
+        "as_of": as_of.isoformat(),
+        "quotes_available": quotes_available,
+        "daily_pnl": {
+            "total": sum(l.mtm + l.theta for l in legs),
+            "mtm": sum(l.mtm for l in legs),
+            "theta": sum(l.theta for l in legs),
+        },
+        "by_book": by_book,
+        "by_instrument": by_instrument,
+    }
+
 
 def build_book_summary(
     positions: list[PositionData],
-    daily_pnl_by_book: list[dict],
     snapshot: MarketSnapshot,
     fixings: dict[date, float]
 ) -> list[dict]:
+    """Per-book bond summary (notional, weighted YTM, hedged duration, sector /
+    maturity allocation, top+bottom 3 by valuation).
+
+    Took a `daily_pnl_by_book` argument until now that no line of the body ever
+    read. It cost more than a dead parameter normally would: the frontend
+    honoured it by waiting for /book-daily-pnl to return, then POSTing that
+    whole result back here just to satisfy the signature -- which serialised
+    two independent panels into a waterfall for nothing. The endpoint still
+    ACCEPTS the field (unknown-field tolerant) so an older client doesn't
+    break; it just no longer waits to send it.
+    """
     books = {p.book for p in positions if p.instrument_type == "bond"}
     result = []
-    
-    credit_shifts = credit_matrix.daily_shift(_DATA_DIR)
-    
+
+    credit_shifts = _credit_shifts()
+
     irs_positions = [p for p in positions if p.instrument_type == "irs"]
     irs_pvbp_by_book = {b: 0.0 for b in books}
     if irs_positions:
         swaps = [_to_swap(p) for p in irs_positions]
         try:
-            delta_result = portfolio_service.price_portfolio_delta(snapshot, swaps, fixings)
+            delta_result = _shared_delta(snapshot, swaps, fixings)
+            pid_to_book = {p.position_id: p.book for p in irs_positions}
             for pd in delta_result.position_deltas:
-                p_book = next(p.book for p in irs_positions if p.position_id == pd.position_id)
+                p_book = pid_to_book[pd.position_id]
                 if p_book in irs_pvbp_by_book:
                     irs_pvbp_by_book[p_book] += pd.total_delta
         except Exception as e:
@@ -231,15 +544,10 @@ def build_book_summary(
         if total_eval_amt > 0:
             sector_allocation = {k: (v / total_eval_amt) * 100 for k, v in sector_totals.items()}
             
-        matur_buckets = {'단기(1년 미만)': 0.0, '중기(1~3년)': 0.0, '장기(3년 이상)': 0.0}
+        matur_buckets = {b: 0.0 for b in allocation_history_service.MATURITY_BUCKETS}
         for p in bonds:
             yr = (p.remaining_days or 0) / 365.0
-            if yr < 1:
-                matur_buckets['단기(1년 미만)'] += (p.evaluation_amount or 0.0)
-            elif yr < 3:
-                matur_buckets['중기(1~3년)'] += (p.evaluation_amount or 0.0)
-            else:
-                matur_buckets['장기(3년 이상)'] += (p.evaluation_amount or 0.0)
+            matur_buckets[allocation_history_service.maturity_bucket(yr)] += (p.evaluation_amount or 0.0)
                 
         maturity_allocation = {}
         if total_eval_amt > 0:

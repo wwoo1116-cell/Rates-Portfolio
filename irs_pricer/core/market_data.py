@@ -3,7 +3,7 @@ Market data contract for curve construction.
 
 `MarketSnapshot` is the shape the rest of the package depends on. Actual
 retrieval (Excel workbook, internal API, Bloomberg, etc.) is intentionally
-left unimplemented here — wire a loader to a real source in `loaders/`
+left unimplemented here ??wire a loader to a real source in `loaders/`
 without touching `engine/` or `api/`, as long as it returns this shape.
 """
 
