@@ -2,9 +2,9 @@ import logging
 from collections import defaultdict
 from dataclasses import astuple, dataclass
 from datetime import date
-from pathlib import Path
 from typing import Literal
 
+from ..config import DATA_DIR, require_data_dir
 from ..core import ttl_cache
 from ..core.market_data import MarketSnapshot
 from ..engine import bond_valuation
@@ -18,8 +18,6 @@ from ..loaders import base_rate
 from ..loaders import credit_matrix
 
 logger = logging.getLogger(__name__)
-
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent
 
 _TENOR_COLUMNS = ["1D", "3M", "6M", "9M", "1Y", "1.5Y", "2Y", "3Y", "4Y", "5Y", "6Y", "7Y", "8Y", "9Y", "10Y", "30Y"]
 
@@ -146,7 +144,7 @@ def _shared_delta(
 def _credit_shifts() -> dict[str, dict[str, float]]:
     """Day-over-day credit shift by sector x tenor -- shared reference data,
     identical for every position in every request against the same workbook."""
-    return ttl_cache.get_or_compute(("credit-shifts",), lambda: credit_matrix.daily_shift(_DATA_DIR))
+    return ttl_cache.get_or_compute(("credit-shifts",), lambda: credit_matrix.daily_shift(DATA_DIR))
 
 
 
@@ -195,15 +193,57 @@ def build_pvbp_sensitivity(
 
 @dataclass
 class _PositionPnl:
-    """한 포지션의 일간 손익 분해 결과."""
+    """한 포지션의 일간 손익 분해 결과.
+
+    `mtm=None`은 "0"이 아니라 **모름**이다: 이 상품의 호가 소스에 as_of 데이터가
+    아직 없다는 뜻. 0으로 채우면 "호가가 들어왔고 안 움직였다"는 다른 사실을
+    주장하게 되므로, 값이 없음은 끝까지 None으로 들고 가서 화면에 "—"로 나간다.
+    """
     position_id: str
     instrument_type: str
     book: str
-    mtm: float
     theta: float
+    mtm: float | None
     funding: float = 0.0
     # 재평가 불가로 해석적 폴백을 쓴 경우 사유. None이면 정상 재평가.
     degraded_reason: str | None = None
+
+
+# 상품별 호가 소스. 커버리지가 서로 다르다 -- 측정 시점 기준 Credit Matrix는
+# 2026-07-13, IRS/CD는 2026-07-06까지였다. 그래서 "시장이 열렸는가"는 대시보드
+# 전체에 하나로 답할 수 있는 질문이 아니고, 소스별로만 답할 수 있다.
+_SOURCE_IRS = "IRS"
+_SOURCE_CREDIT = "Credit Matrix"
+
+
+def _source_dates() -> dict[str, list[date]]:
+    """각 호가 소스가 보유한 날짜. TTL 캐시 -- 요청마다 워크북/DB를 다시 훑을 이유가 없다."""
+
+    def build() -> dict[str, list[date]]:
+        try:
+            irs = market_data_service.list_available_dates()
+        except ValueError:
+            irs = []
+        try:
+            credit = credit_matrix.common_dates_xlsx(DATA_DIR)
+        except (ValueError, FileNotFoundError):
+            credit = []
+        return {_SOURCE_IRS: sorted(irs), _SOURCE_CREDIT: sorted(credit)}
+
+    return ttl_cache.get_or_compute(("quote-source-dates",), build)
+
+
+def _quote_sources(as_of: date) -> list[dict]:
+    """소스별 신선도. 화면 상단에 그대로 띄워, 어떤 셀이 왜 비어 있는지를
+    사용자가 추측하지 않아도 되게 한다."""
+    out = []
+    for name, dates in _source_dates().items():
+        out.append({
+            "source": name,
+            "latest": dates[-1].isoformat() if dates else None,
+            "has_as_of": as_of in set(dates),
+        })
+    return out
 
 
 def _snapshot_or_none(valuation_date: date) -> MarketSnapshot | None:
@@ -253,30 +293,47 @@ def _swap_pnl(
     성립한다 -- test_swap_total_is_unchanged_by_decomposition이 이를 고정한다.
     """
     swaps = [_to_swap(p) for p in irs_positions]
-    pid_to_book = {p.position_id: p.book for p in irs_positions}
 
-    def npv_by_pid(snap: MarketSnapshot) -> dict[str, float]:
+    def npvs(snap: MarketSnapshot) -> list[float]:
+        # position_id가 아니라 **순서**로 맞춘다. price_portfolio는 입력 순서대로
+        # position_results를 append하므로 인덱스 대응이 보장된다. id로 dict를 만들면
+        # 같은 id를 가진 포지션이 서로를 덮어써 손익에서 통째로 사라진다 -- 실제
+        # 블로터에서 채권 id는 중복된다(같은 종목의 여러 로트, 최대 9건). IRS는 현재
+        # 전부 유일하지만, 그 가정에 기대지 않는 편이 안전하다.
         res = portfolio_service.price_portfolio(snap, swaps, fixings)
-        return {r.position_id: r.clean_npv for r in res.position_results}
+        return [r.clean_npv for r in res.position_results]
 
-    v_close = npv_by_pid(close_snapshot)
-    v_rolled = npv_by_pid(rolled_snapshot)
-    # 호가가 없으면 c_T == c_close이므로 V(T,c_T) == V(T,c_close) -> mtm은 정확히 0.
-    # 그 경우 세 번째 평가를 아예 건너뛴다(같은 값이 나올 계산을 반복할 이유가 없다).
-    v_today = npv_by_pid(today_snapshot) if today_snapshot is not None else v_rolled
+    v_close = npvs(close_snapshot)
+    v_rolled = npvs(rolled_snapshot)
 
-    out: list[_PositionPnl] = []
-    for pid in v_close:
-        out.append(_PositionPnl(
-            position_id=pid,
+    if today_snapshot is None:
+        # IRS 호가가 아직 없다 -> MtM은 0이 아니라 **모름**. 세 번째 평가를 하지
+        # 않으며(할 커브가 없다), 세타는 그대로 확정값으로 남는다.
+        return [
+            _PositionPnl(position_id=p.position_id, instrument_type="irs", book=p.book,
+                         theta=rolled - close, mtm=None, funding=0.0)
+            for p, close, rolled in zip(irs_positions, v_close, v_rolled)
+        ]
+
+    # 호가가 있으면 그 스냅샷을 그대로 쓰지 않고 평가일을 as_of로 **명시적으로** 맞춘다.
+    # MtM의 정의가 "같은 날짜(T)에서 호가만 바꾼 값의 차이"이기 때문이다 -- 두 다리가
+    # 날짜까지 다르면 세타가 MtM에 섞여 들어가 분해가 무너진다. 실무상
+    # load_snapshot(as_of)는 valuation_date == as_of인 스냅샷을 주므로 이 롤은
+    # no-op이지만, 그 가정에 암묵적으로 기대지 않는다.
+    v_today = npvs(_roll_quotes_to(today_snapshot, rolled_snapshot.valuation_date))
+
+    return [
+        _PositionPnl(
+            position_id=p.position_id,
             instrument_type="irs",
-            book=pid_to_book[pid],
-            theta=v_rolled[pid] - v_close[pid],
-            mtm=v_today[pid] - v_rolled[pid],
+            book=p.book,
+            theta=rolled - close,
+            mtm=today - rolled,
             # 스왑 조달비용은 의도적으로 모델링하지 않는다 (채권만 해당).
             funding=0.0,
-        ))
-    return out
+        )
+        for p, close, rolled, today in zip(irs_positions, v_close, v_rolled, v_today)
+    ]
 
 
 def _bond_market_yield(p: PositionData, val_date: date, maturity: date) -> float:
@@ -402,6 +459,11 @@ def build_book_daily_pnl(
     "호가 없으면 모든 상품의 MtM은 0"이라는 요구를 만족시키려면 이게 유일하게
     일관된 처리다(그렇지 않으면 채권만 MtM이 붙어 플래그와 어긋난다).
     """
+    # 아래 base_rate 로드는 `except Exception: pass`로 감싸여 있고 load_base_rate는
+    # 파일이 없으면 None을 반환한다 -- 즉 데이터 폴더를 잘못 잡아도 조달금리가 조용히
+    # 0이 될 뿐 아무도 알아채지 못한다. 폴더 자체는 그 try 바깥에서 확인해야 한다.
+    require_data_dir()
+
     close_date = close_snapshot.valuation_date
     as_of = next_kr_business_day(close_date)
     today_snapshot = _snapshot_or_none(as_of)
@@ -415,7 +477,7 @@ def build_book_daily_pnl(
     try:
         base = ttl_cache.get_or_compute(
             ("bok-base-rate", close_date),
-            lambda: base_rate.load_base_rate(_DATA_DIR, close_date),
+            lambda: base_rate.load_base_rate(DATA_DIR, close_date),
         ) or 0.0
     except Exception:
         pass

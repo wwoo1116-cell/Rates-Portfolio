@@ -59,10 +59,22 @@ class PortfolioAnalyticsRequest(BaseModel):
 
 
 class PriorSnapshotRequest(PortfolioAnalyticsRequest):
-    prior_valuation_date: date
-    prior_cd_rate: DecimalRate
+    """book-daily-pnl 요청. `valuation_date`/`swap_quotes`는 **마지막 종가**다.
+
+    prior_* 는 더 이상 쓰이지 않는다. 손익 분해가 (직전 종가 vs 그 전날)에서
+    (T vs 직전 종가)로 바뀌면서, 세타의 두 항이 모두 종가 커브를 쓰고 MtM은 T의
+    호가를 쓰기 때문에 '그 전날' 스냅샷이 필요 없어졌다. 평가일 T는 서버가
+    직접 구한다(= 종가일의 다음 영업일).
+
+    필드를 지우지 않고 Optional로 남긴 이유는 daily_pnl_by_book과 같다: 롤아웃 중
+    아직 prior_* 를 보내는 클라이언트가 422를 맞지 않게 하기 위해서다. 프론트가
+    전송을 멈춘 뒤 제거할 것.
+    """
+
+    prior_valuation_date: date | None = None
+    prior_cd_rate: DecimalRate | None = None
     prior_on_rate: DecimalRate | None = None
-    prior_swap_quotes: list[RateQuoteIn]
+    prior_swap_quotes: list[RateQuoteIn] = []
 
 
 class BookSummaryRequest(PortfolioAnalyticsRequest):
@@ -98,19 +110,24 @@ def get_pvbp_sensitivity(request: PortfolioAnalyticsRequest) -> list[dict]:
 
 
 @router.post("/book-daily-pnl")
-def get_book_daily_pnl(request: PriorSnapshotRequest) -> list[dict]:
-    snapshot = _to_snapshot(request)
-    prior_snapshot = MarketSnapshot(
-        valuation_date=request.prior_valuation_date,
-        cd_rate=request.prior_cd_rate,
-        on_rate=request.prior_on_rate,
-        swap_quotes=[RateQuote(q.tenor_years, q.rate, q.tenor_months) for q in request.prior_swap_quotes],
-    )
+def get_book_daily_pnl(request: PriorSnapshotRequest) -> dict:
+    """ΔNPV = MtM + 세타로 분해한 일간 손익.
+
+    응답은 리스트가 아니라 봉투(envelope) 객체다: 행만으로는 표현할 수 없는
+    `as_of`/`quotes_available`를 함께 실어야 하기 때문이다. 개장 전에는
+    quotes_available=false 이고 MtM은 전 상품에서 정확히 0이며, 실시간 호가가
+    붙으면 플래그만 뒤집히고 MtM이 채워진다 -- 프론트 계약은 그대로다.
+
+    평가일 T는 요청이 아니라 서버가 정한다(종가일의 다음 영업일). 그래야
+    "T의 호가가 존재하는가"를 판단하는 주체와 T를 정하는 주체가 같아지고,
+    나중에 DB 피드가 붙었을 때 프론트를 건드릴 필요가 없다.
+    """
+    close_snapshot = _to_snapshot(request)
     positions = [_to_position_data(p) for p in request.positions]
     try:
         fixings = market_data_service.load_fixings()
         return portfolio_analytics_service.build_book_daily_pnl(
-            positions, snapshot, prior_snapshot, fixings, request.funding_spread_bp
+            positions, close_snapshot, fixings, request.funding_spread_bp
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
