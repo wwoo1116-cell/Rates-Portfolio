@@ -20,22 +20,12 @@ from pathlib import Path
 from dateutil.relativedelta import relativedelta
 
 from irs_pricer import MarketSnapshot, RateQuote
+from irs_pricer.config import DATA_DIR
 from irs_pricer.core.errors import NonBusinessDayError
 from irs_pricer.engine.instruments import VanillaSwap
 from irs_pricer.loaders.factory import latest_common_date, load_market_snapshot
 
-DATA_DIR = Path(__file__).resolve().parent.parent
-
 _TENORS = [1, 2, 3, 5, 7, 10]
-
-
-def _default_source() -> Path:
-    """Auto-detect the data source: first *.xlsx found in the project root,
-    else fall back to the CSV directory."""
-    matches = sorted(DATA_DIR.glob("*.xlsx"))
-    if matches:
-        return matches[0]
-    return DATA_DIR
 
 
 def _fmt_rate(r: float) -> str:
@@ -198,7 +188,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--source",
-        help="Path to the Infomax Excel export file or a CSV directory (default: auto-detect)",
+        help="Path to the Infomax Excel export file or a CSV directory (default: the shared Data/ folder)",
     )
     parser.add_argument(
         "--export",
@@ -206,7 +196,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    source = Path(args.source) if args.source else _default_source()
+    source = Path(args.source) if args.source else DATA_DIR
     print(f"  Data source: {source}")
 
     if args.date:

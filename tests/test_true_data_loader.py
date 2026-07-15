@@ -1,11 +1,22 @@
 from datetime import date
-from pathlib import Path
 
 import pytest
 
+from irs_pricer.config import DATA_DIR as _DATA_DIR
 from irs_pricer.loaders import true_data
 
-_DATA_DIR = Path(__file__).resolve().parents[1]
+# The only tests here that read a real workbook off disk. That workbook lives
+# outside the repo now, so a fresh clone legitimately doesn't have it -- skip
+# rather than fail. The tradeoff is real: on a machine without the data these
+# go quietly green. Accepted because there's no CI to catch it and the
+# alternative is every clone failing out of the box.
+pytestmark = pytest.mark.skipif(
+    not (_DATA_DIR / true_data.XLSX_NAME).exists(),
+    reason=(
+        f"{true_data.XLSX_NAME} not found in {_DATA_DIR} — set IRS_PRICER_DATA_DIR "
+        f"or upload the workbooks through the app to populate it."
+    ),
+)
 
 
 def test_common_dates_xlsx_returns_sorted_dates():

@@ -20,14 +20,13 @@ import os
 import tempfile
 from pathlib import Path
 
+from ..config import DATA_DIR
 from ..loaders import base_rate
 from ..loaders import credit_matrix as credit_matrix_loader
 from ..loaders import portfolio as portfolio_loader
 from ..loaders import true_data
 
 logger = logging.getLogger(__name__)
-
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent  # irs_pricer/services/ → project root
 
 SLOT_FILENAMES = {
     "irs_data": true_data.XLSX_NAME,
@@ -67,9 +66,15 @@ def _commit(file_bytes: dict[str, bytes]) -> None:
     temp file, then os.replace() (same pattern as loaders/cache.py's disk
     cache write) -- a crash mid-write can never leave a corrupt/partial file
     at the live path."""
+    # Uploading is how a fresh checkout gets a data directory in the first
+    # place -- nothing else creates it, and mkstemp() below won't. Note
+    # os.replace() is only atomic within one filesystem, so IRS_PRICER_DATA_DIR
+    # pointing at another drive or a network share breaks that guarantee.
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
     for key, data in file_bytes.items():
-        dest = _DATA_DIR / SLOT_FILENAMES[key]
-        fd, tmp_name = tempfile.mkstemp(dir=_DATA_DIR, suffix=".tmp")
+        dest = DATA_DIR / SLOT_FILENAMES[key]
+        fd, tmp_name = tempfile.mkstemp(dir=DATA_DIR, suffix=".tmp")
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(data)

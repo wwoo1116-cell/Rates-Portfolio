@@ -19,10 +19,13 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict, dataclass
-from pathlib import Path
 from urllib.parse import quote_plus
 
-_SETTINGS_PATH = Path(__file__).resolve().parent.parent.parent / ".db_connection.json"
+from ..config import REPO_ROOT
+
+# Deliberately NOT the shared Data/ folder: this is config carrying a plaintext
+# password, and Data/ is shared with the frontend repo and may end up synced.
+_SETTINGS_PATH = REPO_ROOT / ".db_connection.json"
 
 
 class DatabaseNotConfiguredError(RuntimeError):

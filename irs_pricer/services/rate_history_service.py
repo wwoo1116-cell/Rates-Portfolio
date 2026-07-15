@@ -16,13 +16,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from pathlib import Path
 
+from ..config import DATA_DIR, require_data_dir
 from ..engine.curve import _quote_label
 from ..loaders.base_rate import load_base_rate
 from . import market_data_service
-
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent  # irs_pricer/services/ -> project root
 
 
 @dataclass
@@ -44,6 +42,11 @@ def get_rate_history(start_date: date, end_date: date) -> list[RateHistoryPoint]
     Excel-fallback logic short-circuits to Excel-only after the first DB
     failure (see market_data_service._db_market_data_unavailable), so a bulk
     multi-thousand-date request here doesn't pay a per-date DB round-trip."""
+    # load_base_rate() below returns None for a missing workbook by design, so
+    # a wrong data dir would render as base_rate=None on every point rather
+    # than an error. Check the directory itself to tell the two apart.
+    require_data_dir()
+
     dates = [d for d in market_data_service.list_available_dates() if start_date <= d <= end_date]
 
     points: list[RateHistoryPoint] = []
@@ -62,7 +65,7 @@ def get_rate_history(start_date: date, end_date: date) -> list[RateHistoryPoint]
                 valuation_date=d,
                 cd_rate=snapshot.cd_rate,
                 on_rate=snapshot.on_rate,
-                base_rate=load_base_rate(_DATA_DIR, d),
+                base_rate=load_base_rate(DATA_DIR, d),
                 tenor_rates={_quote_label(q): q.rate for q in snapshot.swap_quotes},
             )
         )

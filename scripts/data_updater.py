@@ -19,6 +19,8 @@ from datetime import date, datetime
 import requests
 import xlwings as xw
 
+from irs_pricer.config import DATA_DIR
+from irs_pricer.loaders import true_data
 from irs_pricer.loaders.infomax_schema import (
     COL_CD_91D as _COL_CD_91D,
     COL_VAL_DATE as _COL_VAL_DATE,
@@ -79,7 +81,14 @@ def push_row(row: list) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--workbook", default="True Data.xlsx", help="Open workbook name or full path")
+    # xw.Book() matches an already-open workbook by name, which is the normal
+    # case here; the full path only matters when it isn't open yet, and a bare
+    # name would then resolve against the CWD rather than the data folder.
+    parser.add_argument(
+        "--workbook",
+        default=str(DATA_DIR / true_data.XLSX_NAME),
+        help="Open workbook name or full path",
+    )
     parser.add_argument("--interval", type=int, default=5, help="Polling interval in seconds")
     args = parser.parse_args()
 

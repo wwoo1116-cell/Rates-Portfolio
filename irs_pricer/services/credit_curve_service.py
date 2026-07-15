@@ -15,12 +15,14 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from pathlib import Path
 
+from ..config import DATA_DIR, require_data_dir
 from ..core import ttl_cache
 from ..loaders import credit_matrix, credit_taxonomy
 
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent  # irs_pricer/services/ -> project root
+# Kept as a module attribute for one release: bond_cashflow_service reached in
+# here for it before config.DATA_DIR existed. Drop once that import is updated.
+_DATA_DIR = DATA_DIR
 
 
 def get_taxonomy() -> dict:
@@ -53,6 +55,8 @@ def get_series(
     Raises ValueError for an IRS leg (served elsewhere) or an unknown
     sector/rating/tenor combination, so a bad request comes back as a clean
     400 rather than an empty-but-silent series."""
+    require_data_dir()
+
     if sector == credit_taxonomy.IRS_SECTOR:
         raise ValueError("IRS 시리즈는 /api/rate-history에서 제공됩니다.")
 
@@ -64,7 +68,7 @@ def get_series(
     if raw_tenor is None:
         raise ValueError(f"알 수 없는 테너입니다: {tenor}")
 
-    series = credit_matrix.category_series(_DATA_DIR, category, raw_tenor, start_date, end_date)
+    series = credit_matrix.category_series(DATA_DIR, category, raw_tenor, start_date, end_date)
     return [{"valuation_date": d, "value": v} for d, v in series]
 
 
@@ -161,7 +165,8 @@ def _curve_points(category: str, val_date: date | None) -> list[tuple[float, flo
 
 
 def _build_curve_points(category: str, val_date: date | None) -> list[tuple[float, float]]:
-    curve = credit_matrix.curve_at(_DATA_DIR, category, val_date)
+    require_data_dir()
+    curve = credit_matrix.curve_at(DATA_DIR, category, val_date)
     points = [
         (_tenor_to_years(label), curve[raw_tenor])
         for label, raw_tenor in credit_taxonomy.CREDIT_TENORS.items()

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Iterable, Protocol
 
+from ..config import DATA_DIR
 from ..engine.bond_valuation import value_bond
 from ..engine.mtm_valuation import CashFlowDetail
 from ..loaders import credit_matrix
@@ -53,7 +54,7 @@ def _resolve_valuation_date(valuation_date: date | None) -> date:
     """미지정 시 Credit Matrix의 최신 평가일을 사용(할인 커브가 존재하는 날짜)."""
     if valuation_date is not None:
         return valuation_date
-    dates = credit_matrix.common_dates_xlsx(credit_curve_service._DATA_DIR)
+    dates = credit_matrix.common_dates_xlsx(DATA_DIR)
     return dates[-1]
 
 

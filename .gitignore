@@ -12,3 +12,12 @@ __pycache__/
 # MySQL connection settings (host/user/password) entered via the Settings
 # page -- contains a plaintext password, never belongs in git.
 .db_connection.json
+
+# Market-data workbooks live in the shared Data/ folder beside this repo, not
+# in it (see irs_pricer/config.py). This is a guard against one being dropped
+# back at the root -- uploads used to land here, and every upload then rewrote
+# a 41MB blob into history, since xlsx is already-compressed and can't delta.
+*.xlsx
+
+# Server logs -- uvicorn_err.log was tracked at 13MB before this.
+*.log

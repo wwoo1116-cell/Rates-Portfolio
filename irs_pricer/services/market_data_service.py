@@ -17,10 +17,10 @@ Route handlers call these functions; no path/loader/DB-session logic lives in ap
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from ..config import DATA_DIR
 from ..core import ttl_cache
 from ..core.errors import _check_business_day
 from ..core.market_data import MarketSnapshot
@@ -34,8 +34,6 @@ from ..loaders.factory import (
     load_fixing_history,
     load_market_snapshot,
 )
-
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent   # irs_pricer/services/ → project root
 
 # In-memory cache of intraday rates pushed by data_updater.py (xlwings poller).
 # Keyed by valuation_date; takes priority over DB/file so the UI reflects RTD
@@ -88,7 +86,7 @@ def _load_snapshot_uncached(valuation_date: date) -> MarketSnapshot:
     snapshot = _load_snapshot_from_db(valuation_date)
     if snapshot is not None:
         return snapshot
-    return load_market_snapshot(_DATA_DIR, valuation_date)
+    return load_market_snapshot(DATA_DIR, valuation_date)
 
 
 def load_snapshot(valuation_date: date) -> MarketSnapshot:
@@ -133,7 +131,7 @@ def _list_available_dates_uncached() -> list[date]:
         pass
 
     try:
-        dates |= set(_list_available_dates(_DATA_DIR))
+        dates |= set(_list_available_dates(DATA_DIR))
     except ValueError:
         pass
 
@@ -191,4 +189,4 @@ def _load_fixings_uncached() -> dict[date, float]:
                 return history
     except (DatabaseNotConfiguredError, SQLAlchemyError):
         pass
-    return load_fixing_history(_DATA_DIR)
+    return load_fixing_history(DATA_DIR)

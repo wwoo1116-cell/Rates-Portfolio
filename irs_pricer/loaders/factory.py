@@ -25,7 +25,17 @@ def _detect_source_type(source: Path) -> str:
     """
     Detects active data format by checking cache first, then files.
     This ensures we hit the disk cache layer before falling back to spinning up disk I/O.
+
+    Raises FileNotFoundError if `source` doesn't exist at all. Without this, a
+    nonexistent directory isn't a dir and isn't a known filename, so it falls
+    through to "csv" and surfaces as a missing CD_AAA_91D.csv -- a file this
+    deployment has never had, naming neither the real problem nor the path.
+    FileNotFoundError specifically (not ValueError): market_data_service's
+    date enumeration swallows ValueError.
     """
+    if not source.exists():
+        raise FileNotFoundError(f"시장 데이터 소스를 찾을 수 없습니다: {source}")
+
     if not source.is_dir():
         if source.suffix.lower() == ".csv":
             return "csv"

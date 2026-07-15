@@ -26,15 +26,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
+from irs_pricer.config import DATA_DIR
 from irs_pricer.core.errors import NonBusinessDayError
 from irs_pricer.db import repository
 from irs_pricer.db.database import get_db
 from irs_pricer.db.models import MarketDataSource
 from irs_pricer.loaders import base_rate, call_rate, csv_loader, total_data, true_data
-
-DATA_DIR = Path(__file__).resolve().parent.parent
 
 _PROGRESS_EVERY = 50
 
