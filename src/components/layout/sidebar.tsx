@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -55,8 +56,46 @@ export function Sidebar() {
         // No CSS transition — institutional: no motion
       }}
     >
-      {/* Nav items — the sidebar carries navigation only; the organization
-          mark lives in the top bar and the app mark in the favicon. */}
+      {/* Organization mark — first element of the nav column, above Home
+          (S10 owner decision; supersedes the top-bar placement). Expanded
+          shows the full reversed lockup at 26px wordmark height. The 48px
+          collapsed rail can't fit the wordmark, so it shows only the orange
+          swoosh, centered — a CSS crop of the SAME public/brand asset (no
+          re-derived file): in the 339×80 source the swoosh occupies
+          x 301–338 / y 0–41, cleanly separated from the wordmark (x ≤ 297). */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: collapsed ? "center" : "flex-start",
+          padding: collapsed ? "14px 0 10px" : "14px 12px 10px",
+          flexShrink: 0,
+        }}
+      >
+        {collapsed ? (
+          <div style={{ width: 18, height: 20, overflow: "hidden" }}>
+            <Image
+              src="/brand/mirae-logo-reversed.png"
+              alt="Mirae Asset"
+              width={161}
+              height={38}
+              priority
+              /* Tailwind preflight's img { max-width: 100% } would shrink the
+                 image to the 18px crop window — the crop needs true size. */
+              style={{ maxWidth: "none", marginLeft: -143 }}
+            />
+          </div>
+        ) : (
+          <Image
+            src="/brand/mirae-logo-reversed.png"
+            alt="Mirae Asset"
+            width={110}
+            height={26}
+            priority
+            style={{ flexShrink: 0 }}
+          />
+        )}
+      </div>
+
       <nav
         style={{
           flex: 1,
