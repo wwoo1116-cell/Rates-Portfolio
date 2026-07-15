@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { HeatmapItem } from "@/mocks/home";
-import { resolveCssVar } from "@/lib/canvas-color";
-import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
+import { CHART_CHROME_COLORS, PNL_COLORS } from "@/lib/chart-colors";
 
 export interface PortfolioHeatmapProps {
   data: HeatmapItem[];
@@ -21,11 +20,11 @@ function heatColor(notional: number, maxNotional: number): string {
 }
 
 // PnL sign indicator: directional data rendered as text color only, not fill.
-// Canvas can't resolve CSS custom properties, so callers pass the already-
-// resolved --sem-positive/--sem-negative computed values (see drawHeatmap).
-function pnlColor(pnl: number, colorPositive: string, colorNegative: string): string {
-  if (pnl > 0) return colorPositive;
-  if (pnl < 0) return colorNegative;
+// S10: Jade/Berry chart P&L pair (canvas literals from lib/chart-colors) —
+// replaces the resolved --sem-positive/--sem-negative green/red.
+function pnlColor(pnl: number): string {
+  if (pnl > 0) return PNL_COLORS.pos;
+  if (pnl < 0) return PNL_COLORS.neg;
   return CHART_CHROME_COLORS.neutralTextStale;
 }
 
@@ -68,9 +67,6 @@ function drawHeatmap(
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   ctx.scale(dpr, dpr);
-
-  const colorPositive = resolveCssVar("--sem-positive");
-  const colorNegative = resolveCssVar("--sem-negative");
 
   const W = cssW;
   const H = cssH;
@@ -141,7 +137,7 @@ function drawHeatmap(
     if (lh > 28) {
       const pnl     = item.dailyPnlPercent;
       const pnlText = `${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}%`;
-      ctx.fillStyle = pnlColor(pnl, colorPositive, colorNegative);
+      ctx.fillStyle = pnlColor(pnl);
       ctx.font      = "10px Inter, system-ui, sans-serif";
       ctx.fillText(pnlText, lx0 + 4, ly0 + 18);
     }

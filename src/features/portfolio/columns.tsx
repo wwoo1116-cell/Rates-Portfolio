@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { HeatmapPill } from "@/components/data/heatmap-pill";
 import { PriceDisplay } from "@/components/data/price-display";
 import { NumericCell } from "@/components/ui/numeric-cell";
+import { heatRampFill } from "@/lib/chart-colors";
 import { getTenorBucket, type AssetClass } from "@/lib/constants";
 import type { Position } from "@/types/portfolio";
 
@@ -161,7 +162,7 @@ export function createPositionColumnDefs(
           display:block;text-align:right;
           font-family:var(--font-mono);font-variant-numeric:tabular-nums;
           font-size:var(--text-sm);
-          color:${value >= 0 ? "var(--sem-positive)" : "var(--sem-negative)"};
+          color:${value >= 0 ? "var(--chart-pnl-pos)" : "var(--chart-pnl-neg)"};
         `;
         span.textContent = Math.round(value).toLocaleString();
         return span;
@@ -205,22 +206,13 @@ export function createPositionColumnDefs(
   ];
 }
 
-// Vanilla DOM cell renderer for KRD heatmap cells (AG Grid vanilla renderer pattern)
+// Vanilla DOM cell renderer for KRD heatmap cells (AG Grid vanilla renderer
+// pattern). S10: fills come from the Jade/Berry signed-sensitivity heat ramp
+// (lib/chart-colors) with fixed white text — replaces the green/red fills.
 function makeHeatCell(value: number, bounds: [number, number]): HTMLElement {
   const range = Math.max(Math.abs(bounds[0]), Math.abs(bounds[1])) || 1;
-  const t = Math.min(Math.abs(value) / range, 1);
-  let bg: string;
-  let color: string;
-  if (value > 0) {
-    bg    = `rgba(15, 153, 96,${(0.08 + t * 0.45).toFixed(2)})`;
-    color = "var(--sem-positive)";
-  } else if (value < 0) {
-    bg    = `rgba(219, 55, 55,${(0.08 + t * 0.45).toFixed(2)})`;
-    color = "var(--sem-negative)";
-  } else {
-    bg    = "transparent";
-    color = "var(--fg-muted)";
-  }
+  const bg = heatRampFill(value, range);
+  const color = value === 0 ? "var(--fg-muted)" : "var(--chart-heat-text)";
   const sign = value > 0 ? "+" : "";
   const span = document.createElement("span");
   span.style.cssText = `

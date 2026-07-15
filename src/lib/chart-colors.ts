@@ -181,6 +181,42 @@ export function withAlpha(hex: string, alpha: number): string {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
+/* Signed-sensitivity heat ramps (S10) — DV01/PVBP/KRD heatmap CELL FILLS.
+   Berry = negative, Jade = positive (the reserved P&L hue families), rendered
+   as alpha steps of the -80 bases over the dark surface: stronger magnitude →
+   stronger step. Replaces the legacy green/red (--sem-*) heatmap fills.
+   Cell TEXT is fixed white (HEAT_TEXT_COLOR) on every step regardless of fill
+   intensity — never dark text on a light step. */
+
+export const HEAT_TEXT_COLOR = "#FFFFFF"; // --chart-heat-text
+export const HEAT_POS_BASE = MS.jade80; // --chart-heat-pos
+export const HEAT_NEG_BASE = MS.berry80; // --chart-heat-neg
+
+/** Fill-strength steps, weakest → strongest. The top step is CLAMPED at 0.70:
+ * solid Jade-80 would leave white text at ~2.1:1 vs the composited fill,
+ * below the 3:1 floor — per the owner rule the ramp drops the failing steps
+ * (clamps) rather than switching the text to dark.
+ * Gate: scripts/check_heat_ramp_contrast.test.ts checks every step of both
+ * families composited over --bg-surface against white text. */
+export const HEAT_ALPHA_STEPS = [0.12, 0.26, 0.4, 0.55, 0.7] as const;
+
+export const HEAT_POS_RAMP: readonly string[] = HEAT_ALPHA_STEPS.map((a) =>
+  withAlpha(HEAT_POS_BASE, a),
+);
+export const HEAT_NEG_RAMP: readonly string[] = HEAT_ALPHA_STEPS.map((a) =>
+  withAlpha(HEAT_NEG_BASE, a),
+);
+
+/** Heatmap cell fill for a signed sensitivity value: |value|/range picks the
+ * ramp step, sign picks the family. Zero values and degenerate ranges get no
+ * fill (callers keep their muted zero/em-dash treatment). */
+export function heatRampFill(value: number, range: number): string {
+  if (!Number.isFinite(value) || value === 0 || !(range > 0)) return "transparent";
+  const t = Math.min(Math.abs(value) / range, 1);
+  const idx = Math.min(HEAT_ALPHA_STEPS.length - 1, Math.floor(t * HEAT_ALPHA_STEPS.length));
+  return (value > 0 ? HEAT_POS_RAMP : HEAT_NEG_RAMP)[idx];
+}
+
 /** Simulation Total-Return series — composite hierarchy: total emphasized
  * (line width 3), components subdued. Key names match chart-theme.ts /
  * lastRun.chartData fields. See the sanctioned-exception notes above. */
