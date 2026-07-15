@@ -196,20 +196,29 @@ def test_book_summary_hedged_duration_nets_irs_against_bonds():
 # A1/A2: daily PnL decomposed as ΔNPV = MtM + Theta
 # ---------------------------------------------------------------------------
 
-def _pin_quotes(monkeypatch, today_snapshot):
-    """Control whether T has quotes.
+_AS_OF = date(2026, 6, 30)  # next business day after _VALUATION_DATE (Mon 6/29)
 
-    build_book_daily_pnl resolves T itself and asks market_data_service whether
-    it has quotes for it. Left alone, these tests would depend on whatever the
-    real workbooks happen to hold for the day after _VALUATION_DATE -- so pin it.
+
+def _pin_sources(monkeypatch, *, irs: bool, credit: bool, today_snapshot=None):
+    """Pin per-source quote availability.
+
+    Availability is per SOURCE, not one global flag: swaps price off the IRS/CD
+    snapshot and bonds off the Credit Matrix, and the two genuinely have
+    different coverage (measured: Matrix to 2026-07-13, IRS to 2026-07-06).
+    Left alone these tests would depend on whatever the real workbooks happen to
+    hold for the day after _VALUATION_DATE, so pin both.
     """
+    monkeypatch.setattr(pas, "_source_dates", lambda: {
+        pas._SOURCE_IRS: [_AS_OF] if irs else [],
+        pas._SOURCE_CREDIT: [_AS_OF] if credit else [],
+    })
     monkeypatch.setattr(pas, "_snapshot_or_none", lambda _d: today_snapshot)
 
 
 def test_as_of_is_the_next_business_day_after_the_close(monkeypatch):
     """T is derived, not passed in: the caller sends the close and the server
     rolls it forward. 2026-06-29 is a Monday, so T is Tuesday the 30th."""
-    _pin_quotes(monkeypatch, None)
+    _pin_sources(monkeypatch, irs=False, credit=False)
     res = pas.build_book_daily_pnl([_irs("P1")], _snapshot(), {})
     assert res["as_of"] == "2026-06-30"
 
@@ -217,131 +226,23 @@ def test_as_of_is_the_next_business_day_after_the_close(monkeypatch):
 def test_as_of_skips_the_weekend(monkeypatch):
     """A Friday close rolls to Monday, not Saturday -- theta is one BUSINESS
     day. (The carry/funding legs still accrue the real 3 calendar days.)"""
-    _pin_quotes(monkeypatch, None)
+    _pin_sources(monkeypatch, irs=False, credit=False)
     friday = MarketSnapshot(valuation_date=date(2026, 7, 3), cd_rate=0.033,
                             on_rate=0.0325, swap_quotes=_snapshot().swap_quotes)
     res = pas.build_book_daily_pnl([_irs("P1")], friday, {})
     assert res["as_of"] == "2026-07-06"
 
 
-def test_premarket_mtm_is_exactly_zero_for_every_instrument(monkeypatch):
-    """A2's core requirement. Not approximately zero -- exactly, because with no
-    quotes for T the MtM leg prices against the very same curve as the theta
-    leg, so the two valuations are bit-identical."""
-    _pin_quotes(monkeypatch, None)
-    res = pas.build_book_daily_pnl([_irs("P1"), _irs("P2"), _bond("B1")], _snapshot(), {})
-
-    assert res["quotes_available"] is False
-    assert res["daily_pnl"]["mtm"] == 0.0
-    for row in res["by_book"]:
-        assert row["mtm"] == 0.0
-    for inst in res["by_instrument"]:
-        assert inst["mtm"] == 0.0, f"{inst['id']} has non-zero MtM before the open"
-
 
 def test_premarket_theta_is_already_reflected(monkeypatch):
     """The other half of A2: theta is known deterministically at T's open, so it
     must NOT be zero just because quotes haven't arrived."""
-    _pin_quotes(monkeypatch, None)
+    _pin_sources(monkeypatch, irs=False, credit=False)
     res = pas.build_book_daily_pnl([_irs("P1"), _bond("B1")], _snapshot(), {})
     assert res["daily_pnl"]["theta"] != 0.0
 
 
-def test_total_equals_mtm_plus_theta_exactly(monkeypatch):
-    """The no-residual-bucket requirement, at every level of aggregation.
 
-    Exact equality, not approx: the spec forbids a residual and the
-    decomposition telescopes, so drift here is a real defect, not float noise.
-    """
-    _pin_quotes(monkeypatch, _snapshot(cd_rate=0.0335))
-    res = pas.build_book_daily_pnl([_irs("P1"), _irs("P2"), _bond("B1")], _snapshot(), {})
-
-    dp = res["daily_pnl"]
-    assert dp["total"] == dp["mtm"] + dp["theta"]
-    for row in res["by_book"]:
-        assert row["total"] == row["mtm"] + row["theta"]
-    for inst in res["by_instrument"]:
-        assert inst["total"] == inst["mtm"] + inst["theta"]
-
-
-def test_swap_total_matches_an_independent_revaluation(monkeypatch):
-    """Pins the claim that the decomposition only re-splits the total, never
-    moves it: mtm + theta must equal V(T, c_T) - V(close, c_close) computed
-    straight from price_portfolio, with no reference to the split at all."""
-    close = _snapshot()
-    today = _snapshot(cd_rate=0.0340)
-    _pin_quotes(monkeypatch, today)
-
-    irs = [_irs("P1"), _irs("P2")]
-    res = pas.build_book_daily_pnl(irs, close, {})
-
-    swaps = [pas._to_swap(p) for p in irs]
-    rolled_today = MarketSnapshot(
-        valuation_date=date.fromisoformat(res["as_of"]), cd_rate=today.cd_rate,
-        on_rate=today.on_rate, swap_quotes=today.swap_quotes,
-    )
-    v_close = portfolio_service.price_portfolio(close, swaps, {}).net_npv
-    v_today = portfolio_service.price_portfolio(rolled_today, swaps, {}).net_npv
-
-    assert res["daily_pnl"]["total"] == pytest.approx(v_today - v_close, rel=1e-12)
-
-
-def test_funding_is_excluded_from_total(monkeypatch):
-    """Funding is a financing cost, not a change in NPV. It must be reported but
-    must not leak into total, or total stops meaning ΔNPV."""
-    _pin_quotes(monkeypatch, None)
-    res = pas.build_book_daily_pnl([_bond("B1")], _snapshot(), {}, funding_spread_bp=10.0)
-    row = res["by_book"][0]
-    assert row["funding"] < 0, "a funded bond position should show a financing cost"
-    assert row["total"] == row["mtm"] + row["theta"]
-
-
-def test_bond_without_static_params_is_kept_not_dropped(monkeypatch):
-    """A bond whose blotter row has no issue date can't be scheduled, so it
-    can't be revalued -- but it still has carry. Dropping it would silently
-    understate the book, so it falls back to an analytic split and is flagged."""
-    _pin_quotes(monkeypatch, None)
-    bare = _bond("B-NOSTATIC")
-    bare.issue_date = None
-    bare.coupon_rate = None
-    bare.payment_frequency = None
-
-    res = pas.build_book_daily_pnl([bare], _snapshot(), {})
-    insts = res["by_instrument"]
-    assert len(insts) == 1, "position vanished from the PnL"
-    assert insts[0]["theta"] != 0.0, "fallback must still carry"
-    assert "degraded_reason" in insts[0], "silent approximation -- must be reported"
-
-
-def test_bond_with_static_params_is_revalued_not_approximated(monkeypatch):
-    """The revaluation path must do more than the analytic carry it replaces:
-    rolling the valuation date also rolls the bond down its own curve, which
-    eval x ytm/365 cannot see."""
-    _pin_quotes(monkeypatch, None)
-    full = _bond("B-FULL")
-    bare = _bond("B-FULL")
-    bare.issue_date = None
-    bare.coupon_rate = None
-    bare.payment_frequency = None
-
-    revalued = pas.build_book_daily_pnl([full], _snapshot(), {})["by_instrument"][0]
-    analytic = pas.build_book_daily_pnl([bare], _snapshot(), {})["by_instrument"][0]
-
-    assert "degraded_reason" not in revalued
-    assert revalued["theta"] != analytic["theta"]
-
-
-def test_duplicate_position_ids_do_not_collapse(monkeypatch):
-    """The real blotter holds the same bond in several lots -- one id appears 9x.
-    Anything that indexes PnL by position_id silently merges them and loses the
-    book. Every lot must survive into by_instrument and into the book total."""
-    _pin_quotes(monkeypatch, None)
-    lots = [_bond("SAME-ID"), _bond("SAME-ID"), _bond("SAME-ID")]
-    res = pas.build_book_daily_pnl(lots, _snapshot(), {})
-
-    assert len(res["by_instrument"]) == 3
-    one = pas.build_book_daily_pnl([_bond("SAME-ID")], _snapshot(), {})
-    assert res["daily_pnl"]["theta"] == pytest.approx(3 * one["daily_pnl"]["theta"], rel=1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -383,3 +284,259 @@ def test_pvbp_total_row_is_last_even_with_unknown_sectors():
     positions = [_bond("B1", sector="기타"), _irs("P1")]
     rows = pas.build_pvbp_sensitivity(positions, _snapshot(), {})
     assert rows[-1]["sector"] == "합계"
+
+
+def test_missing_quotes_give_none_not_zero(monkeypatch):
+    """A2's core requirement, sharpened: MtM must be blank, never 0.
+
+    0 asserts "quotes arrived and nothing moved" -- a different, false claim.
+    On a risk screen the two must not look identical, so absence stays None all
+    the way out and renders as an em-dash.
+    """
+    _pin_sources(monkeypatch, irs=False, credit=False)
+    res = pas.build_book_daily_pnl([_irs("P1"), _bond("B1")], _snapshot(), {})
+
+    assert res["daily_pnl"]["mtm"] is None
+    assert res["daily_pnl"]["mtm_complete"] is False
+    for row in res["by_book"]:
+        assert row["mtm"] is None, "unknown MtM must be None, not 0.0"
+
+
+def test_theta_is_reflected_even_with_no_quotes(monkeypatch):
+    """The other half of A2: theta is deterministic and known at T's open, so it
+    must NOT be suppressed just because quotes haven't arrived."""
+    _pin_sources(monkeypatch, irs=False, credit=False)
+    res = pas.build_book_daily_pnl([_irs("P1"), _bond("B1")], _snapshot(), {})
+    assert res["daily_pnl"]["theta"] != 0.0
+    assert res["daily_pnl"]["total"] == res["daily_pnl"]["theta"]
+
+
+def test_quote_sources_are_reported_per_source(monkeypatch):
+    """The single "market open" flag is gone: the sources have genuinely
+    different coverage, so the header has to say which one is behind."""
+    _pin_sources(monkeypatch, irs=False, credit=True)
+    res = pas.build_book_daily_pnl([_irs("P1")], _snapshot(), {})
+
+    by_name = {s["source"]: s for s in res["quote_sources"]}
+    assert by_name[pas._SOURCE_IRS]["has_as_of"] is False
+    assert by_name[pas._SOURCE_CREDIT]["has_as_of"] is True
+    assert by_name[pas._SOURCE_CREDIT]["latest"] == _AS_OF.isoformat()
+
+
+def test_mixed_sources_mark_the_book_partial(monkeypatch):
+    """The real situation: Credit Matrix has as_of but IRS doesn't, so bonds
+    have MtM and swaps don't. The book row must show the bond MtM it does know
+    AND flag that it isn't the whole picture -- not silently present a partial
+    sum as a complete total."""
+    _pin_sources(monkeypatch, irs=False, credit=True)
+    res = pas.build_book_daily_pnl([_irs("P1"), _bond("B1")], _snapshot(), {})
+
+    row = res["by_book"][0]
+    assert row["mtm"] is not None, "the bond's MtM is known and must be shown"
+    assert row["mtm_complete"] is False, "the swap's MtM is missing -- row is partial"
+
+
+def test_identity_is_exact_when_every_source_has_quotes(monkeypatch):
+    """With nothing missing there is no partiality and the no-residual rule
+    applies in full: total == mtm + theta, exactly, at every level."""
+    _pin_sources(monkeypatch, irs=True, credit=True,
+                 today_snapshot=_snapshot(cd_rate=0.0335))
+    res = pas.build_book_daily_pnl([_irs("P1"), _irs("P2"), _bond("B1")], _snapshot(), {})
+
+    dp = res["daily_pnl"]
+    assert dp["mtm_complete"] is True
+    assert dp["total"] == dp["mtm"] + dp["theta"]
+    for row in res["by_book"]:
+        assert row["mtm_complete"] is True
+        assert row["total"] == row["mtm"] + row["theta"]
+
+
+def test_swap_total_matches_an_independent_revaluation(monkeypatch):
+    """Pins the claim that the decomposition only re-splits the total, never
+    moves it: mtm + theta must equal V(T, c_T) - V(close, c_close) computed
+    straight from price_portfolio, with no reference to the split at all."""
+    close = _snapshot()
+    today = _snapshot(cd_rate=0.0340)
+    _pin_sources(monkeypatch, irs=True, credit=True, today_snapshot=today)
+
+    irs = [_irs("P1"), _irs("P2")]
+    res = pas.build_book_daily_pnl(irs, close, {})
+
+    swaps = [pas._to_swap(p) for p in irs]
+    rolled_today = MarketSnapshot(
+        valuation_date=_AS_OF, cd_rate=today.cd_rate,
+        on_rate=today.on_rate, swap_quotes=today.swap_quotes,
+    )
+    v_close = portfolio_service.price_portfolio(close, swaps, {}).net_npv
+    v_today = portfolio_service.price_portfolio(rolled_today, swaps, {}).net_npv
+
+    assert res["daily_pnl"]["total"] == pytest.approx(v_today - v_close, rel=1e-12)
+
+
+def test_funding_is_excluded_from_total(monkeypatch):
+    """Funding is a financing cost, not a change in NPV. It must be reported but
+    must not leak into total, or total stops meaning ΔNPV."""
+    _pin_sources(monkeypatch, irs=False, credit=False)
+    res = pas.build_book_daily_pnl([_bond("B1")], _snapshot(), {}, funding_spread_bp=10.0)
+    row = res["by_book"][0]
+    assert row["funding"] < 0, "a funded bond position should show a financing cost"
+    assert row["total"] == row["theta"]
+
+
+# --- per-position behaviour, asserted on the leg builder directly -------------
+# by_instrument is no longer in the payload (nothing renders 686 rows), so these
+# exercise _bond_pnl, which is where the per-position decisions actually live.
+
+def test_bond_without_static_params_is_kept_not_dropped():
+    """A bond whose blotter row has no issue date can't be scheduled, so it
+    can't be revalued -- but it still has carry. Dropping it would silently
+    understate the book, so it falls back to an analytic split and is flagged."""
+    bare = _bond("B-NOSTATIC")
+    bare.issue_date = None
+    bare.coupon_rate = None
+    bare.payment_frequency = None
+
+    legs = pas._bond_pnl([bare], _VALUATION_DATE, _AS_OF, False, 0.026)
+    assert len(legs) == 1, "position vanished from the PnL"
+    assert legs[0].theta != 0.0, "fallback must still carry"
+    assert legs[0].degraded_reason is not None, "silent approximation -- must be reported"
+
+
+def test_bond_with_static_params_is_revalued_not_approximated():
+    """The revaluation path must do more than the analytic carry it replaces:
+    rolling the valuation date also rolls the bond down its own curve, which
+    eval x ytm/365 cannot see."""
+    bare = _bond("B-FULL")
+    bare.issue_date = None
+    bare.coupon_rate = None
+    bare.payment_frequency = None
+
+    revalued = pas._bond_pnl([_bond("B-FULL")], _VALUATION_DATE, _AS_OF, False, 0.026)[0]
+    analytic = pas._bond_pnl([bare], _VALUATION_DATE, _AS_OF, False, 0.026)[0]
+
+    assert revalued.degraded_reason is None
+    assert revalued.theta != analytic.theta
+
+
+def test_duplicate_position_ids_do_not_collapse(monkeypatch):
+    """The real blotter holds the same bond in several lots -- one id appears 9x.
+    Anything that indexes PnL by position_id silently merges them and loses the
+    book. Every lot must survive into the aggregate."""
+    _pin_sources(monkeypatch, irs=False, credit=False)
+    lots = pas.build_book_daily_pnl([_bond("SAME"), _bond("SAME"), _bond("SAME")], _snapshot(), {})
+    one = pas.build_book_daily_pnl([_bond("SAME")], _snapshot(), {})
+
+    assert lots["daily_pnl"]["theta"] == pytest.approx(3 * one["daily_pnl"]["theta"], rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Coupon-day theta: a payment date inside (close, T] must not crater theta
+# ---------------------------------------------------------------------------
+
+def _swap_paying_on_as_of() -> PositionData:
+    """A swap whose quarterly schedule lands a payment exactly on T=2026-06-30.
+
+    trade_date 2025-06-27 (Fri) -> effective start next business day 2025-06-30,
+    quarterly ISDA forward generation -> ..., 2026-03-30, 2026-06-30 (Tue, no
+    modified-following shift). So one net cashflow sits in (close 6/29, T 6/30].
+    """
+    return PositionData(
+        instrument_type="irs",
+        position_id="P-COUPON",
+        sector="IRS",
+        book="Book A",
+        start_date=date(2025, 6, 27),
+        maturity_date=date(2030, 6, 30),
+        notional=10_000_000_000.0,
+        fixed_rate=0.0305,
+        pay_fixed=False,  # receive fixed: net flow ~ +fixed - float, sign matters
+        float_spread=0.0,
+    )
+
+
+def test_swap_theta_survives_a_coupon_crossing(monkeypatch):
+    """Without the cash leg, theta on a payment date reports ~-(coupon PV): the
+    flow leaves the schedule but the received cash is counted nowhere. Value
+    isn't destroyed on a coupon date -- it converts to cash -- so theta must
+    equal (rolled - close revaluation) PLUS the net cash paid in the window."""
+    _pin_sources(monkeypatch, irs=False, credit=False)
+    pos = _swap_paying_on_as_of()
+    close = _snapshot()
+
+    res = pas.build_book_daily_pnl([pos], close, {})
+    theta = res["daily_pnl"]["theta"]
+
+    # Independent reconstruction of the pieces, straight from the engine.
+    swaps = [pas._to_swap(pos)]
+    r_close = portfolio_service.price_portfolio(close, swaps, {})
+    v_close = r_close.net_npv
+    rolled = MarketSnapshot(valuation_date=_AS_OF, cd_rate=close.cd_rate,
+                            on_rate=close.on_rate, swap_quotes=close.swap_quotes)
+    v_rolled = portfolio_service.price_portfolio(rolled, swaps, {}).net_npv
+
+    window = [pcf.detail for pcf in r_close.cashflows
+              if _VALUATION_DATE < pcf.detail.payment_date <= _AS_OF]
+    assert window, "test setup broken: no payment landed in (close, T]"
+    net_cash = sum(
+        (1.0 if d.leg == "fixed" else -1.0) * d.cashflow  # receive-fixed
+        for d in window if d.cashflow is not None
+    )
+    assert net_cash != 0.0
+
+    assert theta == pytest.approx(v_rolled - v_close + net_cash, rel=1e-12)
+    # And the point of it all: theta is carry-sized, not coupon-sized. The bare
+    # revaluation difference IS coupon-sized (that's the artifact).
+    assert abs(theta) < abs(net_cash), (
+        f"theta {theta:,.0f} still looks like a detached coupon ({net_cash:,.0f})"
+    )
+
+
+def _bond_paying_on_as_of() -> PositionData:
+    """Semiannual bond with a coupon exactly on T=2026-06-30.
+
+    issue 2023-06-30 -> generate_bond_schedule pays each Jun 30 / Dec 30 (with
+    holiday shifts); verified 2026-06-30 lands unshifted. (2023-12-30 does NOT
+    work -- its 2026 summer coupon shifts to 07-02.)
+    """
+    b = _bond("B-COUPON")
+    b.issue_date = date(2023, 6, 30)
+    b.maturity_date = date(2028, 6, 30)
+    b.payment_frequency = 2
+    return b
+
+
+def test_bond_theta_survives_a_coupon_crossing(monkeypatch):
+    """Same artifact, bond side: the 6/30 coupon leaves value_bond's schedule at
+    T, and without the cash correction theta reports ~-coupon on a plain
+    Tuesday. Theta must include the received coupon."""
+    _pin_sources(monkeypatch, irs=False, credit=False)
+    pos = _bond_paying_on_as_of()
+
+    res = pas.build_book_daily_pnl([pos], _snapshot(), {})
+    theta = res["daily_pnl"]["theta"]
+
+    # The engine's own view of the coupon that detaches in the window.
+    y_close = pas._bond_market_yield(pos, _VALUATION_DATE, pos.maturity_date)
+    val_close = pas.bond_valuation.value_bond(
+        asset_id=pos.position_id, issue_date=pos.issue_date,
+        maturity_date=pos.maturity_date, coupon_rate=pos.coupon_rate,
+        payment_frequency=pos.payment_frequency, notional=pos.notional,
+        market_yield=y_close, val_date=_VALUATION_DATE,
+    )
+    detached = [c for c in val_close.cashflows
+                if _VALUATION_DATE < c.payment_date <= _AS_OF]
+    assert detached, "test setup broken: no coupon landed in (close, T]"
+    coupon_cash = sum(c.cashflow for c in detached)
+    assert coupon_cash > 0
+
+    v_rolled = pas.bond_valuation.value_bond(
+        asset_id=pos.position_id, issue_date=pos.issue_date,
+        maturity_date=pos.maturity_date, coupon_rate=pos.coupon_rate,
+        payment_frequency=pos.payment_frequency, notional=pos.notional,
+        market_yield=y_close, val_date=_AS_OF,
+    ).npv
+
+    assert theta == pytest.approx(v_rolled - val_close.npv + coupon_cash, rel=1e-12)
+    assert abs(theta) < coupon_cash, (
+        f"theta {theta:,.0f} still craters by the detached coupon ({coupon_cash:,.0f})"
+    )

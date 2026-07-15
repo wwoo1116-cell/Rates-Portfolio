@@ -88,25 +88,26 @@ def test_no_handler_in_the_app_is_async_without_awaiting():
     )
 
 
-def test_book_summary_still_accepts_a_legacy_daily_pnl_payload():
-    """daily_pnl_by_book is dead weight the frontend no longer sends, but a
-    client still sending it must not get a 422 mid-rollout."""
-    from irs_pricer.api.routers.portfolio_analytics import BookSummaryRequest
+def test_legacy_payload_fields_are_ignored_not_rejected():
+    """prior_* and daily_pnl_by_book are gone from the models now. A client
+    still sending them mid-rollout must get a 200, not a 422 -- Pydantic ignores
+    unknown fields by default, and this pins that so nobody "tightens" it to
+    extra="forbid" and breaks a deploy-order dependency."""
+    from irs_pricer.api.routers.portfolio_analytics import (
+        BookDailyPnlRequest,
+        PortfolioAnalyticsRequest,
+    )
 
-    req = BookSummaryRequest(
-        valuation_date="2026-06-29",
-        cd_rate=0.033,
-        swap_quotes=[],
-        positions=[],
+    daily = BookDailyPnlRequest(
+        valuation_date="2026-06-29", cd_rate=0.033, swap_quotes=[], positions=[],
+        prior_valuation_date="2026-06-26", prior_cd_rate=0.0329, prior_swap_quotes=[],
+    )
+    assert daily.valuation_date.isoformat() == "2026-06-29"
+    assert not hasattr(daily, "prior_valuation_date")
+
+    summary = PortfolioAnalyticsRequest(
+        valuation_date="2026-06-29", cd_rate=0.033, swap_quotes=[], positions=[],
         daily_pnl_by_book=[{"book": "A", "total": 1.0}],
     )
-    assert req.daily_pnl_by_book == [{"book": "A", "total": 1.0}]
+    assert not hasattr(summary, "daily_pnl_by_book")
 
-
-def test_book_summary_accepts_a_payload_without_daily_pnl():
-    from irs_pricer.api.routers.portfolio_analytics import BookSummaryRequest
-
-    req = BookSummaryRequest(
-        valuation_date="2026-06-29", cd_rate=0.033, swap_quotes=[], positions=[]
-    )
-    assert req.daily_pnl_by_book == []

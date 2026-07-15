@@ -11,7 +11,6 @@ from ..models import (
     RateQuoteIn,
     _to_snapshot,
 )
-from ...core.market_data import MarketSnapshot, RateQuote
 from ...services import allocation_history_service, portfolio_analytics_service, market_data_service
 from ...services.allocation_history_service import BondSnapshotInput
 from ...services.portfolio_analytics_service import PositionData
@@ -58,30 +57,18 @@ class PortfolioAnalyticsRequest(BaseModel):
     funding_spread_bp: float = 10.0
 
 
-class PriorSnapshotRequest(PortfolioAnalyticsRequest):
+class BookDailyPnlRequest(PortfolioAnalyticsRequest):
     """book-daily-pnl 요청. `valuation_date`/`swap_quotes`는 **마지막 종가**다.
 
-    prior_* 는 더 이상 쓰이지 않는다. 손익 분해가 (직전 종가 vs 그 전날)에서
-    (T vs 직전 종가)로 바뀌면서, 세타의 두 항이 모두 종가 커브를 쓰고 MtM은 T의
-    호가를 쓰기 때문에 '그 전날' 스냅샷이 필요 없어졌다. 평가일 T는 서버가
-    직접 구한다(= 종가일의 다음 영업일).
+    평가일 T는 요청에 없다 -- 서버가 종가일의 다음 영업일로 직접 구한다. 그래야
+    "T에 호가가 있는가"를 판정하는 주체와 T를 정하는 주체가 같아지고, 실시간 피드가
+    붙어도 프론트 계약이 바뀌지 않는다.
 
-    필드를 지우지 않고 Optional로 남긴 이유는 daily_pnl_by_book과 같다: 롤아웃 중
-    아직 prior_* 를 보내는 클라이언트가 422를 맞지 않게 하기 위해서다. 프론트가
-    전송을 멈춘 뒤 제거할 것.
+    이전의 prior_*(그 전날 스냅샷)는 제거했다. 분해가 (직전 종가 vs 그 전날)에서
+    (T vs 직전 종가)로 바뀌면서 세타의 두 항이 모두 종가 커브를 쓰게 되어 쓸모가
+    없어졌고, 프론트도 더 이상 보내지 않는다. Pydantic은 모르는 필드를 기본적으로
+    무시하므로, 아직 prior_* 를 실어 보내는 클라이언트가 있어도 422가 아니라 200이다.
     """
-
-    prior_valuation_date: date | None = None
-    prior_cd_rate: DecimalRate | None = None
-    prior_on_rate: DecimalRate | None = None
-    prior_swap_quotes: list[RateQuoteIn] = []
-
-
-class BookSummaryRequest(PortfolioAnalyticsRequest):
-    # Optional and unused. build_book_summary never read it, but the field is
-    # kept (rather than deleted outright) so a client still sending it gets a
-    # 200 instead of a 422 during rollout. Remove once no client sends it.
-    daily_pnl_by_book: list[dict] = []
 
 
 # NOTE ON `def` vs `async def` -- these three were the only `async def` handlers
@@ -110,17 +97,22 @@ def get_pvbp_sensitivity(request: PortfolioAnalyticsRequest) -> list[dict]:
 
 
 @router.post("/book-daily-pnl")
-def get_book_daily_pnl(request: PriorSnapshotRequest) -> dict:
+def get_book_daily_pnl(request: BookDailyPnlRequest) -> dict:
     """ΔNPV = MtM + 세타로 분해한 일간 손익.
 
     응답은 리스트가 아니라 봉투(envelope) 객체다: 행만으로는 표현할 수 없는
-    `as_of`/`quotes_available`를 함께 실어야 하기 때문이다. 개장 전에는
-    quotes_available=false 이고 MtM은 전 상품에서 정확히 0이며, 실시간 호가가
-    붙으면 플래그만 뒤집히고 MtM이 채워진다 -- 프론트 계약은 그대로다.
+    `as_of`/`quote_sources`를 함께 실어야 하기 때문이다.
+
+    호가 유무는 **소스별**로 낸다(단일 "장 열림" 플래그가 아니다). 스왑은 IRS/CD
+    스냅샷, 채권은 Credit Matrix를 쓰는데 둘의 커버리지가 실제로 다르므로
+    (측정 시점 Matrix 2026-07-13 / IRS 2026-07-06) 하나의 불리언으로는 화면의
+    빈 칸을 설명할 수 없다. 호가가 없는 상품의 MtM은 0이 아니라 **null**이고,
+    그 값이 섞인 집계 행은 `mtm_complete=false`로 부분합임을 밝힌다.
 
     평가일 T는 요청이 아니라 서버가 정한다(종가일의 다음 영업일). 그래야
     "T의 호가가 존재하는가"를 판단하는 주체와 T를 정하는 주체가 같아지고,
-    나중에 DB 피드가 붙었을 때 프론트를 건드릴 필요가 없다.
+    나중에 DB 피드가 붙어도 프론트 계약은 그대로다 -- 해당 소스의 has_as_of가
+    뒤집히고 MtM이 채워질 뿐이다.
     """
     close_snapshot = _to_snapshot(request)
     positions = [_to_position_data(p) for p in request.positions]
@@ -134,7 +126,7 @@ def get_book_daily_pnl(request: PriorSnapshotRequest) -> dict:
 
 
 @router.post("/book-summary")
-def get_book_summary(request: BookSummaryRequest) -> list[dict]:
+def get_book_summary(request: PortfolioAnalyticsRequest) -> list[dict]:
     snapshot = _to_snapshot(request)
     positions = [_to_position_data(p) for p in request.positions]
     try:

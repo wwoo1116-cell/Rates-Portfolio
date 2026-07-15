@@ -1,5 +1,5 @@
 import logging
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import astuple, dataclass
 from datetime import date
 from typing import Literal
@@ -270,6 +270,48 @@ def _roll_quotes_to(snapshot: MarketSnapshot, valuation_date: date) -> MarketSna
     )
 
 
+def _realized_swap_cash(
+    irs_positions: list[PositionData],
+    close_cashflows: list,
+    close_date: date,
+    as_of: date,
+) -> list[float]:
+    """(close, as_of] 구간에 실제로 지급되는 스왑 순현금, 포지션 순서대로.
+
+    지급일이 이 창에 걸린 현금흐름은 T 시점 평가(cutoff: pd > val_date)에서
+    스케줄 밖으로 빠진다. 포지션 가치는 그만큼 떨어지지만 데스크는 그 현금을
+    받으므로, 이 금액을 세타에 되돌려주지 않으면 쿠폰일마다 세타가 쿠폰 PV만큼
+    가짜로 급락한다(가치가 사라진 게 아니라 현금으로 전환된 것).
+
+    부호: 엔진의 CashFlowDetail은 두 다리 모두 **무부호** 금액이다(방향은 NPV
+    합산 단계에서 적용). receive-fixed면 고정 다리 +, 변동 다리 -; pay-fixed는
+    반대. 이 창의 변동 지급액은 이미 직전 리셋에서 픽싱된 금액이라 결정적이다
+    -- 세타(확정 손익)에 속하는 것이 맞다.
+
+    중복 id 처리: 창에 걸린 흐름을 position_id로 묶은 뒤 같은 id의 로트 수로
+    균등 분배한다. IRS id는 경제조건(시작-만기/금리)을 문자열에 인코딩하므로
+    id가 같으면 로트별 흐름도 같아 균등 분배가 정확하고, 설령 아니어도 북 집계
+    (화면이 보여주는 단위)는 같은 종목 로트가 같은 북에 있는 한 정확하다.
+    """
+    window = [
+        pcf for pcf in close_cashflows
+        if close_date < pcf.detail.payment_date <= as_of and pcf.detail.cashflow is not None
+    ]
+    if not window:
+        return [0.0] * len(irs_positions)
+
+    pay_fixed_by_pid = {p.position_id: p.pay_fixed for p in irs_positions}
+    net_by_pid: dict[str, float] = defaultdict(float)
+    for pcf in window:
+        d = pcf.detail
+        receive_fixed = not pay_fixed_by_pid[pcf.position_id]
+        sign = 1.0 if (d.leg == "fixed") == receive_fixed else -1.0
+        net_by_pid[pcf.position_id] += sign * d.cashflow
+
+    counts = Counter(p.position_id for p in irs_positions)
+    return [net_by_pid.get(p.position_id, 0.0) / counts[p.position_id] for p in irs_positions]
+
+
 def _swap_pnl(
     irs_positions: list[PositionData],
     close_snapshot: MarketSnapshot,
@@ -277,33 +319,42 @@ def _swap_pnl(
     today_snapshot: MarketSnapshot | None,
     fixings: dict[date, float],
 ) -> list[_PositionPnl]:
-    """스왑 MtM/세타. 세 번의 실제 재평가로 구하며, 잔차 버킷이 없다.
+    """스왑 MtM/세타. 실제 재평가로 구하며, 잔차 버킷이 없다.
 
-        theta = V(T,   c_close) - V(close, c_close)
-        mtm   = V(T,   c_T)     - V(T,     c_close)
-        합     = V(T,   c_T)     - V(close, c_close)  = ΔNPV (정의상 정확)
+        theta = V(T, c_close) - V(close, c_close) + (close, T] 실현 현금
+        mtm   = V(T, c_T)     - V(T,     c_close)
+        합     = V(T, c_T)     - V(close, c_close) + 실현 현금 = 경제적 ΔPnL
+
+    실현 현금 항이 없으면 지급일이 close와 T 사이에 낀 날마다 세타가 쿠폰 PV만큼
+    급락한다 -- 가치가 사라진 게 아니라 현금으로 전환됐을 뿐인데도. 두 평가 모두
+    같은 커브(c_close)를 쓰고 픽싱도 이미 확정이므로 이 현금은 결정적이며,
+    따라서 세타(개장 전에 이미 아는 손익)에 속한다. mtm은 두 다리 모두 빠진
+    흐름을 똑같이 제외하므로 이 보정의 영향을 받지 않는다.
 
     이전 구현은 theta = (실제 ΔNPV) - (델타×시프트 1차 추정)의 **잔차**였다.
     즉 커브 형태 변화와 2차 효과가 전부 '세타'로 흘러들어갔다. 위 분해는
-    잔차가 생길 수 없다 -- 두 항이 망원급수로 상쇄되어 합이 곧 ΔNPV다.
+    잔차가 생길 수 없다 -- 망원급수 + 상수(현금)라 합이 곧 경제적 ΔPnL이다.
 
     clean_npv 기준(price_portfolio.net_npv)을 쓴다: 이 코드베이스가 ΔNPV를
     정의해 온 방식(historical_pnl_service)과 같아야 기존 총액이 보존되기 때문이다.
-    실제로 (구 swapValuation + 구 swapThetaPnL) == (신 mtm + theta)가 대수적으로
-    성립한다 -- test_swap_total_is_unchanged_by_decomposition이 이를 고정한다.
     """
     swaps = [_to_swap(p) for p in irs_positions]
+    close_date = close_snapshot.valuation_date
+    as_of = rolled_snapshot.valuation_date
+
+    # position_id가 아니라 **순서**로 맞춘다. price_portfolio는 입력 순서대로
+    # position_results를 append하므로 인덱스 대응이 보장된다. id로 dict를 만들면
+    # 같은 id를 가진 포지션이 서로를 덮어써 손익에서 통째로 사라진다 -- 실제
+    # 블로터에서 채권 id는 중복된다(같은 종목의 여러 로트, 최대 9건). IRS는 현재
+    # 전부 유일하지만, 그 가정에 기대지 않는 편이 안전하다.
+    res_close = portfolio_service.price_portfolio(close_snapshot, swaps, fixings)
+    v_close = [r.clean_npv for r in res_close.position_results]
+    cash = _realized_swap_cash(irs_positions, res_close.cashflows, close_date, as_of)
 
     def npvs(snap: MarketSnapshot) -> list[float]:
-        # position_id가 아니라 **순서**로 맞춘다. price_portfolio는 입력 순서대로
-        # position_results를 append하므로 인덱스 대응이 보장된다. id로 dict를 만들면
-        # 같은 id를 가진 포지션이 서로를 덮어써 손익에서 통째로 사라진다 -- 실제
-        # 블로터에서 채권 id는 중복된다(같은 종목의 여러 로트, 최대 9건). IRS는 현재
-        # 전부 유일하지만, 그 가정에 기대지 않는 편이 안전하다.
         res = portfolio_service.price_portfolio(snap, swaps, fixings)
         return [r.clean_npv for r in res.position_results]
 
-    v_close = npvs(close_snapshot)
     v_rolled = npvs(rolled_snapshot)
 
     if today_snapshot is None:
@@ -311,8 +362,8 @@ def _swap_pnl(
         # 않으며(할 커브가 없다), 세타는 그대로 확정값으로 남는다.
         return [
             _PositionPnl(position_id=p.position_id, instrument_type="irs", book=p.book,
-                         theta=rolled - close, mtm=None, funding=0.0)
-            for p, close, rolled in zip(irs_positions, v_close, v_rolled)
+                         theta=rolled - close + c, mtm=None, funding=0.0)
+            for p, close, rolled, c in zip(irs_positions, v_close, v_rolled, cash)
         ]
 
     # 호가가 있으면 그 스냅샷을 그대로 쓰지 않고 평가일을 as_of로 **명시적으로** 맞춘다.
@@ -320,19 +371,19 @@ def _swap_pnl(
     # 날짜까지 다르면 세타가 MtM에 섞여 들어가 분해가 무너진다. 실무상
     # load_snapshot(as_of)는 valuation_date == as_of인 스냅샷을 주므로 이 롤은
     # no-op이지만, 그 가정에 암묵적으로 기대지 않는다.
-    v_today = npvs(_roll_quotes_to(today_snapshot, rolled_snapshot.valuation_date))
+    v_today = npvs(_roll_quotes_to(today_snapshot, as_of))
 
     return [
         _PositionPnl(
             position_id=p.position_id,
             instrument_type="irs",
             book=p.book,
-            theta=rolled - close,
+            theta=rolled - close + c,
             mtm=today - rolled,
             # 스왑 조달비용은 의도적으로 모델링하지 않는다 (채권만 해당).
             funding=0.0,
         )
-        for p, close, rolled, today in zip(irs_positions, v_close, v_rolled, v_today)
+        for p, close, rolled, today, c in zip(irs_positions, v_close, v_rolled, v_today, cash)
     ]
 
 
@@ -345,7 +396,7 @@ def _bond_pnl(
     bond_positions: list[PositionData],
     close_date: date,
     as_of: date,
-    quotes_available: bool,
+    credit_has_as_of: bool,
     funding_rate: float,
 ) -> list[_PositionPnl]:
     """채권 MtM/세타. 스왑과 같은 분해를 쓰되 할인은 커브가 아니라 Credit Matrix의
@@ -374,27 +425,38 @@ def _bond_pnl(
         )
 
         theta = 0.0
-        mtm = 0.0
+        # None = 모름 (Credit Matrix에 as_of 데이터가 없거나 커브 조회 실패).
+        mtm: float | None = None
         reason: str | None = None
 
         if schedulable:
             try:
                 y_close = _bond_market_yield(p, close_date, p.maturity_date)
-                v_close = bond_valuation.value_bond(
+                val_close = bond_valuation.value_bond(
                     asset_id=p.position_id, issue_date=p.issue_date,
                     maturity_date=p.maturity_date, coupon_rate=p.coupon_rate,
                     payment_frequency=p.payment_frequency, notional=p.notional or 0.0,
                     market_yield=y_close, val_date=close_date,
-                ).npv
+                )
+                v_close = val_close.npv
                 v_rolled = bond_valuation.value_bond(
                     asset_id=p.position_id, issue_date=p.issue_date,
                     maturity_date=p.maturity_date, coupon_rate=p.coupon_rate,
                     payment_frequency=p.payment_frequency, notional=p.notional or 0.0,
                     market_yield=y_close, val_date=as_of,
                 ).npv
-                theta = v_rolled - v_close
+                # (close, T]에 지급일이 걸린 쿠폰/원금은 T 시점 평가에서 스케줄
+                # 밖으로 빠진다(value_bond cutoff: pd > val_date). 그 현금은
+                # 데스크가 실제로 수취하므로 세타에 되돌려준다 -- 아니면 쿠폰일마다
+                # 세타가 쿠폰 금액만큼 가짜로 급락한다. 스왑의 _realized_swap_cash와
+                # 같은 보정이며, 롱 보유 채권이므로 부호는 전부 +다.
+                realized = sum(
+                    c.cashflow for c in val_close.cashflows
+                    if close_date < c.payment_date <= as_of and c.cashflow is not None
+                )
+                theta = v_rolled - v_close + realized
 
-                if quotes_available:
+                if credit_has_as_of:
                     y_today = _bond_market_yield(p, as_of, p.maturity_date)
                     v_today = bond_valuation.value_bond(
                         asset_id=p.position_id, issue_date=p.issue_date,
@@ -413,15 +475,16 @@ def _bond_pnl(
             if reason is None:
                 reason = "정적 파라미터(발행일/표면이율/지급주기) 없음"
             theta = eval_amt * ((p.mtm_yield or 0.0) / 100.0) * accrual_days / 365.0
-            if quotes_available:
+            if credit_has_as_of and p.maturity_date is not None:
                 try:
                     dy_bp = (
                         _bond_market_yield(p, as_of, p.maturity_date)
                         - _bond_market_yield(p, close_date, p.maturity_date)
-                    ) * 10_000.0 if p.maturity_date is not None else 0.0
+                    ) * 10_000.0
                     mtm = (p.pvbp or 0.0) * (-dy_bp)
                 except ValueError:
-                    mtm = 0.0
+                    # 커브를 못 읽으면 MtM은 0이 아니라 모름으로 남긴다.
+                    mtm = None
 
         out.append(_PositionPnl(
             position_id=p.position_id, instrument_type="bond", book=p.book,
@@ -436,10 +499,11 @@ def build_book_daily_pnl(
     fixings: dict[date, float],
     funding_spread_bp: float = 10.0,
 ) -> dict:
-    """일간 손익을 ΔNPV = MtM + 세타로 분해한다.
+    """일간 손익을 ΔPnL = MtM + 세타로 분해한다.
 
         theta : 커브/호가를 전일 종가에 고정한 채 평가일만 1영업일 굴린 값의 변화
-                (결정적 시간가치 감소 -- T 시점 개장 전에 이미 확정되어 있다)
+                + (close, T]에 실제 지급되는 순현금 (쿠폰/원금 분리 보정)
+                (둘 다 결정적 -- T 시점 개장 전에 이미 확정되어 있다)
         mtm   : 같은 날짜(T)에서 호가만 종가 -> 당일로 바꾼 값의 변화
 
     두 항은 망원급수로 상쇄되어 합이 정확히 ΔNPV가 된다. 잔차 버킷이 없다.
@@ -448,16 +512,19 @@ def build_book_daily_pnl(
     여기서 직접 구한다: T = 다음 영업일(종가일). 이렇게 두면 실시간 피드가 붙었을 때
     (종가 = 7/14 -> T = 7/15) 자동으로 맞아떨어진다.
 
-    개장 전 상태(A2): T의 호가가 아직 없으면 quotes_available=False이고 MtM은 모든
-    상품에서 **정확히** 0이다. 0을 실제 값인 양 보여주지 않도록 프론트가 muted 상태로
-    렌더한다. 나중에 DB/실시간 호가가 붙으면 플래그가 뒤집히고 MtM이 채워질 뿐,
-    프론트 계약은 바뀌지 않는다.
+    개장 전 상태(A2) -- 호가는 **소스별로** 판정한다:
+      스왑 = IRS/CD 스냅샷, 채권 = Credit Matrix. 둘의 커버리지가 실제로 다르다
+      (측정 시점 Matrix 2026-07-13, IRS 2026-07-06). "시장이 열렸는가"에 대시보드
+      전체가 하나로 답할 수 없다는 뜻이므로, 소스별 신선도를 `quote_sources`로
+      그대로 내보낸다.
 
-    주의: 채권의 Credit Matrix는 IRS 데이터와 커버리지가 다르다(측정 시점 기준
-    Matrix는 7/13, IRS는 7/6까지). 그래서 quotes_available=False일 때 채권 수익률을
-    **명시적으로** 종가일로 고정한다 -- Matrix에 T 데이터가 있어도 쓰지 않는다.
-    "호가 없으면 모든 상품의 MtM은 0"이라는 요구를 만족시키려면 이게 유일하게
-    일관된 처리다(그렇지 않으면 채권만 MtM이 붙어 플래그와 어긋난다).
+    호가가 없는 상품의 MtM은 0이 아니라 **None**이다. 0은 "호가가 들어왔고 안
+    움직였다"는 별개의 사실을 주장하는 값이라, 아직 모르는 것을 0으로 채우면
+    리스크 화면에서 거짓말이 된다. 화면에는 "—"로 나간다.
+
+    그래서 집계 행(book/포트폴리오)은 `mtm_complete`를 함께 낸다: 구성 상품 중
+    하나라도 호가가 없으면 그 행의 MtM/Total은 **부분합**이며, 완성된 총액인 척
+    표시해서는 안 된다.
     """
     # 아래 base_rate 로드는 `except Exception: pass`로 감싸여 있고 load_base_rate는
     # 파일이 없으면 None을 반환한다 -- 즉 데이터 폴더를 잘못 잡아도 조달금리가 조용히
@@ -466,9 +533,16 @@ def build_book_daily_pnl(
 
     close_date = close_snapshot.valuation_date
     as_of = next_kr_business_day(close_date)
-    today_snapshot = _snapshot_or_none(as_of)
-    quotes_available = today_snapshot is not None
     rolled_snapshot = _roll_quotes_to(close_snapshot, as_of)
+
+    # 소스별 판정. 스왑은 IRS 스냅샷 유무, 채권은 Credit Matrix에 as_of 행이
+    # **정확히** 있는지로 본다 -- market_yield_for는 "as_of 이하 최신값" 의미라
+    # 7/7이 없으면 조용히 7/6 커브를 돌려주고, 그러면 MtM이 "안 움직였다(0)"처럼
+    # 보인다. 그건 "아직 모른다"와 전혀 다른 주장이므로 명시적으로 확인한다.
+    sources = _quote_sources(as_of)
+    has_irs = next(s["has_as_of"] for s in sources if s["source"] == _SOURCE_IRS)
+    has_credit = next(s["has_as_of"] for s in sources if s["source"] == _SOURCE_CREDIT)
+    today_snapshot = _snapshot_or_none(as_of) if has_irs else None
 
     # Funding rate = BOK 기준금리 + spread(bp). 실무 관행상 기준금리 위에 스프레드를
     # 얹어 조달비용을 잡으며, 기본값은 +10bp (대시보드 Settings에서 조정 가능).
@@ -490,7 +564,7 @@ def build_book_daily_pnl(
     if irs_positions:
         legs += _swap_pnl(irs_positions, close_snapshot, rolled_snapshot, today_snapshot, fixings)
     if bond_positions:
-        legs += _bond_pnl(bond_positions, close_date, as_of, quotes_available, funding_rate)
+        legs += _bond_pnl(bond_positions, close_date, as_of, has_credit, funding_rate)
 
     degraded = [l.position_id for l in legs if l.degraded_reason is not None]
     if degraded:
@@ -501,49 +575,47 @@ def build_book_daily_pnl(
             next(l.degraded_reason for l in legs if l.degraded_reason),
         )
 
-    books = {p.book for p in positions}
-    by_book_acc = {
-        b: {"book": b, "mtm": 0.0, "theta": 0.0, "total": 0.0, "funding": 0.0}
-        for b in books
-    }
-    for leg in legs:
-        row = by_book_acc[leg.book]
-        row["mtm"] += leg.mtm
-        row["theta"] += leg.theta
-        row["funding"] += leg.funding
-        row["total"] += leg.mtm + leg.theta  # total = mtm + theta. funding은 총액 밖.
+    def _aggregate(group: list[_PositionPnl], label_key: str, label: str) -> dict:
+        """한 묶음의 집계.
 
-    by_book = sorted(by_book_acc.values(), key=lambda r: r["book"])
-    by_book.append({
-        "book": "Total",
-        "mtm": sum(r["mtm"] for r in by_book),
-        "theta": sum(r["theta"] for r in by_book),
-        "total": sum(r["total"] for r in by_book),
-        "funding": sum(r["funding"] for r in by_book),
-    })
-
-    by_instrument = [
-        {
-            "id": l.position_id,
-            "type": "swap" if l.instrument_type == "irs" else "bond",
-            "mtm": l.mtm,
-            "theta": l.theta,
-            "total": l.mtm + l.theta,
-            **({"degraded_reason": l.degraded_reason} if l.degraded_reason else {}),
+        mtm=None(모름)인 구성원은 합계에서 **빠지고**, 그 사실이 mtm_complete=False로
+        드러난다. 0으로 치환해 더하면 부분합이 완성된 총액처럼 보인다.
+        하나도 모르면 mtm은 None -- 0이 아니라 "—"로 나가야 하기 때문이다.
+        """
+        known = [l.mtm for l in group if l.mtm is not None]
+        complete = len(known) == len(group)
+        theta = sum(l.theta for l in group)
+        mtm = sum(known) if known else None
+        return {
+            label_key: label,
+            "theta": theta,
+            "mtm": mtm,
+            # total은 아는 것만 더한 값이다. complete=False면 ΔNPV 전체가 아니라
+            # "세타 + 지금까지 들어온 MtM"이라는 뜻.
+            "total": theta + (mtm or 0.0),
+            "funding": sum(l.funding for l in group),
+            "mtm_complete": complete,
         }
-        for l in legs
-    ]
 
+    by_book = sorted(
+        (_aggregate([l for l in legs if l.book == b], "book", b) for b in {p.book for p in positions}),
+        key=lambda r: r["book"],
+    )
+    by_book.append(_aggregate(legs, "book", "Total"))
+
+    portfolio = _aggregate(legs, "book", "Total")
     return {
         "as_of": as_of.isoformat(),
-        "quotes_available": quotes_available,
+        # 소스별 신선도. 단일 "장 열림" 플래그를 대체한다 -- 소스마다 커버리지가
+        # 달라서 하나의 불리언으로는 화면의 빈 칸을 설명할 수 없다.
+        "quote_sources": sources,
         "daily_pnl": {
-            "total": sum(l.mtm + l.theta for l in legs),
-            "mtm": sum(l.mtm for l in legs),
-            "theta": sum(l.theta for l in legs),
+            "total": portfolio["total"],
+            "mtm": portfolio["mtm"],
+            "theta": portfolio["theta"],
+            "mtm_complete": portfolio["mtm_complete"],
         },
         "by_book": by_book,
-        "by_instrument": by_instrument,
     }
 
 
