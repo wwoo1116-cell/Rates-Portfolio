@@ -126,13 +126,15 @@ export default function UploadPage() {
           mtmYield: p.mtm_yield || 0,
           duration: p.duration || 0,
           pvbp: p.pvbp || 0,
-          // Static bond params (blotter-parser.ts owns these on the client
-          // import path; the server parser only provides dates today).
-          issueDate: p.start_date || "",
+          // Static bond params, from the server parser's 발행일자/만기일자/
+          // 표면이율/신용등급 extraction (blotter-parser.ts owns these on the
+          // client import path). payment_frequency alone stays a client-side
+          // sector convention -- the backend deliberately leaves it null.
+          issueDate: p.issue_date || "",
           maturityDate: p.maturity_date || "",
-          couponRate: (p.fixed_rate || 0) * 100,
+          couponRate: p.coupon_rate ?? 0,
           paymentFrequency: p.sector === "국고채" || p.sector === "통안채" ? 2 : 4,
-          rating: null,
+          rating: p.rating ?? null,
         })));
 
         toast({
