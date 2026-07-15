@@ -230,3 +230,59 @@ class TestLoadFixings:
     def test_falls_back_to_excel_when_db_empty(self, monkeypatch, db_reachable):
         monkeypatch.setattr(market_data_service, "load_fixing_history", lambda _dir: {_FAKE_DATE: 0.0288})
         assert market_data_service.load_fixings() == {_FAKE_DATE: 0.0288}
+
+
+class TestDbShortCircuitSymmetry:
+    """The unavailable-latch must cover ALL three DB-first read paths.
+
+    _load_snapshot_from_db always had it, but the dates and fixings paths
+    used bare `except: pass` -- so every TTL expiry paid another doomed
+    round-trip to the dead remote DB, forever. One failure anywhere should
+    silence all three (they read the same tables); reset_db_availability()
+    reopens them together.
+    """
+
+    def test_available_dates_latch_after_first_db_failure(self, monkeypatch, db_connection_broken):
+        monkeypatch.setattr(market_data_service, "_list_available_dates", lambda _dir: [_FAKE_DATE])
+
+        assert market_data_service._list_available_dates_uncached() == [_FAKE_DATE]
+        assert market_data_service._db_market_data_unavailable is True
+
+        def _fail_if_called():
+            raise AssertionError("dates path must not retry the DB once it has failed this process")
+
+        monkeypatch.setattr(market_data_service, "session_scope", _fail_if_called)
+        assert market_data_service._list_available_dates_uncached() == [_FAKE_DATE]
+
+    def test_fixings_latch_after_first_db_failure(self, monkeypatch, db_connection_broken):
+        monkeypatch.setattr(market_data_service, "load_fixing_history", lambda _dir: {_FAKE_DATE: 0.0288})
+
+        assert market_data_service._load_fixings_uncached() == {_FAKE_DATE: 0.0288}
+        assert market_data_service._db_market_data_unavailable is True
+
+        def _fail_if_called():
+            raise AssertionError("fixings path must not retry the DB once it has failed this process")
+
+        monkeypatch.setattr(market_data_service, "session_scope", _fail_if_called)
+        assert market_data_service._load_fixings_uncached() == {_FAKE_DATE: 0.0288}
+
+    def test_reset_db_availability_reopens_all_paths(self, monkeypatch):
+        attempts = {"n": 0}
+
+        @contextmanager
+        def _counting_broken_scope():
+            attempts["n"] += 1
+            raise SQLAlchemyError("connection refused")
+            yield  # pragma: no cover
+
+        monkeypatch.setattr(market_data_service, "session_scope", _counting_broken_scope)
+        monkeypatch.setattr(market_data_service, "_list_available_dates", lambda _dir: [_FAKE_DATE])
+        monkeypatch.setattr(market_data_service, "load_fixing_history", lambda _dir: {})
+
+        market_data_service._list_available_dates_uncached()
+        market_data_service._load_fixings_uncached()
+        assert attempts["n"] == 1  # second path saw the latch, not the DB
+
+        market_data_service.reset_db_availability()
+        market_data_service._list_available_dates_uncached()
+        assert attempts["n"] == 2  # a saved/fixed connection gets a fresh try

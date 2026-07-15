@@ -48,6 +48,12 @@ _live_snapshots: dict[date, MarketSnapshot] = {}
 # in a single call), so short-circuiting straight to Excel here turned a
 # confirmed ~100s worst case into sub-second. Reset by database.reconfigure()
 # so fixing the connection and saving new settings gets a fresh try.
+#
+# Shared by all three DB-first READ paths (snapshot, available-dates, fixings)
+# -- they answer from the same tables, so one's failure is the others' too.
+# update_live()'s best-effort WRITE deliberately does NOT check or set it:
+# a write has no file fallback, so short-circuiting it after one transient
+# blip would permanently stop persisting live ticks rather than degrade.
 _db_market_data_unavailable = False
 
 
@@ -123,12 +129,17 @@ def list_available_dates() -> list[date]:
 
 
 def _list_available_dates_uncached() -> list[date]:
+    global _db_market_data_unavailable
     dates: set[date] = set()
-    try:
-        with session_scope() as db:
-            dates |= set(repository.get_available_dates(db))
-    except (DatabaseNotConfiguredError, SQLAlchemyError):
-        pass
+    # Same short-circuit as _load_snapshot_from_db. Without it this path
+    # retried the dead DB on every TTL expiry -- the snapshot path learned
+    # from its first failure while this one paid the round trip forever.
+    if not _db_market_data_unavailable:
+        try:
+            with session_scope() as db:
+                dates |= set(repository.get_available_dates(db))
+        except (DatabaseNotConfiguredError, SQLAlchemyError):
+            _db_market_data_unavailable = True
 
     try:
         dates |= set(_list_available_dates(DATA_DIR))
@@ -182,11 +193,13 @@ def load_fixings() -> dict[date, float]:
 
 
 def _load_fixings_uncached() -> dict[date, float]:
-    try:
-        with session_scope() as db:
-            history = repository.get_cd_fixing_history(db)
-            if history:
-                return history
-    except (DatabaseNotConfiguredError, SQLAlchemyError):
-        pass
+    global _db_market_data_unavailable
+    if not _db_market_data_unavailable:
+        try:
+            with session_scope() as db:
+                history = repository.get_cd_fixing_history(db)
+                if history:
+                    return history
+        except (DatabaseNotConfiguredError, SQLAlchemyError):
+            _db_market_data_unavailable = True
     return load_fixing_history(DATA_DIR)
