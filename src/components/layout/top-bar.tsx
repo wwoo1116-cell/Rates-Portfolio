@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { Bell, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/data/status-dot";
@@ -64,6 +65,17 @@ export function TopBar() {
         flexShrink: 0,
       }}
     >
+      {/* Organization mark — non-interactive; reversed (white-on-dark)
+          derivative of the Mirae Asset lockup, see public/brand/. */}
+      <Image
+        src="/brand/mirae-logo-reversed.png"
+        alt="Mirae Asset"
+        width={85}
+        height={20}
+        priority
+        style={{ flexShrink: 0 }}
+      />
+
       {/* Workspace selector — Blueprint HTMLSelect via native select */}
       <select
         value={workspace}

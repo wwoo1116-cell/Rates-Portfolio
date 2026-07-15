@@ -8,7 +8,6 @@ import { NAV_ITEMS } from "@/lib/constants";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { useWorkspacePanelsStore } from "@/stores/workspace-panels-store";
 import { togglePanel } from "@/lib/workspace-panels";
-import { Logo } from "./logo";
 
 export function Sidebar() {
   const pathname  = usePathname();
@@ -56,22 +55,8 @@ export function Sidebar() {
         // No CSS transition — institutional: no motion
       }}
     >
-      {/* Brand mark */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          height: 40,
-          padding: "0 14px",
-          flexShrink: 0,
-          borderBottom: "1px solid var(--border-dim)",
-        }}
-      >
-        <Logo size={20} />
-      </div>
-
-      {/* Nav items */}
+      {/* Nav items — the sidebar carries navigation only; the organization
+          mark lives in the top bar and the app mark in the favicon. */}
       <nav
         style={{
           flex: 1,

@@ -12,6 +12,15 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Future",
   description: "Future",
+  icons: {
+    // 16px is a hand-simplified variant (bulb + one arrow); 32px keeps the
+    // full-detail mark. Browsers pick by declared size. See public/brand/.
+    icon: [
+      { url: "/brand/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/brand/favicon-32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: [{ url: "/brand/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({
