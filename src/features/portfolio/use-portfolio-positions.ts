@@ -49,7 +49,6 @@ function tradeToPosition(trade: TradeOut, npv: number | undefined): Position {
     krd3y: 0,
     krd5y: 0,
     krd10y: 0,
-    convexity: 0,
     npv,
   };
 }
@@ -76,7 +75,6 @@ function manualPositionToPosition(
     krd3y: 0,
     krd5y: 0,
     krd10y: 0,
-    convexity: 0,
     npv,
     isManual: true,
   };
@@ -106,7 +104,6 @@ function bondPositionToPosition(position: BondPosition): Position {
     krd3y: 0,
     krd5y: 0,
     krd10y: 0,
-    convexity: 0,
     npv: position.evaluationAmountKrwEok, // Show evaluation amount as NPV
     isManual: true,
     isBond: true,

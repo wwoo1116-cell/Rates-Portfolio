@@ -189,7 +189,6 @@ export const DetailsPanel = memo(function DetailsPanel() {
         {/* Real per-position DV01 for manual positions (POST /api/portfolio/delta);
             real trades still have no per-position DV01 wired (Phase 4, engine/risk.py). */}
         <Field label="DV01 (KRW/bp)">{isManual ? Math.round(position.dv01).toLocaleString() : "—"}</Field>
-        <Field label="Convexity">—</Field>
       </div>
 
       <div className="flex flex-col gap-2">

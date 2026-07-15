@@ -18,7 +18,6 @@ export interface Position {
   krd3y: number;
   krd5y: number;
   krd10y: number;
-  convexity: number;
   /** Real clean NPV from POST /api/portfolio/price (Phase 3). */
   npv?: number;
   /** True only for manual-positions-store.ts rows. Lets the grid's Delete

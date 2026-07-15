@@ -202,19 +202,6 @@ export function createPositionColumnDefs(
         },
       ],
     } as ColGroupDef<Position>,
-    {
-      field: "convexity",
-      headerName: "CONVEXITY",
-      width: 100,
-      type: "numericColumn",
-      valueFormatter: ({ value }) => (value as number).toFixed(2),
-      cellStyle: {
-        fontFamily: "var(--font-mono)",
-        fontVariantNumeric: "tabular-nums",
-        textAlign: "right",
-        color: "var(--fg-muted)",
-      },
-    },
   ];
 }
 
