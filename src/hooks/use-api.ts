@@ -42,10 +42,27 @@ const queryKeys = {
   spreadBacktest: (params: SpreadBacktestParams) => ["spread-backtest", params] as const,
 };
 
+/**
+ * DB-trades source toggle (owner decision, Session 5 / DIAGNOSIS_REPORT Open
+ * Question 4). The `trade_specification` table doesn't exist in the running
+ * MySQL (alembic migrations unapplied), so GET /api/trades 500s twice per
+ * Portfolio load while contributing zero rows. Until the DB decision lands,
+ * the source is off by default and the ledger is the two client stores.
+ *
+ * Re-enable: apply the migrations (`alembic upgrade head` in IRS Pricer_Mock),
+ * then set NEXT_PUBLIC_TRADES_SOURCE_ENABLED=true in .env.local and restart
+ * the dev server. The backend route and migrations are intentionally intact.
+ */
+export const TRADES_SOURCE_ENABLED =
+  process.env.NEXT_PUBLIC_TRADES_SOURCE_ENABLED === "true";
+
 export function useTrades(asOfDate?: string) {
   return useQuery({
     queryKey: queryKeys.trades(asOfDate),
     queryFn: () => tradesApi.list(asOfDate),
+    // Disabled ≙ today's failure mode minus the noise: data stays undefined,
+    // both consumers coalesce to [] (zero DB rows), isLoading/isError false.
+    enabled: TRADES_SOURCE_ENABLED,
   });
 }
 
