@@ -18,6 +18,7 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from ..core.errors import NonBusinessDayError
+from ..core.market_data import MarketSnapshot, RateQuote
 from ..db import trace_repository, trade_repository
 # QuantLib dependencies removed
 from ..engine.curve import build_curve
@@ -29,6 +30,42 @@ from . import market_data_service, mtm_service
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Single-sided +1bp parallel par bump -- the same definition risk.py /
+# quant_engine.compute_irs_pvbp declare (SHIFT = 0.0001, forward difference).
+_DV01_SHIFT_DECIMAL = 1e-4
+
+
+def _parallel_bumped(snapshot: MarketSnapshot) -> MarketSnapshot:
+    """Every par node (O/N, CD91, all IRS quotes) shifted +1bp."""
+    s = _DV01_SHIFT_DECIMAL
+    return MarketSnapshot(
+        valuation_date=snapshot.valuation_date,
+        cd_rate=snapshot.cd_rate + s,
+        swap_quotes=[
+            RateQuote(tenor_years=q.tenor_years, rate=q.rate + s, tenor_months=q.tenor_months)
+            for q in snapshot.swap_quotes
+        ],
+        on_rate=(snapshot.on_rate + s) if snapshot.on_rate is not None else None,
+    )
+
+
+def _bump_reval_dv01(swap, snapshot, base_dirty_npv, fixings) -> float:
+    """Swap DV01 by bump-and-revalue: rebuild the curve from the +1bp-bumped
+    snapshot (full re-bootstrap; curve_cache absorbs repeats) and revalue.
+
+        DV01 = -(NPV_up - NPV_base)   (receive-fixed +, pay-fixed -,
+                                       matching compute_irs_pvbp/risk.py)
+
+    Known fixings are held constant across the bump automatically: selection
+    is date-based (engine/fixings.py) and independent of the curve, so only
+    unfixed forwards and discounting move -- which is why this collapses to
+    ~0 after the final fixing is set, where the old fixed-leg annuity proxy
+    (pv_fixed_leg / (rate * 1e4)) kept reporting a full ~245k/bp and read
+    ~2x the true DV01 before a payment (DIAG_PNL_TRACE.md section 6)."""
+    bumped_curve = build_curve(_parallel_bumped(snapshot))
+    res_up = value_booked_trade(swap, bumped_curve, fixings)
+    return -(res_up.dirty_npv - base_dirty_npv)
 
 
 @dataclass
@@ -98,14 +135,7 @@ def compute_npv_trace(swap: VanillaSwap, start_date: date, end_date: date) -> Np
         # produced the reset-day PnL cliff (DIAG_PNL_TRACE.md).
         result = value_booked_trade(swap, curve, fixings)
         resolutions.extend(result.fixing_resolutions)
-        # DV01 (Fixed Leg BPS): computed directly from the already-evaluated
-        # fixed leg PV to avoid QuantLib 2nd-leg missing fixing errors (which
-        # occur when .fixedLegBPS() forces a full swap calculation). At
-        # fixed_rate == 0, pv_fixed_leg is also 0 (fixed leg PV scales
-        # linearly with the rate), so this is a 0/0 rather than a genuine
-        # zero-sensitivity swap -- reported as 0.0 since the annuity-based
-        # BPS isn't cheaply available here.
-        delta_val = result.pv_fixed_leg / (swap.fixed_rate * 10000.0) if swap.fixed_rate != 0 else 0.0
+        delta_val = _bump_reval_dv01(swap, snapshot, result.dirty_npv, fixings)
 
         if prev_result is not None:
             # Add any cashflows that paid out between prev_date and valuation_date
