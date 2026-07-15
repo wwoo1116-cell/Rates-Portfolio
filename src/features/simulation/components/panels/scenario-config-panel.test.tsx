@@ -42,12 +42,14 @@ describe("ScenarioConfigPanel (S4 interaction)", () => {
     expect(run.disabled).toBe(true);
   });
 
-  it("edits the horizon through the port (slider → store → display)", () => {
+  it("edits the horizon through the port (segmented button → store → display)", () => {
     renderPanel();
-    const horizon = screen.getAllByRole("slider")[0];
-    fireEvent.change(horizon, { target: { value: "210" } });
-    expect(useSimulationDataStore.getState().params.simDays).toBe(210);
-    expect(screen.getByText("210 Days")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "90D" }));
+    expect(useSimulationDataStore.getState().params.simDays).toBe(90);
+    expect(screen.getByText("90 Days")).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "90D" }) as HTMLButtonElement).getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("edits the base shock through the port", () => {
@@ -57,9 +59,44 @@ describe("ScenarioConfigPanel (S4 interaction)", () => {
     expect(useSimulationDataStore.getState().params.baseShockBp).toBe("45");
   });
 
-  it("auto-regenerates the 30-day waypoint sliders for the horizon", () => {
+  it("auto-regenerates the 30-day waypoint rows for the horizon", () => {
     renderPanel();
-    // 180d → intermediate waypoints at 30/60/90/120/150 (5) + the horizon slider = 6.
-    expect(screen.getAllByRole("slider").length).toBe(6);
+    // 180d → intermediate waypoints at 30/60/90/120/150 (5 stepper fields).
+    expect(screen.getAllByLabelText(/^D\+\d+ 변동폭$/).length).toBe(5);
+  });
+
+  it("contains zero slide toggles / range sliders (s11 T2 acceptance)", () => {
+    const { container } = renderPanel();
+    expect(screen.queryAllByRole("slider").length).toBe(0);
+    expect(container.querySelectorAll('input[type="range"]').length).toBe(0);
+  });
+
+  it("steps a waypoint with the ∓/± buttons and accepts typed values", () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "D+30 변동폭 5bp 증가" }));
+    expect(
+      useSimulationDataStore.getState().params.waypoints.find((w) => w.day === 30)?.bp,
+    ).toBe(5);
+
+    fireEvent.change(screen.getByLabelText("D+60 변동폭"), { target: { value: "-12" } });
+    expect(
+      useSimulationDataStore.getState().params.waypoints.find((w) => w.day === 60)?.bp,
+    ).toBe(-12);
+  });
+
+  it("keeps waypoint state semantics identical for equivalent selections (payload parity)", () => {
+    // The same {simDays, waypoints} the sliders would have produced: the store
+    // shape is unchanged, so buildSimulateRequest sees identical params.
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "90D" }));
+    fireEvent.change(screen.getByLabelText("D+30 변동폭"), { target: { value: "10" } });
+    const { params } = useSimulationDataStore.getState();
+    expect(params.simDays).toBe(90);
+    expect(params.waypoints).toEqual([
+      { day: 0, bp: 0 },
+      { day: 30, bp: 10 },
+      { day: 60, bp: 0 },
+      { day: 90, bp: 30 },
+    ]);
   });
 });

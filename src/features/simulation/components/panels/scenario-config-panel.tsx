@@ -5,12 +5,20 @@
  * ScenarioSimulator's left panel, restyled per the Phase 2 token map and wired to
  * the SimulationDataPort (reads/writes params via patchParams; runs via runCurrent).
  * Pure port consumer — no app stores, no dockview types — stays inside the slice boundary.
+ *
+ * s11 T2: the range sliders (horizon + per-waypoint bp) are replaced by
+ * button-style controls — a segmented button group for the horizon (mutually
+ * exclusive choice) and ∓/± stepper buttons + a numeric field per waypoint.
+ * Control-surface swap only: same store keys (simDays: number, waypoints
+ * {day, bp:number}), same defaults, same simulate payload for equivalent
+ * selections. The waypoint clamp (±max(|baseShock|+50, 100)) the sliders
+ * enforced via min/max is kept on both the steppers and the typed commit.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
+import { cn } from "@/lib/utils";
 
 import { toNum } from "../../lib/scenario-curves";
 import { useSimulationDataStore } from "../../store/simulation-data-store";
@@ -22,6 +30,114 @@ const TENOR_SPREADS = [
   { key: "spread10y", label: "10Y 기준" },
   { key: "spread30y", label: "30Y 기준" },
 ] as const;
+
+// Horizon presets, all multiples of 30 so the waypoint regen (floor(simDays/30))
+// lands on clean 30d steps. 180 is DEFAULT_SCENARIO_PARAMS.simDays.
+const HORIZON_CHOICES = [30, 60, 90, 180, 270, 365] as const;
+
+const WAYPOINT_STEP_BP = 5;
+
+/**
+ * Segmented button group (mutually exclusive choice). Composed from the Button
+ * primitive — pressed state reuses the accent-ghost recipe the panel's "+ 추가"
+ * button already established (border-sem-info / bg-sem-info-ghost / text-sem-info);
+ * no new visual language. A value outside `choices` (possible if the store was
+ * patched elsewhere) simply renders with no segment pressed — it is never coerced.
+ */
+function SegmentedButtons({
+  choices,
+  value,
+  onChange,
+  format,
+  label,
+}: {
+  choices: readonly number[];
+  value: number;
+  onChange: (v: number) => void;
+  format: (v: number) => string;
+  label: string;
+}) {
+  return (
+    <div role="group" aria-label={label} className="flex w-full border border-border-subtle">
+      {choices.map((c) => (
+        <Button
+          key={c}
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-pressed={value === c}
+          onClick={() => onChange(c)}
+          data-num
+          className={cn(
+            "min-w-0 flex-1 px-0 text-micro",
+            value === c
+              ? "bg-sem-info-ghost text-sem-info shadow-[inset_0_0_0_1px_var(--sem-info)]"
+              : "text-fg-muted",
+          )}
+        >
+          {format(c)}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Numeric bp field with a local draft so partial input ("-", "1.") can be typed:
+ * every keystroke commits toNum(text) clamped to ±absMax (the sliders' old
+ * min/max), the draft renders verbatim until blur, then snaps to the store value.
+ */
+function BpStepperField({
+  value,
+  absMax,
+  onCommit,
+  ariaLabel,
+}: {
+  value: number;
+  absMax: number;
+  onCommit: (bp: number) => void;
+  ariaLabel: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const clamp = (n: number) => Math.max(-absMax, Math.min(absMax, n));
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      <Button
+        type="button"
+        variant="icon"
+        size="sm"
+        aria-label={`${ariaLabel} ${WAYPOINT_STEP_BP}bp 감소`}
+        onClick={() => onCommit(clamp(value - WAYPOINT_STEP_BP))}
+      >
+        −
+      </Button>
+      <div className="min-w-0 flex-1">
+        <Input
+          type="text"
+          inputMode="decimal"
+          data-num
+          aria-label={ariaLabel}
+          className="text-right"
+          value={draft ?? String(value)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            onCommit(clamp(toNum(e.target.value)));
+          }}
+          onBlur={() => setDraft(null)}
+        />
+      </div>
+      <Button
+        type="button"
+        variant="icon"
+        size="sm"
+        aria-label={`${ariaLabel} ${WAYPOINT_STEP_BP}bp 증가`}
+        onClick={() => onCommit(clamp(value + WAYPOINT_STEP_BP))}
+      >
+        +
+      </Button>
+    </div>
+  );
+}
 
 export function ScenarioConfigPanel() {
   const { params, inputs, status, patchParams, runCurrent } = useSimulationPort();
@@ -59,15 +175,15 @@ export function ScenarioConfigPanel() {
       </div>
 
       <div className="flex-1 space-y-5 overflow-y-auto pr-1">
-        {/* 1. 시뮬레이션 기간 */}
+        {/* 1. 시뮬레이션 기간 — segmented buttons (s11 T2, was a range slider) */}
         <div>
           <label className="mb-2 block text-label uppercase text-fg-muted">시뮬레이션 기간</label>
-          <Slider
-            min={30}
-            max={365}
-            step={1}
+          <SegmentedButtons
+            choices={HORIZON_CHOICES}
             value={params.simDays}
-            onChange={(e) => patchParams({ simDays: Number(e.target.value) })}
+            onChange={(v) => patchParams({ simDays: v })}
+            format={(v) => `${v}D`}
+            label="시뮬레이션 기간"
           />
           <div data-num className="mt-1 text-right text-body-strong text-sem-info">{params.simDays} Days</div>
         </div>
@@ -108,13 +224,11 @@ export function ScenarioConfigPanel() {
               return (
                 <div key={wp.day} className="flex items-center gap-2">
                   <span data-num className="w-12 flex-shrink-0 text-micro text-fg-muted">D+{wp.day}</span>
-                  <Slider
-                    min={-absMax}
-                    max={absMax}
-                    step={1}
+                  <BpStepperField
                     value={wp.bp}
-                    onChange={(e) => setWaypoint(wp.day, Number(e.target.value))}
-                    className="min-w-0 flex-1"
+                    absMax={absMax}
+                    onCommit={(bp) => setWaypoint(wp.day, bp)}
+                    ariaLabel={`D+${wp.day} 변동폭`}
                   />
                   <span data-num className={`w-14 flex-shrink-0 text-right text-micro font-semibold ${bpTone(wp.bp)}`}>
                     {wp.bp >= 0 ? "+" : ""}{wp.bp} bp
