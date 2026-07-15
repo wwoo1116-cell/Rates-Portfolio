@@ -38,14 +38,17 @@ export default function DetachedChartPage() {
   const authHasHydrated = useAuthStore((s) => s.hasHydrated);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-  // Snapshot lookup is localStorage + window.location — client-only by
-  // nature, so it waits for mount instead of using useSearchParams (which
-  // would demand a Suspense boundary at prerender for no benefit here).
-  const [snapshot, setSnapshot] = useState<{ state: unknown } | null>(null);
-  useEffect(() => {
+  // Snapshot lookup is localStorage + window.location — client-only, read
+  // once in a lazy initializer (not useSearchParams, which would demand a
+  // Suspense boundary at prerender for no benefit). The server-render branch
+  // returns empty state; that can't cause a hydration mismatch because the
+  // first paint is already gated behind authHasHydrated, which is false on
+  // the server AND on the client's initial render alike.
+  const [snapshot] = useState<{ state: unknown }>(() => {
+    if (typeof window === "undefined") return { state: undefined };
     const nonce = new URLSearchParams(window.location.search).get("s");
-    setSnapshot({ state: nonce ? readDetachedSnapshot(chartId, nonce) : undefined });
-  }, [chartId]);
+    return { state: nonce ? readDetachedSnapshot(chartId, nonce) : undefined };
+  });
 
   useEffect(() => {
     if (entry) document.title = `${entry.title} — detached`;
@@ -79,7 +82,7 @@ export default function DetachedChartPage() {
       </header>
 
       <div style={{ flex: 1, minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }}>
-        {!authHasHydrated || snapshot === null ? null : !isAuthenticated ? (
+        {!authHasHydrated ? null : !isAuthenticated ? (
           <CenteredNote>Sign in from the main window to view this chart.</CenteredNote>
         ) : !entry ? (
           <CenteredNote>
