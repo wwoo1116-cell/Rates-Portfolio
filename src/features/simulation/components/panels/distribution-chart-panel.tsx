@@ -47,7 +47,7 @@ export function DistributionChartPanel() {
 
   if (!lastRun) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-secondary p-4 text-center">
+      <div className="flex h-full w-full items-center justify-center p-4 text-center">
         <p className="text-body text-fg-muted">
           {status === "running" ? "엔진 계산 중..." : "시뮬레이션을 실행하면 Total Return 궤적이 표시됩니다."}
         </p>
@@ -56,7 +56,7 @@ export function DistributionChartPanel() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-bg-secondary p-3">
+    <div className="flex h-full w-full flex-col p-3">
       <h3 className="mb-2 text-body-strong text-fg-primary">Total Return 누적 궤적</h3>
       <div className="min-h-0 flex-1">
         <LwLineChart series={series} zeroLine markers={markers} />

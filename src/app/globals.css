@@ -338,6 +338,11 @@ body {
   --dv-tabs-and-actions-container-height:           30px;
   --dv-tabs-and-actions-container-background-color: var(--bg-header);
   --dv-active-tab-background-color:                 var(--bg-surface);
+  /* Canonical panel-body surface (owner decision, Session 5): every dockview
+     group view paints the token, so panels never need their own background.
+     Without this, dockview's built-in #1e1e1e default showed through on any
+     panel that didn't paint one itself (Home vs Simulation mismatch). */
+  --dv-group-view-background-color:                 var(--bg-surface);
   --dv-inactive-tab-background-color:               transparent;
   --dv-tab-divider-color:                           transparent;
   --dv-pane-background-color:                       var(--bg-base);

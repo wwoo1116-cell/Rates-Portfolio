@@ -18,7 +18,7 @@ export function ResultsGridPanel() {
 
   if (error) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-bg-secondary p-4 text-center">
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
         <p className="text-body-strong text-sem-negative">시뮬레이션 오류</p>
         <p className="text-micro text-fg-muted break-all">{error}</p>
       </div>
@@ -27,7 +27,7 @@ export function ResultsGridPanel() {
 
   if (!lastRun) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-secondary p-4 text-center">
+      <div className="flex h-full w-full items-center justify-center p-4 text-center">
         <p className="text-body text-fg-muted">
           {status === "running" ? "엔진 계산 중..." : "시뮬레이션을 실행하면 결과가 표시됩니다."}
         </p>
@@ -44,7 +44,7 @@ export function ResultsGridPanel() {
   ];
 
   return (
-    <div className="flex h-full w-full flex-col gap-3 overflow-y-auto bg-bg-secondary p-4">
+    <div className="flex h-full w-full flex-col gap-3 overflow-y-auto p-4">
       <h2 className="text-h2 text-fg-primary">Total Return 요약</h2>
       <table data-num className="w-full text-body">
         <tbody>

@@ -52,7 +52,7 @@ export function ScenarioConfigPanel() {
   const nextEventId = () => (params.shortEndEvents.reduce((m, e) => Math.max(m, e.id), -1) + 1);
 
   return (
-    <div className="flex h-full w-full flex-col bg-bg-secondary p-4">
+    <div className="flex h-full w-full flex-col p-4">
       <div className="mb-4">
         <h2 className="text-h2 text-fg-primary">시나리오 조건 설정</h2>
         <p className="text-micro text-fg-muted mt-1">국채 3Y 기준 금리 경로 설계 · 포트 연동</p>

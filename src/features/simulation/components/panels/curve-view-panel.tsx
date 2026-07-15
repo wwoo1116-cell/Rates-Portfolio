@@ -44,7 +44,7 @@ export function CurveViewPanel() {
   const hasPolicy = series.length > 1;
 
   return (
-    <div className="flex h-full w-full flex-col bg-bg-secondary p-3">
+    <div className="flex h-full w-full flex-col p-3">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-body-strong text-fg-primary">시나리오 커브 미리보기</h3>
         <span data-num className="text-micro text-fg-muted">
