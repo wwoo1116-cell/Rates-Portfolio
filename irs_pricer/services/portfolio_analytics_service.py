@@ -731,3 +731,156 @@ def build_book_summary(
         
     result.sort(key=lambda x: x["book"])
     return result
+
+
+# ---------------------------------------------------------------------------
+# 기간 손익 (WTD / MTD / YTD) -- POST /api/portfolio/period-pnl
+# ---------------------------------------------------------------------------
+
+# (응답 필드명, allocation_history_service.ANCHORS의 키, 화면 라벨).
+# 기준일 해석은 전적으로 resolve_anchors를 재사용한다 -- 배분 차트와 이 표가
+# 같은 질문("지난 금요일"이 언제인가)에 다른 답을 내는 일이 없어야 한다.
+_PERIODS: list[tuple[str, str, str]] = [
+    ("wtd", "lastWeekEnd", "WTD"),
+    ("mtd", "lastMonthEnd", "MTD"),
+    ("ytd", "lastYearEnd", "YTD"),
+]
+
+# revalue_bond의 결과 분류. 셋을 구분해서 들고 가는 이유: not_held(당시 미발행/
+# 이미 만기)는 방법론상 **예상되는** 제외이고, unpriceable(살아 있었지만 커브
+# 부재)은 figure를 부분합으로 만드는 **데이터 결함**이다. 화면 처리도 달라진다
+# (전자는 분모 공시, 후자는 ‡ partial 마킹).
+_NPV_OK = "ok"
+_NPV_NOT_HELD = "not_held"
+_NPV_UNPRICEABLE = "unpriceable"
+
+
+def _npv_state(bond: allocation_history_service.BondSnapshotInput,
+               d: date) -> tuple[str, float]:
+    try:
+        priced = allocation_history_service.revalue_bond(bond, d)
+    except allocation_history_service.NotHeldOn:
+        return (_NPV_NOT_HELD, 0.0)
+    if priced is None:
+        return (_NPV_UNPRICEABLE, 0.0)
+    return (_NPV_OK, priced[0])
+
+
+def _period_figure(
+    baseline_date: date | None,
+    current_states: list[tuple[str, float]],
+    baseline_states: list[tuple[str, float]] | None,
+) -> dict:
+    """한 (북, 기간)의 figure.
+
+    집계는 **두 시점 모두 가격산출 가능한 채권만** 합산한다(populated rows only).
+    빠진 채권을 0으로 채워 더하면 "그 채권의 기간 손익이 0이었다"는 별개의(그리고
+    거짓인) 주장이 되므로, 제외는 제외로 남기고 카운트로 공시한다:
+      - included_positions    : 두 시점 모두 산출 가능 -> pnl에 포함
+      - excluded_not_held     : 기준일에 미발행이었거나 현재일 이전에 만기 --
+                                방법론("현재 북의 재평가")상 예상되는 제외
+      - excluded_unpriceable  : 살아 있었지만 어느 한쪽 시점을 가격산출 불가
+                                (섹터/등급 커브 부재) -> complete=False (부분합)
+
+    `pnl=None`은 0이 아니라 **모름/해당없음**이다: 기준일이 데이터 범위 밖이거나
+    (baseline_date=None) 포함 가능한 채권이 하나도 없다는 뜻. book-daily-pnl의
+    mtm=None 규약과 동일하게 화면에는 "—"로 나간다.
+    """
+    if baseline_date is None or baseline_states is None:
+        return {
+            "baseline_date": None, "pnl": None,
+            "included_positions": 0,
+            "excluded_not_held": 0, "excluded_unpriceable": 0,
+            "complete": False,
+        }
+
+    included = 0
+    not_held = 0
+    unpriceable = 0
+    pnl = 0.0
+    for (cur_state, cur_npv), (base_state, base_npv) in zip(current_states, baseline_states):
+        if cur_state == _NPV_OK and base_state == _NPV_OK:
+            included += 1
+            pnl += cur_npv - base_npv
+        elif _NPV_UNPRICEABLE in (cur_state, base_state):
+            unpriceable += 1
+        else:
+            not_held += 1
+
+    return {
+        "baseline_date": baseline_date.isoformat(),
+        "pnl": pnl if included > 0 else None,
+        "included_positions": included,
+        "excluded_not_held": not_held,
+        "excluded_unpriceable": unpriceable,
+        "complete": unpriceable == 0,
+    }
+
+
+def build_period_pnl(
+    positions: list[allocation_history_service.BondSnapshotInput],
+    book: str | None = None,
+    as_of_date: date | None = None,
+) -> dict:
+    """북별 + 전체 기간 손익: 평가금액(NPV) 기준, WTD / MTD / YTD.
+
+    방법론 -- 배분 차트와 동일한 정직성 규약이 적용된다: 이 숫자는 **현재 북을
+    과거 기준일 시장데이터로 재평가한 가상(hypothetical) 기간 손익**이지, 실현
+    손익도 보유 이력도 아니다(이 배포에는 포지션 DB가 없다 --
+    allocation_history_service 모듈 docstring 참조). UI는 반드시 그렇게 라벨해야
+    한다.
+
+    두 다리 모두 revalue_bond의 모델 NPV를 쓴다. 현재 다리에 워크북의 평가금액
+    컬럼을 쓰지 않는 이유: 두 다리의 가격산출 기반이 갈리면 차이에 모델-민평
+    괴리가 섞여 들어가고, "기간 손익 = 그 사이 일별 재평가 변화의 합"이라는
+    망원(telescoping) 항등식이 깨진다. 같은 기계로 두 번 평가해야
+        pnl(기준일) = Σ_영업일 [V(d_i) - V(d_{i-1})]
+    이 표시 정밀도까지 정확히 성립한다 (test_period_pnl의 재조정 테스트가 고정).
+
+    기준일 해석은 resolve_anchors 재사용: lastWeekEnd/lastMonthEnd/lastYearEnd를
+    같은 KR 캘린더, 같은 스냅 규칙(해당일 데이터가 없으면 직전 거래일로 후퇴)으로
+    푼다. 명목 기준일이 주말/공휴일이면 자동으로 직전 영업일이 된다.
+
+    채권 전용이다(배분 차트와 동일): 평가금액은 채권 개념이고(IRS의
+    evaluation_amount는 null), 재평가 기계 자체가 채권용이다. IRS 포함 여부는
+    미결정 -- 커브 부트스트랩을 기준일마다 돌려야 해서 비용 구조가 다르다.
+    """
+    bonds = [p for p in positions if book is None or p.book == book]
+
+    available = market_data_service.list_available_dates()
+    if not available:
+        raise ValueError("사용 가능한 시장 데이터가 없습니다.")
+    as_of = as_of_date or available[-1]
+
+    anchors = {key: d for key, _label, d in
+               allocation_history_service.resolve_anchors(as_of, available)}
+    current_date = anchors["current"]
+    if current_date is None:
+        raise ValueError("현재 평가일을 해석할 수 없습니다 (as_of가 데이터 범위 밖).")
+
+    # 채권별 NPV를 날짜당 한 번만 계산한다. 같은 (섹터x등급, 날짜) 커브는
+    # credit_curve_service가 TTL 캐시로 공유하므로 비용은 배분 차트(5개 날짜)와
+    # 같은 자릿수다(여기는 최대 4개 날짜).
+    states_by_date: dict[date, list[tuple[str, float]]] = {}
+    needed = {current_date} | {anchors[a] for _f, a, _l in _PERIODS if anchors[a] is not None}
+    for d in sorted(needed):
+        states_by_date[d] = [_npv_state(b, d) for b in bonds]
+
+    current_states = states_by_date[current_date]
+
+    def _rows_for(indices: list[int], label: str) -> dict:
+        row: dict = {"book": label}
+        cur = [current_states[i] for i in indices]
+        for field, anchor_key, _label in _PERIODS:
+            d = anchors[anchor_key]
+            base = [states_by_date[d][i] for i in indices] if d is not None else None
+            row[field] = _period_figure(d, cur, base)
+        return row
+
+    books = sorted({b.book for b in bonds})
+    rows = [_rows_for([i for i, b in enumerate(bonds) if b.book == bk], bk) for bk in books]
+    # Total은 북 합계의 재합산이 아니라 전 종목에 대한 직접 집계다. 어느 북의
+    # figure가 None(포함 종목 0)이어도 Total은 나머지 종목 위에서 정의된다.
+    rows.append(_rows_for(list(range(len(bonds))), "Total"))
+
+    return {"as_of": current_date.isoformat(), "rows": rows}
