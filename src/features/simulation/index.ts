@@ -3,10 +3,10 @@
  * of the app may only reach the slice through this barrel, and only from the
  * sanctioned mount point (the Simulation tab/route, wired in Phase 3).
  *
- * Phase 1 exposes the READY state/data layer. The screen components
- * (./components/scenario-simulator, ./components/scenario-preview-chart) are staged
- * but NOT exported yet — they are recharts-based and @ts-nocheck pending the Phase 2
- * chart rewrite + token restyle. They get exported here once they're active.
+ * The screen surface is the four dockview panel bodies exported below (the S5
+ * lightweight-charts rewrite). The Phase-1 recharts staging files
+ * (scenario-simulator.tsx / scenario-preview-chart.tsx) were superseded by those
+ * panels and deleted in S3 — recharts was never a target dependency.
  */
 
 // Data port contract + client-state types

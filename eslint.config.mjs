@@ -83,14 +83,12 @@ const eslintConfig = defineConfig([
   // (C) Style verification (Migration Protocol §2.3): inside the slice, block raw
   // hex color literals and arbitrary Tailwind COLOR values (bg-[#..], bg-[var(--..)])
   // so every color goes through a theme token. Structural arbitraries (w-[420px],
-  // h-[280px]) are intentionally NOT blocked — only color. Excludes the two staged
-  // recharts components (restyled in S5) and chart-theme.ts (the sanctioned single
-  // home for literal hex fallbacks, mirroring the app's lib/chart-colors.ts).
+  // h-[280px]) are intentionally NOT blocked — only color. Excludes chart-theme.ts
+  // (the sanctioned single home for literal hex fallbacks, mirroring the app's
+  // lib/chart-colors.ts).
   {
     files: ["src/features/simulation/**/*.{ts,tsx}"],
     ignores: [
-      "src/features/simulation/components/scenario-simulator.tsx",
-      "src/features/simulation/components/scenario-preview-chart.tsx",
       "src/features/simulation/lib/chart-theme.ts",
     ],
     rules: {
