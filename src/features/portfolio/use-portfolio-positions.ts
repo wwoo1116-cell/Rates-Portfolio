@@ -148,7 +148,6 @@ export function usePortfolioPositions(): PortfolioPositionsResult {
       ),
       ...bondPositions.map((p) => bondPositionToPosition(p)),
     ];
-    console.log("[DEBUG] usePortfolioPositions calculated:", finalPositions.length, "positions. Trades:", trades.length, "Manual:", manualPositions.length, "Bonds:", bondPositions.length);
     return finalPositions;
   }, [trades, priceQuery.data, manualPositions, manualPriceQuery.data, manualDeltaQuery.data, bondPositions]);
 

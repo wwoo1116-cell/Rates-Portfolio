@@ -7,6 +7,7 @@ import { useManualPositionsStore } from "@/stores/manual-positions-store";
 import { useBondPositionsStore } from "@/stores/bond-positions-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { portfolioAnalyticsApi, type ParsedPositionOut } from "@/lib/api-client";
+import { requestFingerprint } from "@/lib/request-fingerprint";
 
 export function usePortfolioAnalytics() {
   const irsPositions = useManualPositionsStore((state) => state.positions);
@@ -100,20 +101,34 @@ export function usePortfolioAnalytics() {
     if (!baseRequest) return undefined;
     return {
       ...baseRequest,
-      // Included in the body (and thus the query key) so changing the spread
+      // Included in the body (and thus the fingerprint) so changing the spread
       // in Settings refetches Home's Daily P&L with the new funding assumption.
       funding_spread_bp: fundingSpreadBp,
     };
   }, [baseRequest, fundingSpreadBp]);
 
+  // Query keys carry a content FINGERPRINT of the request, never the request
+  // itself: TanStack re-hashes the whole key every render, and this request is
+  // ~290 KB × 3 queries × 3 consumers of this hook = ~31 ms of pure
+  // serialization per Home render (measured). The fingerprint is computed once
+  // per content change here; the full body still goes over the wire untouched.
+  const baseFingerprint = useMemo(
+    () => (baseRequest ? requestFingerprint(baseRequest) : undefined),
+    [baseRequest],
+  );
+  const dailyPnlFingerprint = useMemo(
+    () => (dailyPnlRequest ? requestFingerprint(dailyPnlRequest) : undefined),
+    [dailyPnlRequest],
+  );
+
   const pvbpSensitivityQuery = useQuery({
-    queryKey: ["portfolio-analytics", "pvbp-sensitivity", baseRequest],
+    queryKey: ["portfolio-analytics", "pvbp-sensitivity", combinedPositions.length, baseFingerprint],
     queryFn: () => portfolioAnalyticsApi.pvbpSensitivity(baseRequest!),
     enabled: Boolean(baseRequest),
   });
 
   const bookDailyPnlQuery = useQuery({
-    queryKey: ["portfolio-analytics", "book-daily-pnl", dailyPnlRequest],
+    queryKey: ["portfolio-analytics", "book-daily-pnl", combinedPositions.length, dailyPnlFingerprint],
     queryFn: () => portfolioAnalyticsApi.bookDailyPnl(dailyPnlRequest!),
     enabled: Boolean(dailyPnlRequest),
   });
@@ -126,7 +141,7 @@ export function usePortfolioAnalytics() {
   // sequential round trips) purely to populate a dead field. Both panels now
   // fetch in parallel off the same snapshot.
   const bookSummaryQuery = useQuery({
-    queryKey: ["portfolio-analytics", "book-summary", baseRequest],
+    queryKey: ["portfolio-analytics", "book-summary", combinedPositions.length, baseFingerprint],
     queryFn: () => portfolioAnalyticsApi.bookSummary(baseRequest!),
     enabled: Boolean(baseRequest),
   });

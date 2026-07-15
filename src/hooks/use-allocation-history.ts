@@ -19,6 +19,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { portfolioAnalyticsApi } from "@/lib/api-client";
 import type { AllocationHistoryRequest } from "@/lib/api-types";
+import { requestFingerprint } from "@/lib/request-fingerprint";
 import { useBondPositionsStore } from "@/stores/bond-positions-store";
 
 const KRW_PER_EOK = 100_000_000;
@@ -48,10 +49,17 @@ export function useAllocationHistory(book = "RP Fund") {
     return { positions, book };
   }, [bondPositions, book]);
 
+  // Content fingerprint, not the request object: TanStack re-hashes the whole
+  // key every render, and a 273-bond request is tens of KB of serialization
+  // each time. Computed once per content change; the body still ships whole.
+  // See src/lib/request-fingerprint.ts for the correctness argument.
+  const requestFp = useMemo(
+    () => (request ? requestFingerprint(request) : undefined),
+    [request],
+  );
+
   const query = useQuery({
-    // The whole request is the key, so it must stay referentially stable --
-    // that's what the useMemo above is for.
-    queryKey: ["portfolio-analytics", "allocation-history", request],
+    queryKey: ["portfolio-analytics", "allocation-history", request?.positions.length, requestFp],
     queryFn: () => portfolioAnalyticsApi.allocationHistory(request!),
     enabled: Boolean(request),
   });
