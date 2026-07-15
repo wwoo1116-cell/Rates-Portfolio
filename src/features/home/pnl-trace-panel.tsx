@@ -14,15 +14,10 @@ import type { IDockviewPanelProps } from "dockview-react";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, formatCrosshairDate } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
+import { formatPnlKrw } from "./pnl-format";
 import { useMarketDataRange, useNpvTrace } from "@/hooks/use-api";
 import { RATE_SERIES_OPTIONS, rateValue } from "@/lib/rate-history-helpers";
 import type { RateHistoryPointOut, NpvTracePointOut } from "@/lib/api-client";
-
-/** Round to the nearest 10,000 KRW and format with no decimals -- PnL here
- * is deliberately not big-figure/decimal-emphasized like PriceDisplay. */
-function formatPnlKrw(value: number): string {
-  return (Math.round(value / 10_000) * 10_000).toLocaleString();
-}
 
 export interface PnlTracePanelParams {
   point: RateHistoryPointOut;

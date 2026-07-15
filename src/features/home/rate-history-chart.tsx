@@ -20,7 +20,7 @@ import type { IChartApi, ISeriesApi, MouseEventParams } from "lightweight-charts
 import { LineSeries } from "lightweight-charts";
 import { LwChartBase, rateFormatter } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
-import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
+import { paneOffsetX, seriesDistanceY, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
 import { InstrumentSelector } from "@/components/rate-history/instrument-selector";
 import { useCreditCurveSeries, useCreditCurveTaxonomy, useMarketDataRange, useRateHistory } from "@/hooks/use-api";
 import {
@@ -35,34 +35,30 @@ const PNL_TRACE_PANEL_ID = "home-pnltrace-panel";
 const SPREAD_POSITION_PANEL_ID = "home-spread-position-panel";
 const RATES_PANEL_ID = "home-rates-panel";
 
+/** A click only counts as "on a series" within this vertical distance of the
+ * line. Beyond it, the click is a plain date-click and keeps the original PnL
+ * Trace behavior -- without a cap, a chart showing only spreads would route
+ * EVERY click to the Position panel and make PnL Trace unreachable. */
+const SERIES_CLICK_RADIUS_PX = 24;
+
 /**
- * Which plotted series did the click land nearest?
+ * Which plotted series did the click land nearest, and how far away?
  *
  * lightweight-charts' click reports a time and a pixel point but not a series,
- * and this chart overlays several. Each candidate's value is converted through
- * ITS OWN price scale (bp/left for spreads, %/right for outrights), so the
- * comparison is in real screen pixels rather than mixing axis units -- the same
- * reason snap-reticle.ts resolves per-series.
+ * and this chart overlays several. seriesDistanceY resolves each candidate
+ * through ITS OWN price scale (bp/left for spreads, %/right for outrights) --
+ * the same shared rule snap-reticle's crosshair snapping uses.
  */
-function nearestSeriesId(
+function nearestSeriesAtClick(
   param: MouseEventParams,
   seriesMap: Map<string, ISeriesApi<"Line">>,
-): string | null {
-  if (!param.point) return null;
-  let bestId: string | null = null;
-  let bestDist = Infinity;
+): { id: string; dist: number } | null {
+  let best: { id: string; dist: number } | null = null;
   for (const [id, series] of seriesMap) {
-    const datum = param.seriesData.get(series) as { value?: number } | undefined;
-    if (datum?.value == null || !Number.isFinite(datum.value)) continue;
-    const y = series.priceToCoordinate(datum.value);
-    if (y == null) continue;
-    const dist = Math.abs(y - param.point.y);
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestId = id;
-    }
+    const hit = seriesDistanceY(param, series);
+    if (hit && (best == null || hit.dist < best.dist)) best = { id, dist: hit.dist };
   }
-  return bestId;
+  return best;
 }
 
 // A couple of IRS outrights by default (resolve from rate-history immediately,
@@ -135,10 +131,14 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
         ? ({ referencePanel: RATES_PANEL_ID, direction: "right" } as const)
         : undefined;
 
-      // Clicking nearest to a SPREAD opens the position sizer for that spread
-      // at that date (B4); an outright keeps the original raw-market PnL Trace.
-      const clickedId = nearestSeriesId(param, seriesMapRef.current);
-      const clicked = instrumentsRef.current.find((i) => i.id === clickedId);
+      // Clicking ON a SPREAD line (within the hit radius) opens the position
+      // sizer for that spread at that date (B4); everything else -- outright
+      // lines and empty chart area -- keeps the original raw-market PnL Trace.
+      const nearest = nearestSeriesAtClick(param, seriesMapRef.current);
+      const clicked =
+        nearest && nearest.dist <= SERIES_CLICK_RADIUS_PX
+          ? instrumentsRef.current.find((i) => i.id === nearest.id)
+          : undefined;
       if (clicked?.kind === "spread") {
         api.getPanel(SPREAD_POSITION_PANEL_ID)?.api.close();
         api.addPanel({

@@ -22,6 +22,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { IChartApi, LogicalRange, Time } from "lightweight-charts";
+import { paneOffsetX } from "@/components/charts/snap-reticle";
 
 const charts = new Map<string, IChartApi>();
 const rangeHandlers = new Map<string, (range: LogicalRange | null) => void>();
@@ -85,7 +86,13 @@ export function useSharedHoverTime(): string | null {
 export function timeToX(chart: IChartApi | null, time: string | null): number | null {
   if (!chart || !time) return null;
   try {
-    return chart.timeScale().timeToCoordinate(time as unknown as Time);
+    const x = chart.timeScale().timeToCoordinate(time as unknown as Time);
+    // timeToCoordinate is PANE-space; SyncedTimeGuide positions in the
+    // container. A visible left price scale (price-panel shows one whenever a
+    // spread is focused) sits between the two origins, so without adding its
+    // width back the guide line lands left of the date it claims to mark --
+    // the same offset bug snap-reticle.ts documents for the crosshair.
+    return x == null ? null : x + paneOffsetX(chart);
   } catch {
     return null;
   }

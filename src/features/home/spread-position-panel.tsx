@@ -14,8 +14,10 @@
  */
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { SegmentedControl } from "@blueprintjs/core";
 
 import { useCreditCurveSeries, useMarketDataRange, useRateHistory } from "@/hooks/use-api";
+import { formatPnlKrw } from "./pnl-format";
 import {
   creditLegsOf,
   instrumentLabel,
@@ -41,9 +43,6 @@ const SpreadPnlChart = dynamic(() => import("./spread-pnl-chart").then((m) => m.
 /** 억 (100M KRW) is the ledger's unit everywhere else in this app. */
 const EOK = 100_000_000;
 
-function formatKrw(value: number): string {
-  return (Math.round(value / 10_000) * 10_000).toLocaleString();
-}
 function formatEok(value: number): string {
   return (value / EOK).toLocaleString(undefined, { maximumFractionDigits: 1 });
 }
@@ -139,20 +138,20 @@ export function SpreadPositionPanel({ params }: { params: SpreadPositionPanelPar
       <div className="flex flex-col gap-2 border-b border-border-subtle pb-3">
         <span className="text-label font-bold text-fg-muted uppercase">Sizing</span>
         <div className="flex flex-wrap items-end gap-3">
-          <div className="flex h-7 overflow-hidden rounded border border-border-subtle">
-            <button
-              onClick={() => setMode("neutral")}
-              className={`px-3 transition-colors ${mode === "neutral" ? "bg-sem-info text-bg-primary" : "bg-bg-elevated text-fg-muted hover:bg-bg-secondary"}`}
-            >
-              PVBP-NEUTRAL
-            </button>
-            <button
-              onClick={() => setMode("manual")}
-              className={`px-3 transition-colors ${mode === "manual" ? "bg-sem-info text-bg-primary" : "bg-bg-elevated text-fg-muted hover:bg-bg-secondary"}`}
-            >
-              MANUAL
-            </button>
-          </div>
+          {/* Blueprint SegmentedControl, matching instrument-selector's mode
+              toggle. The first cut hand-rolled this with a bg-sem-info active
+              fill, which DESIGN.md's Points-Not-Fills rule forbids (semantic
+              color "is never a fill"; solid bg-sem-info is reserved for the one
+              primary submit button per screen). */}
+          <SegmentedControl
+            small
+            options={[
+              { label: "PVBP-NEUTRAL", value: "neutral" },
+              { label: "MANUAL", value: "manual" },
+            ]}
+            value={mode}
+            onValueChange={(v) => setMode(v as "neutral" | "manual")}
+          />
 
           {mode === "neutral" && (
             <>
@@ -245,7 +244,7 @@ export function SpreadPositionPanel({ params }: { params: SpreadPositionPanelPar
                 </span>
               )}
               <span data-num className="text-body text-fg-secondary text-right">
-                {formatKrw(l.pvbp)}
+                {formatPnlKrw(l.pvbp)}
               </span>
             </div>
           ))}
@@ -257,7 +256,7 @@ export function SpreadPositionPanel({ params }: { params: SpreadPositionPanelPar
               data-num
               className={`text-body ${Math.abs(result.netPvbp) < 1 ? "text-sem-positive" : "text-sem-risk"}`}
             >
-              {formatKrw(result.netPvbp)} KRW/bp
+              {formatPnlKrw(result.netPvbp)} KRW/bp
             </span>
           </div>
 
@@ -279,7 +278,7 @@ export function SpreadPositionPanel({ params }: { params: SpreadPositionPanelPar
               data-num
               className={`font-normal ${(lastPnl?.value ?? 0) >= 0 ? "text-sem-positive" : "text-sem-negative"}`}
             >
-              {lastPnl ? `${formatKrw(lastPnl.value)} KRW` : "—"}
+              {lastPnl ? `${formatPnlKrw(lastPnl.value)} KRW` : "—"}
             </span>
           </div>
           <div className="min-h-0 flex-1">

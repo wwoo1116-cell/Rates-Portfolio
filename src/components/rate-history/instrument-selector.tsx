@@ -122,8 +122,13 @@ interface SpreadLegRowProps {
   index: number;
   sectors: TaxonomySectorOut[];
   filter: string;
-  weight: number;
-  onWeightChange: (index: number, weight: number) => void;
+  /** Raw input string, parsed only at Add time. Parsing on every keystroke
+   * (the old `Number(e.target.value)`) clobbered partial entries: typing "-"
+   * reads as badInput -> "" -> 0, and the controlled re-render wiped the minus
+   * before "-2" could be completed -- on the input whose whole point is signed
+   * weights. Same string-state pattern as the panel's anchor/notional fields. */
+  weight: string;
+  onWeightChange: (index: number, weight: string) => void;
   onLegChange: (index: number, leg: Leg | null) => void;
 }
 
@@ -134,10 +139,7 @@ interface SpreadLegRowProps {
 function SpreadLegRow({ index, sectors, filter, weight, onWeightChange, onLegChange }: SpreadLegRowProps) {
   const handleLeg = useCallback((leg: Leg | null) => onLegChange(index, leg), [index, onLegChange]);
   const handleWeight = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const next = Number(e.target.value);
-      onWeightChange(index, Number.isFinite(next) ? next : 0);
-    },
+    (e: React.ChangeEvent<HTMLInputElement>) => onWeightChange(index, e.target.value),
     [index, onWeightChange],
   );
 
@@ -172,7 +174,8 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
   // 2-leg stays the default; 3 turns the expression into a fly.
   const [legCount, setLegCount] = useState(2);
   const [spreadLegs, setSpreadLegs] = useState<(Leg | null)[]>([null, null]);
-  const [weights, setWeights] = useState<number[]>(DEFAULT_SPREAD_WEIGHTS[2]);
+  // Raw strings while typing (see SpreadLegRowProps.weight); numbers only at Add.
+  const [weights, setWeights] = useState<string[]>(DEFAULT_SPREAD_WEIGHTS[2].map(String));
 
   const sectors = taxonomy?.sectors ?? [];
 
@@ -185,7 +188,7 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
     });
   }, []);
 
-  const handleWeightChange = useCallback((index: number, weight: number) => {
+  const handleWeightChange = useCallback((index: number, weight: string) => {
     setWeights((prev) => {
       const next = [...prev];
       next[index] = weight;
@@ -202,15 +205,23 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
     });
     // Resetting to the canonical weights is the point of the control: picking
     // "3" should give you a fly (+1/−2/+1), not 3 legs of leftover weights.
-    setWeights(DEFAULT_SPREAD_WEIGHTS[count] ?? Array.from({ length: count }, () => 1));
+    setWeights((DEFAULT_SPREAD_WEIGHTS[count] ?? Array.from({ length: count }, () => 1)).map(String));
   }, []);
 
   const activeLegs = spreadLegs.slice(0, legCount);
-  const spreadReady = activeLegs.length === legCount && activeLegs.every((l) => l != null);
+  const activeWeights = weights.slice(0, legCount);
+  const parsedWeights = activeWeights.map((w) => Number(w));
+  // "" parses to 0, which would silently add a dead leg -- require every
+  // weight to be an explicitly typed finite number before Add unlocks.
+  const weightsValid =
+    activeWeights.length === legCount &&
+    activeWeights.every((w) => w.trim() !== "" && Number.isFinite(Number(w)));
+  const spreadReady =
+    activeLegs.length === legCount && activeLegs.every((l) => l != null) && weightsValid;
   // PVBP-neutral sizing (B4) solves nᵢ ∝ wᵢ/pᵢ, whose net PVBP is c·Σwᵢ -- so it
   // can only reach zero when the weights sum to zero. Surface that here rather
   // than letting the sizing panel fail later.
-  const weightSum = weights.slice(0, legCount).reduce((a, b) => a + b, 0);
+  const weightSum = weightsValid ? parsedWeights.reduce((a, b) => a + b, 0) : 0;
 
   function handleAddOutright() {
     if (!outrightLeg) return;
@@ -219,7 +230,7 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
 
   function handleAddSpread() {
     if (!spreadReady) return;
-    const legs: SpreadLeg[] = activeLegs.map((leg, i) => ({ leg: leg as Leg, weight: weights[i] ?? 0 }));
+    const legs: SpreadLeg[] = activeLegs.map((leg, i) => ({ leg: leg as Leg, weight: parsedWeights[i] }));
     onAdd({ kind: "spread", id: spreadId(legs), legs });
   }
 
@@ -268,7 +279,7 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
                   index={i}
                   sectors={sectors}
                   filter={filter}
-                  weight={weights[i] ?? 0}
+                  weight={weights[i] ?? ""}
                   onWeightChange={handleWeightChange}
                   onLegChange={handleLegChange}
                 />

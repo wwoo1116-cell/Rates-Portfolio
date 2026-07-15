@@ -120,6 +120,19 @@ function legValueMap(
   return creditByKey.get(legKey(leg)) ?? new Map();
 }
 
+/** Index credit-series responses by leg key. The single place the
+ * response-row -> creditKey mapping lives; both series building and the
+ * sizing panel's per-leg lookups resolve through it. */
+function buildCreditByKey(creditResults: CreditSeriesResultOut[]): Map<string, Map<string, number>> {
+  const creditByKey = new Map<string, Map<string, number>>();
+  for (const r of creditResults) {
+    const m = new Map<string, number>();
+    for (const p of r.points) m.set(p.valuation_date, p.value);
+    creditByKey.set(creditKey(r.sector, r.rating ?? null, r.tenor), m);
+  }
+  return creditByKey;
+}
+
 /**
  * Per-leg `date -> decimal yield` maps for one spread, in leg order.
  *
@@ -133,12 +146,7 @@ export function spreadLegValueMaps(
   irsPoints: RateHistoryPointOut[],
   creditResults: CreditSeriesResultOut[],
 ): Map<string, number>[] {
-  const creditByKey = new Map<string, Map<string, number>>();
-  for (const r of creditResults) {
-    const m = new Map<string, number>();
-    for (const p of r.points) m.set(p.valuation_date, p.value);
-    creditByKey.set(creditKey(r.sector, r.rating ?? null, r.tenor), m);
-  }
+  const creditByKey = buildCreditByKey(creditResults);
   return legs.map((l) => legValueMap(l.leg, irsPoints, creditByKey));
 }
 
@@ -167,12 +175,7 @@ export function buildInstrumentSeries(
   irsPoints: RateHistoryPointOut[],
   creditResults: CreditSeriesResultOut[],
 ): BuiltSeries[] {
-  const creditByKey = new Map<string, Map<string, number>>();
-  for (const r of creditResults) {
-    const m = new Map<string, number>();
-    for (const p of r.points) m.set(p.valuation_date, p.value);
-    creditByKey.set(creditKey(r.sector, r.rating ?? null, r.tenor), m);
-  }
+  const creditByKey = buildCreditByKey(creditResults);
 
   return instruments.map((inst) => {
     if (inst.kind === "outright") {

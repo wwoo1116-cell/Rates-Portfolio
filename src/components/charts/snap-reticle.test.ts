@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { paneOffsetX, snapReticleToNearestSeries } from "./snap-reticle";
+import { paneOffsetX, seriesDistanceY, snapReticleToNearestSeries } from "./snap-reticle";
 
 type AnyChart = Parameters<typeof paneOffsetX>[0];
 
@@ -78,5 +78,32 @@ describe("snapReticleToNearestSeries", () => {
   it("returns null when the cursor is off-pane", () => {
     const off = { point: undefined, time: undefined, seriesData: new Map() } as never;
     expect(snapReticleToNearestSeries(chartStub({ leftWidth: 56 }), off, [])).toBeNull();
+  });
+});
+
+describe("seriesDistanceY", () => {
+  /** Series stub resolving its value through its own price scale -- the
+   * dual-axis rule this helper exists to centralise (rate-history's click
+   * routing and the reticle snap both depend on it). */
+  function seriesStub(value: number | undefined, y: number | null) {
+    const s = { priceToCoordinate: () => y } as never;
+    const params = (cy: number) =>
+      ({ point: { x: 0, y: cy }, time: undefined, seriesData: new Map(value == null ? [] : [[s, { value }]]) }) as never;
+    return { s, params };
+  }
+
+  it("returns the series' own-scale y and pixel distance from the cursor", () => {
+    const { s, params } = seriesStub(35, 120);
+    expect(seriesDistanceY(params(100), s)).toEqual({ y: 120, dist: 20 });
+  });
+
+  it("returns null when the series has no datum at the hovered bar", () => {
+    const { s, params } = seriesStub(undefined, 120);
+    expect(seriesDistanceY(params(100), s)).toBeNull();
+  });
+
+  it("returns null when the value falls outside the visible price range", () => {
+    const { s, params } = seriesStub(35, null);
+    expect(seriesDistanceY(params(100), s)).toBeNull();
   });
 });

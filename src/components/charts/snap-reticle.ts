@@ -56,6 +56,27 @@ export function paneOffsetX(chart: IChartApi): number {
  * same space the reticle overlay is positioned in"; that assumption is exactly
  * what put the crosshair left of the cursor on left-axis charts.)
  */
+/**
+ * One candidate's vertical hit-test: the pane-space y of the series' value at
+ * the hovered/clicked bar, and its pixel distance from the cursor. `null` when
+ * the series has no datum there.
+ *
+ * Shared by the reticle snap below and rate-history-chart's click-to-series
+ * resolution, so the dual-axis rule (each series resolves through ITS OWN price
+ * scale, never mixing bp/left with %/right units) lives in exactly one place.
+ */
+export function seriesDistanceY(
+  params: MouseEventParams,
+  series: ISeriesApi<"Line">,
+): { y: number; dist: number } | null {
+  if (!params.point) return null;
+  const d = params.seriesData.get(series) as { value?: number } | undefined;
+  if (d?.value == null || !Number.isFinite(d.value)) return null;
+  const y = series.priceToCoordinate(d.value);
+  if (y == null) return null;
+  return { y, dist: Math.abs(y - params.point.y) };
+}
+
 export function snapReticleToNearestSeries(
   chart: IChartApi,
   params: MouseEventParams,
@@ -68,18 +89,16 @@ export function snapReticleToNearestSeries(
     params.time != null ? (chart.timeScale().timeToCoordinate(params.time) ?? cursorX) : cursorX;
   const offsetX = paneOffsetX(chart);
 
-  let bestY = cursorY;
+  // Explicitly number: cursorY is lightweight-charts' branded Coordinate, and
+  // reassigning the plain number from seriesDistanceY into that would not type.
+  let bestY: number = cursorY;
   let bestDist = Infinity;
   for (const s of candidates) {
     if (!s) continue;
-    const d = params.seriesData.get(s) as { value?: number } | undefined;
-    if (d?.value == null || !Number.isFinite(d.value)) continue;
-    const y = s.priceToCoordinate(d.value);
-    if (y == null) continue;
-    const dist = Math.abs(y - cursorY);
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestY = y;
+    const hit = seriesDistanceY(params, s);
+    if (hit && hit.dist < bestDist) {
+      bestDist = hit.dist;
+      bestY = hit.y;
     }
   }
   return { x: snappedX + offsetX, y: bestY };
