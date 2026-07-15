@@ -49,6 +49,61 @@
   --chart-tangerine: #D9822B;
   --chart-berry: #E75353;
 
+  /* ============================================================
+     MASTER CHART PALETTE — Morgan Stanley 2022 accessibility system
+     (hue × 20%-luminance-step). Charting surfaces ONLY; non-chart UI
+     keeps the semantic tokens above. See DESIGN.md §2 "Chart Palette".
+     Components must never reference the raw --ms-* layer directly —
+     always go through the semantic --chart-* tokens below (mirrored
+     for canvas in src/lib/chart-colors.ts).
+     ============================================================ */
+
+  /* Raw palette constants (subset actually used) */
+  --ms-blue: #187ABA;        --ms-blue-80: #4695C8;
+  --ms-blue-40: #A3CAE3;     --ms-blue-20: #D1E4F1;
+  --ms-navy-80: #335574;     --ms-navy-40: #99AAB9;   --ms-navy-20: #CCD5DC;
+  --ms-aqua: #4CCACD;        --ms-aqua-60: #94DFE1;
+  --ms-jade: #3EB661;        --ms-jade-80: #65C581;   --ms-jade-40: #B2E2C0;
+  --ms-purple-40: #C2ADEB;
+  --ms-berry: #D3086F;       --ms-berry-80: #DC398C;  --ms-berry-40: #ED9CC5;
+  --ms-tangerine-80: #FB9B63;
+
+  /* Sector — global fixed mapping, identical in every view.
+     OWNER CONSTRAINT: sector hues are restricted to the cool family
+     (Blue / Navy / Aqua), differentiated by luminance and saturation.
+     Jade/Berry (P&L) are the only non-cool hues on any chart with sectors. */
+  --chart-sector-ktb:      var(--ms-blue);      /* 국고채 — mid, saturated */
+  --chart-sector-msb:      var(--ms-navy-40);   /* 통안채 — light, desaturated */
+  --chart-sector-agency:   var(--ms-aqua);      /* 공사채 — bright, saturated */
+  --chart-sector-specbank: var(--ms-navy-80);   /* 특은채 — dark (LARGE FILLS ONLY:
+       contrast vs --bg-surface ≈ 2.2:1, below the 3:1 gate. Sanctioned for
+       stacked-bar slices where neighboring slices form the effective
+       background; never lines, markers, or text. See DESIGN.md caveat. */
+  --chart-sector-combank:  var(--ms-blue-80);   /* 시은채 — mid */
+  --chart-sector-cardcap:  var(--ms-aqua-60);   /* 여전채 — very light cyan */
+  --chart-sector-corp:     var(--ms-navy-20);   /* 회사채 — near-white, desaturated */
+
+  /* Maturity ramp — single-hue luminance ramp, longer = lighter */
+  --chart-maturity-short: var(--ms-blue);      /* 단기 <1Y  */
+  --chart-maturity-mid:   var(--ms-blue-80);   /* 중기 1~3Y */
+  --chart-maturity-long:  var(--ms-blue-40);   /* 장기 ≥3Y  */
+
+  /* P&L semantics — replaces green/red in charts. Jade/Berry hue families
+     are RESERVED for P&L; they never appear as sector colors. */
+  --chart-pnl-pos:      var(--ms-jade-80);   /* lines, markers, small text */
+  --chart-pnl-pos-fill: var(--ms-jade-40);   /* area fills, low opacity */
+  --chart-pnl-neg:      var(--ms-berry-80);  /* lines, markers, small text */
+  --chart-pnl-neg-fill: var(--ms-berry-40);
+  /* Note: solid --ms-jade / --ms-berry are permitted only for bold elements
+     (thick lines, large chips); -80 steps are the default for contrast on dark. */
+
+  /* Simulation series — composite hierarchy: total emphasized, components subdued */
+  --chart-series-total:     var(--ms-blue-20);       /* 합계, line width 3 */
+  --chart-series-mtm:       var(--ms-blue-80);
+  --chart-series-carry:     var(--ms-jade-80);
+  --chart-series-swaptheta: var(--ms-purple-40);
+  --chart-series-swapmtm:   var(--ms-tangerine-80);
+
   /* ── Typography (Fixed rem-scale for accessibility) ── */
   --font-ui:   'Inter', system-ui, sans-serif;
   /* Numerics font unification: retired the separate JetBrains Mono numeric

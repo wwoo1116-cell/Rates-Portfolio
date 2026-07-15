@@ -17,8 +17,7 @@
  * the panel implies a historical record that does not exist.
  */
 import { useMemo } from "react";
-import { BOND_SECTORS } from "@/lib/constants";
-import { RV_SERIES_COLORS } from "@/lib/chart-colors";
+import { SECTOR_ORDER, maturityColor, sectorColor } from "@/lib/chart-colors";
 import { formatDuration, formatKrwCompact } from "@/lib/format";
 import { usePortfolioAnalytics } from "@/hooks/use-portfolio-analytics";
 import { useAllocationHistory } from "@/hooks/use-allocation-history";
@@ -28,20 +27,14 @@ import type { AllocationSeries } from "@/lib/api-types";
 
 const BOOK = "RP Fund";
 
-/** Stable, distinct hue per series.
- *
- * Indexed off the canonical BOND_SECTORS list rather than the response's own
- * (share-ordered) key order, so a sector keeps its colour even when it moves up
- * or down the stack between refetches. colorForId() would also be stable but
- * hashes into the palette, so two of the eight sectors can collide onto one hue
- * -- fatal for adjacent segments of a stack. Anything off the canonical list
- * (maturity buckets, an unexpected sector) falls back to appended order. */
-function makeColorFor(canonical: readonly string[], keys: string[]) {
-  return (key: string) => {
-    const i = canonical.indexOf(key);
-    const idx = i >= 0 ? i : canonical.length + keys.indexOf(key);
-    return RV_SERIES_COLORS[idx % RV_SERIES_COLORS.length];
-  };
+/** Stack + legend order (S7): the canonical display order first, then any
+ * unexpected backend keys appended (they'll also render in the loud-fallback
+ * neutral via sectorColor/maturityColor, so drift is visible, never silent). */
+function orderKeys(keys: string[], canonical: readonly string[]): string[] {
+  return [
+    ...canonical.filter((k) => keys.includes(k)),
+    ...keys.filter((k) => !canonical.includes(k)),
+  ];
 }
 
 function toColumns(series: AllocationSeries): StackedBar100Column[] {
@@ -70,17 +63,19 @@ function Chart({
   basis,
   series,
   canonical,
+  colorFor,
 }: {
   title: string;
   basis: string;
   series: AllocationSeries;
   canonical: readonly string[];
+  /** Fixed mapping from lib/chart-colors — never assigned by index. */
+  colorFor: (key: string) => string;
 }) {
   const columns = useMemo(() => toColumns(series), [series]);
-  const colorFor = useMemo(
-    () => makeColorFor(canonical, series.keys),
-    [canonical, series.keys],
-  );
+  // Slices AND legend follow the canonical order (credit-descending for
+  // sectors, short→long for maturity), not the response's share order.
+  const orderedKeys = useMemo(() => orderKeys(series.keys, canonical), [series.keys, canonical]);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
@@ -89,7 +84,7 @@ function Chart({
         <span className="text-micro text-fg-dim">{basis}</span>
       </div>
       <div className="min-h-0 flex-1">
-        <StackedBar100 columns={columns} seriesKeys={series.keys} colorFor={colorFor} />
+        <StackedBar100 columns={columns} seriesKeys={orderedKeys} colorFor={colorFor} />
       </div>
     </div>
   );
@@ -196,7 +191,8 @@ export function PortfolioOverview() {
                   title="섹터 배분"
                   basis="PVBP 기준"
                   series={allocation.sector}
-                  canonical={BOND_SECTORS}
+                  canonical={SECTOR_ORDER}
+                  colorFor={sectorColor}
                 />
                 <div className="w-px shrink-0 bg-border-subtle" />
                 <Chart
@@ -204,6 +200,7 @@ export function PortfolioOverview() {
                   basis="평가금액 기준"
                   series={allocation.maturity}
                   canonical={MATURITY_ORDER}
+                  colorFor={maturityColor}
                 />
               </div>
 

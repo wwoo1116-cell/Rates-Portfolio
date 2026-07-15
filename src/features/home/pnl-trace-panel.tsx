@@ -14,6 +14,7 @@ import type { IDockviewPanelProps } from "dockview-react";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, formatCrosshairDate } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
+import { CHART_CHROME_COLORS, PNL_COLORS } from "@/lib/chart-colors";
 import { formatPnlKrw } from "./pnl-format";
 import { useMarketDataRange, useNpvTrace } from "@/hooks/use-api";
 import { RATE_SERIES_OPTIONS, rateValue } from "@/lib/rate-history-helpers";
@@ -76,7 +77,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
     if (!npvTrace.data || !traceChart) return;
     if (!traceSeriesRef.current) {
       traceSeriesRef.current = traceChart.addSeries(LineSeries, {
-        color: "#3B82F6", // --sem-info (canvas can't resolve CSS custom properties)
+        color: CHART_CHROME_COLORS.accentLine, // --sem-info (canvas can't resolve CSS custom properties)
         lineWidth: 2,
         title: "Cumulative PnL",
         priceFormat: { type: "custom", formatter: formatPnlKrw },
@@ -100,7 +101,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
         markers.push({
           time: maxPoint.valuation_date as any,
           position: "aboveBar",
-          color: "rgba(30, 185, 128, 1)", // --sem-positive
+          color: PNL_COLORS.pos, // --chart-pnl-pos (chart P&L pair, S7)
           shape: "arrowDown",
           text: `Max: ${formatPnlKrw(maxPoint.cumulative_pnl)}`,
         });
@@ -109,7 +110,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
         markers.push({
           time: minPoint.valuation_date as any,
           position: "belowBar",
-          color: "rgba(224, 72, 72, 1)", // --sem-negative
+          color: PNL_COLORS.neg, // --chart-pnl-neg (chart P&L pair, S7)
           shape: "arrowUp",
           text: `Min: ${formatPnlKrw(minPoint.cumulative_pnl)}`,
         });
@@ -243,7 +244,13 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
         <div className="flex min-h-0 flex-1 flex-col gap-2">
           <div className="flex items-center gap-2 text-micro text-fg-muted border-b border-border-subtle pb-2">
             <span className="font-bold uppercase">Cumulative PnL as of {lastPoint?.valuation_date ?? endDate}</span>
-            <span className="font-normal text-fg-primary">
+            {/* Final-value badge for the trace chart — sign carries the chart
+                P&L pair (Jade/Berry), not the app-wide sem tokens (S7). */}
+            <span
+              className={`font-normal ${
+                lastPoint ? (lastPoint.cumulative_pnl >= 0 ? "text-chart-pnl-pos" : "text-chart-pnl-neg") : "text-fg-primary"
+              }`}
+            >
               {lastPoint ? `${formatPnlKrw(lastPoint.cumulative_pnl)} KRW` : "—"}
             </span>
           </div>
@@ -281,13 +288,14 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
                 </div>
                 <div className="flex items-center justify-between gap-6">
                   <span className="text-micro font-bold text-fg-muted uppercase">Daily PnL</span>
-                  <span className={`text-micro font-normal ${hoverData.point.daily_pnl >= 0 ? "text-sem-positive" : "text-sem-negative"}`}>
+                  {/* Chart-surface tooltip: chart P&L pair, not the app-wide sem tokens (S7) */}
+                  <span className={`text-micro font-normal ${hoverData.point.daily_pnl >= 0 ? "text-chart-pnl-pos" : "text-chart-pnl-neg"}`}>
                     {formatPnlKrw(hoverData.point.daily_pnl)} KRW
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-6">
                   <span className="text-micro font-bold text-fg-muted uppercase">Cumulative</span>
-                  <span className={`text-micro font-normal ${hoverData.point.cumulative_pnl >= 0 ? "text-sem-positive" : "text-sem-negative"}`}>
+                  <span className={`text-micro font-normal ${hoverData.point.cumulative_pnl >= 0 ? "text-chart-pnl-pos" : "text-chart-pnl-neg"}`}>
                     {formatPnlKrw(hoverData.point.cumulative_pnl)} KRW
                   </span>
                 </div>

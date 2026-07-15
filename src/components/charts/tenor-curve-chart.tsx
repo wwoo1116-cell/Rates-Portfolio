@@ -5,6 +5,7 @@ import * as d3 from "d3";
 import type { CurvePoint } from "@/mocks/home";
 import type { Tenor } from "@/lib/constants";
 import { resolveCssVar } from "@/lib/canvas-color";
+import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
 
 export interface TenorCurveChartProps {
   data: CurvePoint[];
@@ -26,7 +27,7 @@ const MB = SHIFT_GAP + SHIFT_HEIGHT + LABEL_GAP + LABEL_HEIGHT;
 // are read from the actual computed token values at draw time (see drawChart).
 const COLOR_YESTERDAY = "rgba(160,170,184,0.50)";    // fg-secondary dimmed
 const COLOR_GRID      = "rgba(255,255,255,0.07)";    // border-dim
-const COLOR_AXIS_TEXT = "#6b7888";                   // fg-muted
+const COLOR_AXIS_TEXT = CHART_CHROME_COLORS.axisTextStale;
 const FONT_LABEL      = "11px Inter, system-ui, sans-serif";
 
 function drawChart(

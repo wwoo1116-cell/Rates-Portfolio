@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { HeatmapItem } from "@/mocks/home";
 import { resolveCssVar } from "@/lib/canvas-color";
+import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
 
 export interface PortfolioHeatmapProps {
   data: HeatmapItem[];
@@ -25,13 +26,13 @@ function heatColor(notional: number, maxNotional: number): string {
 function pnlColor(pnl: number, colorPositive: string, colorNegative: string): string {
   if (pnl > 0) return colorPositive;
   if (pnl < 0) return colorNegative;
-  return "#a0aab8";
+  return CHART_CHROME_COLORS.neutralTextStale;
 }
 
 const FONT_LABEL = "11px Inter, system-ui, sans-serif";
 const COLOR_BORDER = "rgba(255,255,255,0.07)";
-const COLOR_SECTOR_LABEL = "#6b7888";
-const COLOR_LEAF_LABEL   = "#e8ecf0";
+const COLOR_SECTOR_LABEL = CHART_CHROME_COLORS.axisTextStale;
+const COLOR_LEAF_LABEL   = CHART_CHROME_COLORS.leafLabelStale;
 
 interface HierarchyDatum {
   name: string;

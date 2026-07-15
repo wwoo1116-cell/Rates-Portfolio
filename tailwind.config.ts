@@ -51,6 +51,13 @@ const config: Config = {
           purple: "var(--chart-purple)",
           tangerine: "var(--chart-tangerine)",
           berry: "var(--chart-berry)",
+          // S7 MS-palette semantic chart tokens (tokens.css) — chart surfaces
+          // only. DOM text/swatches on charts use these; canvas series colors
+          // go through src/lib/chart-colors.ts mirrors instead.
+          "pnl-pos": "var(--chart-pnl-pos)",
+          "pnl-neg": "var(--chart-pnl-neg)",
+          "pnl-pos-fill": "var(--chart-pnl-pos-fill)",
+          "pnl-neg-fill": "var(--chart-pnl-neg-fill)",
         },
         heat: {
           "pos-1": "var(--heat-pos-1)",

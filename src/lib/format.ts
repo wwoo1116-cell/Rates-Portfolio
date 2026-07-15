@@ -42,3 +42,15 @@ export function formatKrwCompact(value: number): string {
   if (abs >= 1e8) return `${(value / 1e8).toFixed(1)}억`;
   return KRW_FORMATTER.format(Math.round(value));
 }
+
+/** Chart y-axis KRW formatter (canonical SeriesChart, S7): ≥1e8 -> "N.N억",
+ * ≥1e4 -> "N만" (grouped), below that plain grouped digits -- never a raw
+ * float like "10000000000.00" on an axis. Differs from formatKrwCompact by
+ * adding the 만 tier: P&L axes live in the 1e4..1e8 band where 억-only
+ * formatting collapses every tick to "0.0억". */
+export function formatKrwAxis(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1e8) return `${(value / 1e8).toFixed(1)}억`;
+  if (abs >= 1e4) return `${KRW_FORMATTER.format(Math.round(value / 1e4))}만`;
+  return KRW_FORMATTER.format(Math.round(value));
+}

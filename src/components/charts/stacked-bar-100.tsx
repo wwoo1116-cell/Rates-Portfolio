@@ -14,8 +14,22 @@
  * grants the KRD heatmap ramp. Hues come from the caller via `colorFor` so this
  * component owns no palette; pass something stable, since a colour that
  * reshuffles between columns makes the stack unreadable.
+ *
+ * S7 geometry/legibility rules:
+ *  - bar : gap ≈ 1 : 1 — each bar takes half its category cell, so the gap
+ *    between adjacent bars equals the bar width; snapshot labels stay centered
+ *    under their (narrower) bars because both center in the same cell.
+ *  - 1px separator strokes between slices (the Navy-80 large-fill caveat's
+ *    mitigation (a): neighboring slices, not the surface, are a dark slice's
+ *    effective background — the seam keeps same-luminance neighbors apart).
+ *  - legend swatches carry a subtle border (mitigation (b)) so a dark chip
+ *    stays visible against the panel.
+ *  - the hover tooltip anchors to the CURSOR inside the chart area (flipping
+ *    left past the midpoint), never over the legend and never clipped by the
+ *    panel boundary — it used to render translate-y-full above the column,
+ *    which put it on top of the legend and outside the panel.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 export interface StackedBar100Column {
   /** Stable identity for React keys. */
@@ -41,6 +55,16 @@ interface StackedBar100Props {
 
 const defaultFormat = (pct: number) => `${pct.toFixed(1)}%`;
 
+interface HoverState {
+  col: string;
+  series: string;
+  /** Cursor position in the root container's coordinate space. */
+  x: number;
+  y: number;
+  /** Root container width at event time (refs may not be read during render). */
+  width: number;
+}
+
 export function StackedBar100({
   columns,
   seriesKeys,
@@ -48,16 +72,28 @@ export function StackedBar100({
   emptyLabel = "No data",
   formatValue = defaultFormat,
 }: StackedBar100Props) {
-  const [hover, setHover] = useState<{ col: string; series: string } | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState<HoverState | null>(null);
+
+  const trackHover = (col: string, series: string) => (e: React.MouseEvent) => {
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setHover({ col, series, x: e.clientX - rect.left, y: e.clientY - rect.top, width: rect.width });
+  };
+
+  const hoveredCol = hover ? columns.find((c) => c.key === hover.col) : undefined;
+  // Below-right of the cursor by default so the tooltip can never climb into
+  // the legend row; flip to below-left past the midpoint to avoid clipping.
+  const tooltipFlip = hover != null && hover.width > 0 && hover.x > hover.width * 0.55;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
+    <div ref={rootRef} className="relative flex h-full min-h-0 flex-col gap-2">
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         {seriesKeys.map((s) => (
           <div key={s} className="flex items-center gap-1.5">
             <span
-              className="h-2 w-2 shrink-0 rounded-sm"
+              className="h-2 w-2 shrink-0 rounded-sm border border-border-subtle"
               style={{ backgroundColor: colorFor(s) }}
             />
             <span className="text-micro text-fg-muted">{s}</span>
@@ -69,31 +105,37 @@ export function StackedBar100({
       <div className="flex min-h-0 flex-1 items-stretch gap-2">
         {columns.map((col) => {
           const isHoveredCol = hover?.col === col.key;
+          const rendered = seriesKeys.filter((s) => (col.values[s] ?? 0) > 0);
           return (
-            <div key={col.key} className="relative flex min-w-0 flex-1 flex-col gap-1">
+            <div key={col.key} className="flex min-w-0 flex-1 flex-col gap-1">
               {col.empty ? (
-                <div className="flex flex-1 items-center justify-center rounded-sm border border-dashed border-border-subtle">
+                <div className="flex w-1/2 flex-1 items-center justify-center self-center rounded-sm border border-dashed border-border-subtle">
                   <span className="text-micro text-fg-dim">{emptyLabel}</span>
                 </div>
               ) : (
-                // col-reverse so seriesKeys[0] (the largest series) sits at the
-                // bottom, which is the conventional reading order for a stack.
+                // col-reverse so seriesKeys[0] sits at the bottom (baseline-
+                // anchored), the conventional reading order for a stack.
+                // w-1/2 + self-center is the 1:1 bar:gap rule.
                 <div
-                  className="flex flex-1 flex-col-reverse overflow-hidden rounded-sm"
+                  className="flex w-1/2 flex-1 flex-col-reverse self-center overflow-hidden rounded-sm"
                   onMouseLeave={() => setHover(null)}
                 >
-                  {seriesKeys.map((s) => {
+                  {rendered.map((s, i) => {
                     const pct = col.values[s] ?? 0;
-                    if (pct <= 0) return null;
                     const dimmed = hover !== null && !(isHoveredCol && hover.series === s);
+                    // DOM order is bottom-up; every slice's top edge is a
+                    // slice boundary except the visual-top (DOM-last) one.
+                    const isTop = i === rendered.length - 1;
                     return (
                       <div
                         key={s}
-                        onMouseEnter={() => setHover({ col: col.key, series: s })}
+                        onMouseEnter={trackHover(col.key, s)}
+                        onMouseMove={trackHover(col.key, s)}
                         style={{
                           height: `${pct}%`,
                           backgroundColor: colorFor(s),
                           opacity: dimmed ? 0.45 : 1,
+                          borderTop: isTop ? undefined : "1px solid var(--border-subtle)",
                         }}
                         className="w-full transition-opacity duration-100"
                       />
@@ -110,24 +152,28 @@ export function StackedBar100({
                   </span>
                 )}
               </div>
-
-              {isHoveredCol && (
-                <div
-                  className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-full
-                             whitespace-nowrap rounded border border-border-subtle bg-bg-overlay px-1.5 py-0.5
-                             text-micro text-fg-primary"
-                >
-                  <span className="text-fg-muted">{hover.series}</span>
-                  {" · "}
-                  <span className="tabular-nums">
-                    {formatValue(col.values[hover.series] ?? 0)}
-                  </span>
-                </div>
-              )}
             </div>
           );
         })}
       </div>
+
+      {/* Cursor-anchored tooltip — single instance at the root so it can never
+          be clipped by a column's overflow-hidden stack. */}
+      {hover && hoveredCol && (
+        <div
+          className="pointer-events-none absolute z-10 whitespace-nowrap rounded border border-border-subtle
+                     bg-bg-overlay px-1.5 py-0.5 text-micro text-fg-primary"
+          style={{
+            left: hover.x,
+            top: hover.y,
+            transform: tooltipFlip ? "translate(calc(-100% - 10px), 10px)" : "translate(10px, 10px)",
+          }}
+        >
+          <span className="text-fg-muted">{hover.series}</span>
+          {" · "}
+          <span className="tabular-nums">{formatValue(hoveredCol.values[hover.series] ?? 0)}</span>
+        </div>
+      )}
     </div>
   );
 }
