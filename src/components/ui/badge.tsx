@@ -1,8 +1,19 @@
 import type { ReactNode } from "react";
+import { PNL_COLORS, withAlpha } from "@/lib/chart-colors";
 
 // Badge tone: accent covers "info" and "risk" (non-directional);
-// positive/negative for directional only.
-export type BadgeTone = "positive" | "negative" | "accent" | "info" | "risk";
+// positive/negative for directional only. The pnl-* pair (S10, additive) is
+// the CHART surfaces' Jade/Berry P&L convention for directional badges that
+// sit on chart-adjacent tables (Entry Signals) — table UI elsewhere keeps the
+// app-wide sem green/red until the owner migrates it deliberately.
+export type BadgeTone =
+  | "positive"
+  | "negative"
+  | "accent"
+  | "info"
+  | "risk"
+  | "pnl-positive"
+  | "pnl-negative";
 
 const TONE_STYLES: Record<BadgeTone, { bg: string; color: string }> = {
   positive: { bg: "var(--sem-positive-soft)", color: "var(--sem-positive)" },
@@ -10,6 +21,10 @@ const TONE_STYLES: Record<BadgeTone, { bg: string; color: string }> = {
   accent:   { bg: "var(--accent-soft)",       color: "var(--accent)"        },
   info:     { bg: "var(--accent-soft)",        color: "var(--accent)"        },
   risk:     { bg: "var(--accent-soft)",        color: "var(--accent)"        },
+  // Soft fills derive from the same chart-colors constants the canvases use
+  // (0.15 alpha mirrors --sem-*-soft) — no new raw hex, no new tokens.
+  "pnl-positive": { bg: withAlpha(PNL_COLORS.pos, 0.15), color: "var(--chart-pnl-pos)" },
+  "pnl-negative": { bg: withAlpha(PNL_COLORS.neg, 0.15), color: "var(--chart-pnl-neg)" },
 };
 
 export interface BadgeProps {

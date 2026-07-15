@@ -20,6 +20,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { DockviewApi } from "dockview-react";
 import { ChartFrame } from "@/components/chart/ChartFrame";
 import { rateFormatter } from "@/components/charts/lw-chart-base";
+import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
 import {
   SeriesChart,
   type SeriesChartClickContext,
@@ -184,7 +185,7 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
             style={{
               position: "absolute", inset: 0,
               display: "flex", alignItems: "center", justifyContent: "center",
-              background: "rgba(22,28,38,0.75)",
+              background: CHART_CHROME_COLORS.scrimLightStale,
               fontSize: 12, color: "var(--fg-muted)", fontFamily: "var(--font-ui)",
               letterSpacing: "0.05em",
             }}
@@ -198,7 +199,7 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
             style={{
               position: "absolute", inset: 0,
               display: "flex", alignItems: "center", justifyContent: "center",
-              background: "rgba(22,28,38,0.85)",
+              background: CHART_CHROME_COLORS.scrimHeavyStale,
               fontSize: 12, color: "var(--fg-muted)", fontFamily: "var(--font-ui)",
             }}
           >

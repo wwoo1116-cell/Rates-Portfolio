@@ -23,9 +23,12 @@ export interface SignalRow {
   absZ: number;
 }
 
+// S10 master-palette transplant: signed signal semantics carry the chart
+// Jade/Berry P&L pair (long/cheap = Jade, short/rich = Berry), matching the
+// price/z-score chart markers. WATCH/NONE stay non-directional accent.
 const SIGNAL_TONE: Record<Signal, BadgeTone> = {
-  ENTRY_LONG: "positive",
-  ENTRY_SHORT: "negative",
+  ENTRY_LONG: "pnl-positive",
+  ENTRY_SHORT: "pnl-negative",
   WATCH: "risk",
   NONE: "accent",
 };
@@ -101,8 +104,10 @@ export function createSignalColumnDefs(entryZ: number, warnZ: number): ColDef<Si
         const z = p.data?.z ?? null;
         if (z == null) return <span style={{ color: "var(--fg-dim)", display: "block", textAlign: "right" }}>—</span>;
         const a = Math.abs(z);
+        // Sign convention preserved from the old sem green/red: rich (z>0) =
+        // short entry = Berry; cheap (z<0) = long entry = Jade (S10).
         const color =
-          a >= entryZ ? (z > 0 ? "var(--sem-negative)" : "var(--sem-positive)") : a >= warnZ ? "var(--accent)" : "var(--fg-muted)";
+          a >= entryZ ? (z > 0 ? "var(--chart-pnl-neg)" : "var(--chart-pnl-pos)") : a >= warnZ ? "var(--accent)" : "var(--fg-muted)";
         return (
           <span style={{ display: "block", textAlign: "right", color, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
             {z > 0 ? "+" : ""}

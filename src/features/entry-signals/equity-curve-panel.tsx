@@ -130,7 +130,7 @@ export function EquityCurvePanel() {
         {result && (
           <span className="text-micro text-fg-muted">
             {result.trades.length} trades · net{" "}
-            <span style={{ color: result.summary.totalPnl >= 0 ? "var(--sem-positive)" : "var(--sem-negative)" }}>
+            <span style={{ color: result.summary.totalPnl >= 0 ? "var(--chart-pnl-pos)" : "var(--chart-pnl-neg)" }}>
               {Math.round(result.summary.totalPnl).toLocaleString()}
             </span>
           </span>

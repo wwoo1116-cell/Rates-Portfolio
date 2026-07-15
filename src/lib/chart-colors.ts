@@ -121,6 +121,12 @@ export const CHART_CHROME_COLORS = {
   axisTextStale: "#6b7888", // pre-Blueprint --fg-muted (tenor-curve axis, heatmap sector labels)
   neutralTextStale: "#a0aab8", // pre-Blueprint --fg-secondary (heatmap zero-flow cells)
   leafLabelStale: "#e8ecf0", // pre-Blueprint --fg-primary (heatmap leaf labels)
+  // Loading/error scrims over an lw-chart canvas. rgb(22,28,38) IS the stale
+  // #161c26 canvas background lw-chart-base still paints (pixel-parity
+  // pending owner decision) — the scrim must match the canvas beneath it,
+  // not --bg-surface, or the overlay reads as a mis-toned box.
+  scrimLightStale: "rgba(22, 28, 38, 0.75)",
+  scrimHeavyStale: "rgba(22, 28, 38, 0.85)",
 } as const;
 
 const warnedKeys = new Set<string>();

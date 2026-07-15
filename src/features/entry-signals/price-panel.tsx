@@ -19,6 +19,7 @@ import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/sna
 import { alignToDates, rollingSeries } from "@/lib/math/rolling-stats";
 import { instrumentLabel } from "@/lib/rv-instruments";
 import { LOOKBACK_PRESETS, useEntrySignalsStore } from "@/stores/entry-signals-store";
+import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
 import { CHART_COLORS } from "./chart-theme";
 import { useEntrySignalsData } from "./use-entry-signals-data";
 import { NumberField, PanelEmptyState, SyncedTimeGuide } from "./panel-shell";
@@ -251,12 +252,18 @@ export function PricePanel() {
           </div>
         )}
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(22,28,38,0.75)] text-micro text-fg-muted">
+          <div
+            className="absolute inset-0 flex items-center justify-center text-micro text-fg-muted"
+            style={{ background: CHART_CHROME_COLORS.scrimLightStale }}
+          >
             Loading rate history…
           </div>
         )}
         {isError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(22,28,38,0.85)] text-micro text-fg-muted">
+          <div
+            className="absolute inset-0 flex items-center justify-center text-micro text-fg-muted"
+            style={{ background: CHART_CHROME_COLORS.scrimHeavyStale }}
+          >
             Could not load rate history — confirm the pricing server is reachable.
           </div>
         )}
