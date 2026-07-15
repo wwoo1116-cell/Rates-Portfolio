@@ -8,6 +8,7 @@ from ..config import DATA_DIR, require_data_dir
 from ..core import ttl_cache
 from ..core.market_data import MarketSnapshot
 from ..engine import bond_valuation
+from ..engine import fixings as fixings_mod
 from ..engine.instruments import VanillaSwap
 from ..engine.quant_engine import next_kr_business_day
 from . import allocation_history_service
@@ -318,7 +319,7 @@ def _swap_pnl(
     rolled_snapshot: MarketSnapshot,
     today_snapshot: MarketSnapshot | None,
     fixings: dict[date, float],
-) -> list[_PositionPnl]:
+) -> tuple[list[_PositionPnl], list]:
     """스왑 MtM/세타. 실제 재평가로 구하며, 잔차 버킷이 없다.
 
         theta = V(T, c_close) - V(close, c_close) + (close, T] 실현 현금
@@ -337,10 +338,15 @@ def _swap_pnl(
 
     clean_npv 기준(price_portfolio.net_npv)을 쓴다: 이 코드베이스가 ΔNPV를
     정의해 온 방식(historical_pnl_service)과 같아야 기존 총액이 보존되기 때문이다.
+
+    반환: (legs, fixing_warnings). 두 번째 원소는 세 차례의 재평가에서 나온
+    CD 픽싱 데이터 품질 경고(engine/fixings.py)의 합집합 -- build_book_daily_pnl이
+    quote_sources 옆에 그대로 실어 내보낸다.
     """
     swaps = [_to_swap(p) for p in irs_positions]
     close_date = close_snapshot.valuation_date
     as_of = rolled_snapshot.valuation_date
+    fixing_warnings: list = []
 
     # position_id가 아니라 **순서**로 맞춘다. price_portfolio는 입력 순서대로
     # position_results를 append하므로 인덱스 대응이 보장된다. id로 dict를 만들면
@@ -348,11 +354,13 @@ def _swap_pnl(
     # 블로터에서 채권 id는 중복된다(같은 종목의 여러 로트, 최대 9건). IRS는 현재
     # 전부 유일하지만, 그 가정에 기대지 않는 편이 안전하다.
     res_close = portfolio_service.price_portfolio(close_snapshot, swaps, fixings)
+    fixing_warnings.extend(res_close.fixing_warnings)
     v_close = [r.clean_npv for r in res_close.position_results]
     cash = _realized_swap_cash(irs_positions, res_close.cashflows, close_date, as_of)
 
     def npvs(snap: MarketSnapshot) -> list[float]:
         res = portfolio_service.price_portfolio(snap, swaps, fixings)
+        fixing_warnings.extend(res.fixing_warnings)
         return [r.clean_npv for r in res.position_results]
 
     v_rolled = npvs(rolled_snapshot)
@@ -364,7 +372,7 @@ def _swap_pnl(
             _PositionPnl(position_id=p.position_id, instrument_type="irs", book=p.book,
                          theta=rolled - close + c, mtm=None, funding=0.0)
             for p, close, rolled, c in zip(irs_positions, v_close, v_rolled, cash)
-        ]
+        ], fixing_warnings
 
     # 호가가 있으면 그 스냅샷을 그대로 쓰지 않고 평가일을 as_of로 **명시적으로** 맞춘다.
     # MtM의 정의가 "같은 날짜(T)에서 호가만 바꾼 값의 차이"이기 때문이다 -- 두 다리가
@@ -384,7 +392,7 @@ def _swap_pnl(
             funding=0.0,
         )
         for p, close, rolled, today, c in zip(irs_positions, v_close, v_rolled, v_today, cash)
-    ]
+    ], fixing_warnings
 
 
 def _bond_market_yield(p: PositionData, val_date: date, maturity: date) -> float:
@@ -561,8 +569,12 @@ def build_book_daily_pnl(
     bond_positions = [p for p in positions if p.instrument_type == "bond"]
 
     legs: list[_PositionPnl] = []
+    fixing_warnings: list = []
     if irs_positions:
-        legs += _swap_pnl(irs_positions, close_snapshot, rolled_snapshot, today_snapshot, fixings)
+        swap_legs, fixing_warnings = _swap_pnl(
+            irs_positions, close_snapshot, rolled_snapshot, today_snapshot, fixings
+        )
+        legs += swap_legs
     if bond_positions:
         legs += _bond_pnl(bond_positions, close_date, as_of, has_credit, funding_rate)
 
@@ -609,6 +621,11 @@ def build_book_daily_pnl(
         # 소스별 신선도. 단일 "장 열림" 플래그를 대체한다 -- 소스마다 커버리지가
         # 달라서 하나의 불리언으로는 화면의 빈 칸을 설명할 수 없다.
         "quote_sources": sources,
+        # CD 픽싱 데이터 품질 경고(engine/fixings.py): 픽싱일 F(R)이 영업일인데
+        # 정확한 프린트가 없어 ffill로 대체된 구간. 건강한 스토어면 빈 배열.
+        "fixing_warnings": [
+            w.to_payload() for w in fixings_mod.dedupe_data_quality_events(fixing_warnings)
+        ],
         "daily_pnl": {
             "total": portfolio["total"],
             "mtm": portfolio["mtm"],

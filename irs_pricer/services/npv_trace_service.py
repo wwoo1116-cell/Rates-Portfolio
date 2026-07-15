@@ -21,9 +21,14 @@ from ..core.errors import NonBusinessDayError
 from ..db import trace_repository, trade_repository
 # QuantLib dependencies removed
 from ..engine.curve import build_curve
+from ..engine.fixings import FixingResolution, dedupe_data_quality_events
 from ..engine.instruments import VanillaSwap
 from ..engine.mtm_valuation import value_booked_trade
 from . import market_data_service, mtm_service
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -43,6 +48,9 @@ class NpvTraceResult:
     entry_npv: float
     points: list[NpvTracePoint] = field(default_factory=list)
     skipped_dates: list[date] = field(default_factory=list)
+    # Deduplicated CD-fixing data-quality events across the whole trace
+    # (engine/fixings.py) -- surfaced to the API next to skipped_dates.
+    fixing_warnings: list[FixingResolution] = field(default_factory=list)
 
 
 def compute_npv_trace(swap: VanillaSwap, start_date: date, end_date: date) -> NpvTraceResult:
@@ -69,6 +77,7 @@ def compute_npv_trace(swap: VanillaSwap, start_date: date, end_date: date) -> Np
 
     points: list[NpvTracePoint] = []
     skipped_dates: list[date] = []
+    resolutions: list[FixingResolution] = []
     prev_result = None
     prev_dirty_npv: float | None = None
     cumulative_cashflows = 0.0
@@ -81,15 +90,14 @@ def compute_npv_trace(swap: VanillaSwap, start_date: date, end_date: date) -> Np
             continue
 
         curve = build_curve(snapshot)
-        
-        current_float_rate = None
-        if fixings:
-            # We can use the fixing before or on valuation_date
-            past_fixings = {k: v for k, v in fixings.items() if k <= valuation_date}
-            if past_fixings:
-                current_float_rate = past_fixings[max(past_fixings.keys())]
-                
-        result = value_booked_trade(swap, curve, current_float_rate)
+
+        # Fixing selection is reset-date-based inside value_booked_trade
+        # (engine/fixings.py). The previous per-date ffill here re-fixed the
+        # current stub daily off the valuation-date CD -- and its decimal
+        # value was then divided by 100 again in the engine, which is what
+        # produced the reset-day PnL cliff (DIAG_PNL_TRACE.md).
+        result = value_booked_trade(swap, curve, fixings)
+        resolutions.extend(result.fixing_resolutions)
         # DV01 (Fixed Leg BPS): computed directly from the already-evaluated
         # fixed leg PV to avoid QuantLib 2nd-leg missing fixing errors (which
         # occur when .fixedLegBPS() forces a full swap calculation). At
@@ -141,12 +149,24 @@ def compute_npv_trace(swap: VanillaSwap, start_date: date, end_date: date) -> Np
         cum_pnl += p.daily_pnl
         p.cumulative_pnl = cum_pnl
 
+    fixing_warnings = dedupe_data_quality_events(resolutions)
+    if fixing_warnings:
+        logger.warning(
+            "NPV trace [%s..%s]: CD fixing data-quality fallback on %d period(s), e.g. %s",
+            start_date, end_date, len(fixing_warnings),
+            "; ".join(
+                f"F({w.reset_date})={w.fixing_date} -> ffill {w.resolved_date}"
+                for w in fixing_warnings[:3]
+            ),
+        )
+
     return NpvTraceResult(
         trade_date=swap.trade_date,
         maturity_date=swap.maturity_date,
         entry_npv=entry_npv,
         points=points,
         skipped_dates=skipped_dates,
+        fixing_warnings=fixing_warnings,
     )
 
 

@@ -199,8 +199,11 @@ def test_mtm_cashflows_are_per_period_both_legs():
     fixed = [c for c in res.cashflows if c.leg == "fixed"]
     floating = [c for c in res.cashflows if c.leg == "floating"]
     assert len(fixed) == len(floating) > 1
-    assert floating[0].is_known is True                 # current stub uses the known fixing
-    assert all(c.is_known is False for c in floating[1:])  # future stubs are forward estimates
+    # No fixings store passed -> EVERY floating period is a forward estimate,
+    # including the current stub. is_known=True is reserved for a genuine
+    # reset-date fixing (engine/fixings.py); an estimated stub claiming
+    # is_known was the pre-2026-07 behavior this line used to pin.
+    assert all(c.is_known is False for c in floating)
 
 
 # ── §3b: sum(KRD) reconciles with the independent parallel PVBP ─────────────

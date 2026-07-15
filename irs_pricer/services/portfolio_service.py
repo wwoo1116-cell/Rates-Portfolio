@@ -5,17 +5,21 @@ Net / Payer / Receiver NPV plus a consolidated, position-tagged cash-flow schedu
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from datetime import date
 
 from ..core.market_data import MarketSnapshot
 from ..engine.curve import build_curve
+from ..engine.fixings import FixingResolution, dedupe_data_quality_events
 from ..engine.instruments import VanillaSwap
 from ..engine.mtm_valuation import CashFlowDetail, value_booked_trade
 from ..engine.risk import bucketed_dv01
 from ..engine.pricing import price_swap
 from . import market_data_service
 from .pricing_service import DeltaBucket
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class PositionResult:
@@ -39,6 +43,10 @@ class PortfolioResult:
     receiver_npv: float
     position_results: list[PositionResult]
     cashflows: list[PortfolioCashFlow]
+    # Deduplicated CD-fixing data-quality events (an ffill substitution where
+    # an exact F(R) print should have existed) across all positions -- see
+    # engine/fixings.py. Empty on a healthy fixing store.
+    fixing_warnings: list[FixingResolution] = field(default_factory=list)
 
 @dataclass
 class PositionDelta:
@@ -51,12 +59,6 @@ class PortfolioDeltaResult:
     total_delta: float
     buckets: list[DeltaBucket]
     position_deltas: list[PositionDelta]
-
-def _extract_float_rate(fixings: dict[date, float] | None) -> float | None:
-    if fixings:
-        latest_date = max(fixings.keys())
-        return fixings[latest_date]
-    return None
 
 def price_portfolio_delta(
     snapshot: MarketSnapshot,
@@ -94,15 +96,20 @@ def price_portfolio(
     fixings: dict[date, float],
 ) -> PortfolioResult:
     curve = build_curve(snapshot)
-    current_float_rate = _extract_float_rate(fixings)
 
     position_results: list[PositionResult] = []
     cashflows: list[PortfolioCashFlow] = []
+    resolutions = []
     payer_npv = 0.0
     receiver_npv = 0.0
 
+    # The whole fixings dict goes to the engine per position: each swap's
+    # periods resolve their own reset-date fixings there (engine/fixings.py).
+    # The old reduction to one shared "latest print" both looked ahead on
+    # historical dates and marked every position off the same scalar.
     for position_id, swap in positions:
-        result = value_booked_trade(swap, curve, current_float_rate)
+        result = value_booked_trade(swap, curve, fixings)
+        resolutions.extend(result.fixing_resolutions)
         position_results.append(
             PositionResult(
                 position_id=position_id,
@@ -122,12 +129,25 @@ def price_portfolio(
 
     cashflows.sort(key=lambda pcf: pcf.detail.payment_date)
 
+    fixing_warnings = dedupe_data_quality_events(resolutions)
+    if fixing_warnings:
+        logger.warning(
+            "CD fixing data-quality fallback on %d period(s) (val %s), e.g. %s",
+            len(fixing_warnings),
+            snapshot.valuation_date,
+            "; ".join(
+                f"F({w.reset_date})={w.fixing_date} -> ffill {w.resolved_date}"
+                for w in fixing_warnings[:3]
+            ),
+        )
+
     return PortfolioResult(
         net_npv=payer_npv + receiver_npv,
         payer_npv=payer_npv,
         receiver_npv=receiver_npv,
         position_results=position_results,
         cashflows=cashflows,
+        fixing_warnings=fixing_warnings,
     )
 
 def position_fair_rate(

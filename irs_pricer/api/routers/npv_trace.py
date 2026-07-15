@@ -13,7 +13,7 @@ from ...db.database import get_db
 from ...engine.instruments import VanillaSwap
 from ...services import mtm_service
 from ...services.npv_trace_service import compute_npv_trace, compute_npv_trace_for_trade
-from ..models import NpvTracePointOut, NpvTraceRequest, NpvTraceResponse
+from ..models import FixingWarningOut, NpvTracePointOut, NpvTraceRequest, NpvTraceResponse
 
 router = APIRouter(prefix="/api/mtm")
 
@@ -46,6 +46,7 @@ def npv_trace_endpoint(request: NpvTraceRequest) -> NpvTraceResponse:
         entry_npv=result.entry_npv,
         points=[NpvTracePointOut(**vars(p)) for p in result.points],
         skipped_dates=result.skipped_dates,
+        fixing_warnings=[FixingWarningOut(**w.to_payload()) for w in result.fixing_warnings],
     )
 
 

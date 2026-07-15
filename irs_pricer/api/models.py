@@ -583,12 +583,26 @@ class NpvTracePointOut(BaseModel):
     delta: float = 0.0
 
 
+class FixingWarningOut(BaseModel):
+    """A CD-fixing data-quality event (engine/fixings.py): a period whose
+    fixing date F(R) is a Seoul business day had no exact print in the store,
+    so the last available fixing <= F(R) was substituted (ffill), or nothing
+    was available at all (resolved_date/rate = null -> forward fallback)."""
+
+    reset_date: date
+    fixing_date: date
+    resolved_date: date | None = None
+    rate: float | None = None
+
+
 class NpvTraceResponse(BaseModel):
     trade_date: date
     maturity_date: date
     entry_npv: float
     points: list[NpvTracePointOut]
     skipped_dates: list[date]
+    # Empty on a healthy fixing store; additive, so older clients ignore it.
+    fixing_warnings: list[FixingWarningOut] = []
 
 
 class DbConnectionIn(BaseModel):

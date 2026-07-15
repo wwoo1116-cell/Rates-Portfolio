@@ -30,16 +30,16 @@ def value_trade(
     swap: VanillaSwap,
     fixings: dict[date, float],
 ) -> MTMResult:
-    """Build curve, revalue the booked swap using injected historical fixings."""
+    """Build curve, revalue the booked swap using injected historical fixings.
+
+    The fixings dict goes to the engine whole; per-period selection is
+    reset-date-based inside value_booked_trade (engine/fixings.py). The
+    previous reduction here -- max(fixings.keys()) -- injected TODAY's CD
+    print into every historical revaluation (look-ahead) and passed a
+    decimal into what was then a percent-expecting argument; both defects
+    are gone (DIAG_PNL_TRACE.md section 8)."""
     curve = build_curve(snapshot)
-    
-    # Extract the most recent fixing for current_float_rate if available
-    current_float_rate = None
-    if fixings:
-        latest_date = max(fixings.keys())
-        current_float_rate = fixings[latest_date]
-        
-    return value_booked_trade(swap, curve, current_float_rate)
+    return value_booked_trade(swap, curve, fixings)
 
 
 def fair_rate(
