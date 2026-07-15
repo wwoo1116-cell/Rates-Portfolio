@@ -6,11 +6,12 @@
  * `params`. Traces a hypothetical IRS's cumulative PnL from that date to
  * today via POST /api/mtm/npv-trace (services/npv_trace_service.py).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import type { IChartApi, ISeriesApi, MouseEventParams, SeriesMarker, ISeriesMarkersPluginApi } from "lightweight-charts";
 import { LineSeries, createSeriesMarkers } from "lightweight-charts";
 import type { IDockviewPanelProps } from "dockview-react";
+import { Button } from "@/components/ui/button";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, formatCrosshairDate } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
@@ -50,12 +51,22 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
 
   const fixedRate = irsRatePct === "" ? null : Number(irsRatePct);
   const notional = notional100M === "" ? null : Number(notional100M);
-  const canTrace = tenorYears != null && fixedRate != null && Number.isFinite(fixedRate) && notional != null && Number.isFinite(notional);
 
-  // Auto-trace once Start Date/Maturity Date/IRS Rate are all filled in --
-  // no separate submit action per the work order ("once the user inputs the
-  // IRS Rate, render the PnL Trace line graph").
-  useEffect(() => {
+  // First failing rule, in field order -- doubles as the RUN button's
+  // disabled-state tooltip so the user is told WHY it won't run.
+  const validationError =
+    !startDate ? "Start Date is required"
+    : !maturityDate ? "Maturity Date is required"
+    : tenorYears == null ? "Maturity Date must be after Start Date"
+    : fixedRate == null || !Number.isFinite(fixedRate) ? "IRS Rate is empty or not a number"
+    : notional == null || !Number.isFinite(notional) ? "Notional is empty or not a number"
+    : null;
+  const canTrace = validationError == null;
+
+  // The one place a trace is dispatched from -- shared by the auto-trace
+  // effect below, the RUN button, and Enter in any form field, always off
+  // the CURRENT form values.
+  const runTrace = useCallback(() => {
     if (!canTrace) return;
     npvTrace.mutate({
       swap: {
@@ -69,6 +80,18 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
       start_date: startDate,
       end_date: endDate,
     });
+    // npvTrace (the mutation object) is identity-unstable across renders;
+    // npvTrace.mutate is the stable function react-query guarantees.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canTrace, startDate, maturityDate, tenorYears, notional, fixedRate, payFixed, endDate, npvTrace.mutate]);
+
+  // Auto-trace once Start Date/Maturity Date/IRS Rate are all filled in --
+  // no separate submit action per the work order ("once the user inputs the
+  // IRS Rate, render the PnL Trace line graph"). Kept as-is; the RUN button
+  // below is additive (explicit re-run/retry, e.g. after a backend error,
+  // which this effect can never re-fire for on unchanged inputs).
+  useEffect(() => {
+    runTrace();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canTrace, startDate, maturityDate, irsRatePct, notional100M, payFixed, endDate]);
 
@@ -172,8 +195,19 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
         </div>
       </div>
 
-      {/* Inputs */}
-      <div className="flex flex-wrap items-end gap-3">
+      {/* Inputs. Enter in any field == RUN (same guard: no-op while invalid
+          or while a trace is already in flight). */}
+      <div
+        className="flex flex-wrap items-end gap-3"
+        onKeyDown={(e) => {
+          // Inputs only: preventDefault on a focused <button> would swallow
+          // its native Enter activation (PAY/REC/RUN themselves).
+          if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT" && !npvTrace.isPending) {
+            e.preventDefault();
+            runTrace();
+          }
+        }}
+      >
         <label className="flex flex-col gap-1 text-micro font-bold text-fg-muted">
           Start Date
           <input
@@ -230,12 +264,35 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
             </button>
           </div>
         </div>
+        {/* Explicit (re)run with the CURRENT form values -- additive next to
+            the auto-trace effect, and the only way to retry after a backend
+            error without editing a field. Tooltip on the wrapper: disabled
+            buttons swallow pointer events, so a title on the button itself
+            would never show. */}
+        <div title={validationError ?? undefined}>
+          <Button
+            size="sm"
+            className="w-16"
+            disabled={!canTrace}
+            loading={npvTrace.isPending}
+            onClick={runTrace}
+            aria-label="Run PnL trace"
+          >
+            RUN
+          </Button>
+        </div>
       </div>
 
+      {/* Backend error: surface the message where the chart would render
+          instead of a silent empty area. A useMutation result cannot hold
+          stale data alongside an error (data resets to undefined), so this
+          and the chart block below are mutually exclusive by construction. */}
       {npvTrace.isError && (
-        <p className="text-micro text-sem-negative">
-          {npvTrace.error instanceof Error ? npvTrace.error.message : "Could not trace this trade -- confirm the pricing server is reachable."}
-        </p>
+        <div className="flex min-h-0 flex-1 items-center justify-center border border-border-subtle bg-bg-elevated">
+          <p className="max-w-md p-4 text-center text-body text-sem-negative">
+            {npvTrace.error instanceof Error ? npvTrace.error.message : "Could not trace this trade -- confirm the pricing server is reachable."}
+          </p>
+        </div>
       )}
 
       {/* Bottom: PnL trace */}
