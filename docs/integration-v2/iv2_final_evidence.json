@@ -1,0 +1,53 @@
+{
+  "checks": {
+    "a_kpi_ribbon": false,
+    "b_legend_credit_order": true,
+    "b_charts_render": true,
+    "c_period_ribbon": true,
+    "d_pvbp_16col": true,
+    "g_mtm_dash": true,
+    "g_theta_shown": true
+  },
+  "kpi": {
+    "evaluation": true,
+    "notional": true,
+    "ytm": true,
+    "duration": false
+  },
+  "daily": {
+    "rows": [
+      {
+        "BOOK": "RP Fund",
+        "THETA": "+225.9M",
+        "MTM": "—",
+        "TOTAL": "+225.9M‡",
+        "FUNDING": "-10.3M"
+      },
+      {
+        "BOOK": "Total",
+        "THETA": "+225.9M",
+        "MTM": "—",
+        "TOTAL": "+225.9M‡",
+        "FUNDING": "-10.3M"
+      }
+    ],
+    "total_row": {
+      "BOOK": "Total",
+      "THETA": "+225.9M",
+      "MTM": "—",
+      "TOTAL": "+225.9M‡",
+      "FUNDING": "-10.3M"
+    }
+  },
+  "legend": [
+    371,
+    375,
+    379,
+    383,
+    387,
+    391,
+    395
+  ],
+  "consoleErrors": [],
+  "failedResponses": []
+}

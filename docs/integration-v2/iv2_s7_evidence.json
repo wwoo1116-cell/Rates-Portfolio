@@ -1,0 +1,15 @@
+{
+  "checks": {
+    "cool_palette_hits": 0,
+    "cool_palette_renders": false,
+    "notice_renders": true,
+    "notice_remedy": true,
+    "ribbon_still_up": true
+  },
+  "fills": [
+    "#000000"
+  ],
+  "notice": "배분 차트를 표시할 수 없습니다 · 채권 273종목 모두 발행일·만기일이 비어 있어 과거 시점 재평가가 불가능합니다. · Upload 탭에서 Process Files를 다시 실행하면 날짜가 채워집니다. · PVBP (DV01) Sensitivity · PVBP Sensitivity · 2026-07-15 close · Sector × Tenor (₩/bp · 000) · SECTOR\t1D\t3M\t6M\t9M\t1",
+  "consoleErrors": [],
+  "failedResponses": []
+}

@@ -1,0 +1,27 @@
+{
+  "checks": {
+    "cool_palette_hits": 7,
+    "cool_palette_renders": true,
+    "maturity_ramp_hits": 4
+  },
+  "matched": {
+    "국고채": "#187ABA",
+    "통안채": "#99AAB9",
+    "공사채": "#4CCACD",
+    "특은채": "#335574",
+    "시은채": "#4695C8",
+    "여전채": "#94DFE1",
+    "회사채": "#CCD5DC"
+  },
+  "allBgs": [
+    "#187aba",
+    "#99aab9",
+    "#4ccacd",
+    "#335574",
+    "#4695c8",
+    "#94dfe1",
+    "#ccd5dc",
+    "#a3cae3"
+  ],
+  "consoleErrors": 0
+}

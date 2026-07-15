@@ -1,0 +1,43 @@
+{
+  "checks": {
+    "sixteen_columns": true,
+    "ktb_4y_29278k": true,
+    "msb_15y_1007k": true,
+    "irs_hidden_cells_drawn": true,
+    "colsum_equals_grand": true,
+    "footnote_silent": true,
+    "ribbon_renders": true,
+    "wtd_406_5M": true
+  },
+  "pvbp": {
+    "columns": [
+      "Sector",
+      "1D",
+      "3M",
+      "6M",
+      "9M",
+      "1Y",
+      "1.5Y",
+      "2Y",
+      "3Y",
+      "4Y",
+      "5Y",
+      "6Y",
+      "7Y",
+      "8Y",
+      "9Y",
+      "10Y",
+      "30Y",
+      "Total"
+    ],
+    "국고채_4Y": "+29,278k",
+    "통안채_15Y": "+1,007k",
+    "irs_3Y": "-60,056k",
+    "irs_10Y": "-19,959k",
+    "total_colsum": 180508,
+    "grand_total": 180505
+  },
+  "ribbon": "WTD · +406.5M · vs 2026-07-10 · MTD · +3.04B · vs 2026-06-30 · YTD · -10.57B · vs 2025-12-31 · 기간 손익은 실현 손익이 아니라 현재 보유 채권을 각 기준일 시장데이터로 재평가한 값입니다. 기준일 당시 미발행 종목은 제외됩니다. · BOOK\tTHETA\tMTM\tTOTAL\t",
+  "consoleErrors": [],
+  "failedResponses": []
+}

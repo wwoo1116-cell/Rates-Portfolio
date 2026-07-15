@@ -1,0 +1,14 @@
+{
+  "checks": {
+    "auto_trace_on_chart_click": false,
+    "run_button_visible": true,
+    "run_button_enabled": false,
+    "run_enabled_after_fill": false,
+    "run_click_triggers_rerun": true
+  },
+  "traces": [
+    1784103559711,
+    1784103565452
+  ],
+  "consoleErrors": 0
+}

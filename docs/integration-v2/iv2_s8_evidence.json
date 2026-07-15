@@ -1,0 +1,16 @@
+{
+  "checks": {
+    "header_logo_visible": true,
+    "header_logo_src": "/_next/image?url=%2Fbrand%2Fmirae-logo-reversed.png&w=256&q=75",
+    "favicon_ico_200": true,
+    "icon_links": [
+      "/favicon.ico?favicon.1lz0_oio3g7s2.ico",
+      "/brand/favicon-16.png",
+      "/brand/favicon-32.png",
+      "/brand/apple-touch-icon.png"
+    ],
+    "no_triangle_expanded": true,
+    "no_triangle_collapsed": true
+  },
+  "consoleErrors": 0
+}
