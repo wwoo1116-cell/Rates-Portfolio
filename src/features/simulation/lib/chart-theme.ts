@@ -13,6 +13,7 @@
  * are re-implemented on the target's lightweight-charts + d3 stack.
  */
 import { resolveCssVar } from "@/lib/canvas-color";
+import { PNL_COLORS, SIM_SERIES_COLORS } from "@/lib/chart-colors";
 
 /** Source hardcoded hex → target token (var name) → literal fallback (SSR/first paint).
  * Fallbacks equal the live tokens.css values, which are byte-identical to the source. */
@@ -46,9 +47,9 @@ export interface SimulationChartTheme {
 }
 
 export function getSimulationChartTheme(): SimulationChartTheme {
-  const berry = resolveCssVar("--chart-berry", "#E75353");
   const ocean = resolveCssVar("--chart-ocean", "#2B95D6");
   const aqua = resolveCssVar("--chart-aqua", "#91CCF1");
+  const berry = resolveCssVar("--chart-berry", "#E75353");
   const purple = resolveCssVar("--chart-purple", "#8A9BA8"); // source called this --chart-violet
   const tangerine = resolveCssVar("--chart-tangerine", "#D9822B");
   const accent = resolveCssVar("--accent", "#3B82F6");
@@ -61,14 +62,19 @@ export function getSimulationChartTheme(): SimulationChartTheme {
     tooltipBorder: resolveCssVar("--border-subtle", "rgba(16,22,26,0.30)"),
     tooltipText: resolveCssVar("--fg-primary", "#F5F8FA"),
     zeroLine: resolveCssVar("--fg-dim", "#5C7080"),
-    bepLine: resolveCssVar("--sem-positive", "#0F9960"),
+    // Break-even marker carries chart-P&L-positive (Jade), not the app sem
+    // token — Jade/Berry replace green/red on chart surfaces (S7).
+    bepLine: resolveCssVar("--chart-pnl-pos", PNL_COLORS.pos),
     dotStroke: resolveCssVar("--bg-base", "#293742"),
+    // Total-Return series — MS-palette composite hierarchy (S7): 합계
+    // emphasized on Blue-20, components subdued. Tokens --chart-series-*;
+    // fallbacks are their lib/chart-colors.ts mirrors.
     series: {
-      mtm: berry,
-      carry: ocean,
-      swapTheta: purple,
-      swapValuation: tangerine,
-      total: accent,
+      mtm: resolveCssVar("--chart-series-mtm", SIM_SERIES_COLORS.mtm),
+      carry: resolveCssVar("--chart-series-carry", SIM_SERIES_COLORS.carry),
+      swapTheta: resolveCssVar("--chart-series-swaptheta", SIM_SERIES_COLORS.swapTheta),
+      swapValuation: resolveCssVar("--chart-series-swapmtm", SIM_SERIES_COLORS.swapValuation),
+      total: resolveCssVar("--chart-series-total", SIM_SERIES_COLORS.total),
     },
     previewPalette: [ocean, aqua, tangerine, berry, purple, accent],
   };

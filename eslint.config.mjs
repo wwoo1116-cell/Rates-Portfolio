@@ -74,6 +74,12 @@ const eslintConfig = defineConfig([
                 "!@/components",
                 "!@/components/ui",
                 "!@/components/ui/**",
+                // S7 owner decision: the canonical SeriesChart (and its chart
+                // primitives) is the one sanctioned charting surface shared by
+                // every screen, Simulation included — same one-way direction
+                // (slice -> app design system) as @/components/ui.
+                "!@/components/charts",
+                "!@/components/charts/**",
                 "!@/lib",
                 "!@/lib/**",
               ],

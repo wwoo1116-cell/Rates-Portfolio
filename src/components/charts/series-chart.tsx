@@ -104,6 +104,15 @@ interface SeriesChartProps {
 
 const EMPTY_MARKERS: SeriesChartMarker[] = [];
 
+/** Crosshair/click dates in ISO form regardless of the host's time encoding:
+ * date-string hosts (Rate History) pass through untouched, UTCTimestamp hosts
+ * (Simulation's D+n horizon axis) convert, BusinessDay formats numerically. */
+function timeToIsoDate(t: Time): string {
+  if (typeof t === "string") return t;
+  if (typeof t === "number") return new Date(t * 1000).toISOString().slice(0, 10);
+  return `${t.year}-${String(t.month).padStart(2, "0")}-${String(t.day).padStart(2, "0")}`;
+}
+
 export function SeriesChart({
   series,
   pills = false,
@@ -168,7 +177,7 @@ export function SeriesChart({
         const hit = seriesDistanceY(param, s);
         if (hit && (nearest == null || hit.dist < nearest.dist)) nearest = { id, dist: hit.dist };
       }
-      cb({ date: param.time ? String(param.time) : null, nearest, param });
+      cb({ date: param.time != null ? timeToIsoDate(param.time) : null, nearest, param });
     });
 
     chart.subscribeCrosshairMove((params: MouseEventParams) => {
@@ -177,7 +186,7 @@ export function SeriesChart({
         setHover(null);
         return;
       }
-      const date = params.time ? String(params.time) : undefined;
+      const date = params.time != null ? timeToIsoDate(params.time) : undefined;
       const candidates = visibleSeries();
       const snapped = snapReticleToNearestSeries(chart, params, candidates.values());
       const p = snapped ?? { x: params.point.x + paneOffsetX(chart), y: params.point.y };
