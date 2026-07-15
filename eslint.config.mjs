@@ -66,6 +66,12 @@ const eslintConfig = defineConfig([
               group: [
                 "@/*",
                 "@/**",
+                // gitignore semantics (the `ignore` package): a path can't be
+                // re-included while its parent directory is excluded, so the
+                // ui allowlist needs @/components itself re-included first.
+                // Direct imports of other @/components/* stay blocked — they
+                // only match @/**, which nothing below un-ignores.
+                "!@/components",
                 "!@/components/ui",
                 "!@/components/ui/**",
                 "!@/lib",
