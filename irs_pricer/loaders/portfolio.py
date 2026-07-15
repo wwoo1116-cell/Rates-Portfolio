@@ -61,6 +61,28 @@ def _to_date(value: object) -> date | None:
     return None
 
 
+def _to_text_date(value: object) -> date | None:
+    """The bond sheet's 발행일자/만기일자 arrive as apostrophe-prefixed text
+    (e.g. "'2026-11-22" -- the ledger export forces text format, and openpyxl
+    hands the apostrophe back as part of the value). Strip it and parse
+    strictly: anything that isn't a real ISO date becomes None, never a
+    guessed date -- a wrong date prices wrong, a None only degrades to the
+    analytic fallback. Real date cells pass through, in case a future export
+    drops the text formatting."""
+    d = _to_date(value)
+    if d is not None:
+        return d
+    if not isinstance(value, str):
+        return None
+    text = value.strip().lstrip("'").strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
 def _parse_name_start_date(name: str) -> date | None:
     """Port of the source's parseNameStartDate (:30-39): a YYMMDD-YYMMDD
     token embedded in the position name, first group is the start date."""
@@ -184,6 +206,19 @@ def _parse_bond_row(row: dict, index: int) -> dict | None:
 
     name = str(row.get("종목명") or "").strip()
 
+    # 채권 정적 파라미터 (ParsedPositionOut의 issue_date/coupon_rate/rating
+    # 블록). 날짜는 둘 다 Optional 그대로: 정말 비어 있는 행은 None으로 남고
+    # (blank-not-zero), 검증 에러가 되지 않는다. issue_date는 start_date에도
+    # 복사한다 -- 프런트가 둘 중 무엇을 읽어도 채권 발행일이 나오도록.
+    issue_date = _to_text_date(row.get("발행일자"))
+    maturity_date = _to_text_date(row.get("만기일자"))
+    raw_coupon = row.get("표면이율")
+    try:
+        coupon_rate = float(raw_coupon) if raw_coupon not in (None, "") else None
+    except (TypeError, ValueError):
+        coupon_rate = None
+    rating = str(row.get("신용등급") or "").strip() or None
+
     return {
         "instrument_type": "bond",
         "position_id": name or f"bond-{index}",
@@ -197,10 +232,16 @@ def _parse_bond_row(row: dict, index: int) -> dict | None:
         "mtm_yield": _to_float(row.get("민평수익율")),
         "duration": duration,
         "pvbp": pvbp,
+        "start_date": issue_date,
+        "maturity_date": maturity_date,
+        "issue_date": issue_date,
+        "coupon_rate": coupon_rate,
+        # payment_frequency stays unset: inferring 2 vs 4 from the sector is
+        # a booking convention the owner has to sign off on, not a fact the
+        # sheet carries.
+        "rating": rating,
         # Bonds aren't booked as swaps -- kept None (not omitted) so every
         # row in the mixed list has the same key set.
-        "start_date": None,
-        "maturity_date": None,
         "fixed_rate": None,
         "pay_fixed": None,
         "float_spread": None,
@@ -273,6 +314,9 @@ def _parse_irs_row(row: dict, index: int) -> dict | None:
         "mtm_yield": None,
         "duration": None,
         "pvbp": None,
+        "issue_date": None,
+        "coupon_rate": None,
+        "rating": None,
     }
 
 
