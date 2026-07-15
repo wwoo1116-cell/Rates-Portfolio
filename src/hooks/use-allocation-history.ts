@@ -27,14 +27,26 @@ const KRW_PER_EOK = 100_000_000;
 export function useAllocationHistory(book = "RP Fund") {
   const bondPositions = useBondPositionsStore((state) => state.positions);
 
+  // A bond with no issue date can't be scheduled. blotter-parser.ts only
+  // guards maturityDate, so issueDate can arrive empty despite the
+  // BondPosition type claiming otherwise -- drop those here rather than
+  // sending a payload the backend rejects with a 422 that kills the panel.
+  //
+  // Kept as its own memo (not inlined into the request) because the DELTA
+  // between these two counts is itself a UI state: "bonds exist but none are
+  // schedulable" is a data-quality failure the panel must say out loud. This
+  // exact silent state (273 bonds, 0 schedulable, query disabled, charts
+  // gone without a word) read as a rendering bug for weeks -- see
+  // DIAGNOSIS_REPORT.md S3.
+  const schedulable = useMemo(
+    () => bondPositions.filter((p) => p.issueDate && p.maturityDate),
+    [bondPositions],
+  );
+
   const request: AllocationHistoryRequest | undefined = useMemo(() => {
-    const positions = bondPositions
-      // A bond with no issue date can't be scheduled. blotter-parser.ts only
-      // guards maturityDate, so issueDate can arrive empty despite the
-      // BondPosition type claiming otherwise -- drop those here rather than
-      // sending a payload the backend rejects with a 422 that kills the panel.
-      .filter((p) => p.issueDate && p.maturityDate)
-      .map((p) => ({
+    if (schedulable.length === 0) return undefined;
+    return {
+      positions: schedulable.map((p) => ({
         position_id: p.id,
         book: p.book,
         sector: p.sector,
@@ -44,10 +56,10 @@ export function useAllocationHistory(book = "RP Fund") {
         payment_frequency: p.paymentFrequency,
         notional: p.notionalKrwEok * KRW_PER_EOK,
         rating: p.rating,
-      }));
-    if (positions.length === 0) return undefined;
-    return { positions, book };
-  }, [bondPositions, book]);
+      })),
+      book,
+    };
+  }, [schedulable, book]);
 
   // Content fingerprint, not the request object: TanStack re-hashes the whole
   // key every render, and a 273-bond request is tens of KB of serialization
@@ -71,5 +83,10 @@ export function useAllocationHistory(book = "RP Fund") {
     // Home panel wait for the slowest one.
     allocationLoading: Boolean(request) && query.isLoading,
     allocationError: query.isError,
+    // The two counts whose difference distinguishes "no bonds at all" from
+    // "bonds exist but none carry issue/maturity dates" (query disabled). The
+    // panel renders a different, explicit state for each -- never nothing.
+    bondCount: bondPositions.length,
+    schedulableCount: schedulable.length,
   };
 }

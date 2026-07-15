@@ -111,10 +111,43 @@ function OverviewSkeleton() {
   );
 }
 
+/** The "positions exist but the charts can't" states. Rendered INSTEAD of the
+ * charts, never instead of the ribbon -- the ribbon's data source is tolerant
+ * of missing dates and stays correct.
+ *
+ * Same centered-text vocabulary as the panel's other empty/error states (no
+ * card, no new pattern); the cause and the remedy are spelled out because this
+ * exact condition -- all bonds missing issue/maturity dates, query silently
+ * disabled -- hid the charts for weeks while reading as a rendering bug
+ * (DIAGNOSIS_REPORT.md S3). */
+function AllocationUnavailable({ bondCount }: { bondCount: number }) {
+  if (bondCount === 0) {
+    // An IRS-only book: nothing to chart, and re-running the upload would not
+    // change that -- so no remedy line, just the reason.
+    return (
+      <div className="flex flex-1 items-center justify-center text-center text-body text-fg-muted">
+        표시할 채권 포지션이 없습니다 — 배분 차트는 채권 전용입니다.
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-1 px-6 text-center">
+      <span className="text-body-strong text-fg-primary">배분 차트를 표시할 수 없습니다</span>
+      <span className="text-body text-fg-muted">
+        채권 {bondCount}종목 모두 발행일·만기일이 비어 있어 과거 시점 재평가가 불가능합니다.
+      </span>
+      <span className="text-micro text-fg-dim">
+        Upload 탭에서 Process Files를 다시 실행하면 날짜가 채워집니다.
+      </span>
+    </div>
+  );
+}
+
 export function PortfolioOverview() {
   const { hasPositions, closeDate, bookSummary, bookSummaryLoading, bookSummaryError } =
     usePortfolioAnalytics();
-  const { allocation, allocationLoading, allocationError } = useAllocationHistory(BOOK);
+  const { allocation, allocationLoading, allocationError, bondCount, schedulableCount } =
+    useAllocationHistory(BOOK);
 
   const book = useMemo(
     () => (bookSummary ?? []).find((b: { book: string }) => b.book === BOOK),
@@ -156,7 +189,7 @@ export function PortfolioOverview() {
             <Stat label="헷지 듀레이션" value={formatDuration(book?.hedgedDuration ?? 0)} />
           </div>
 
-          {allocation && (
+          {allocation ? (
             <>
               <div className="flex min-h-0 flex-1 gap-4">
                 <Chart
@@ -179,7 +212,14 @@ export function PortfolioOverview() {
                 일자 시장데이터로 재평가</span>한 값입니다. 당시 미발행 종목은 제외됩니다.
               </p>
             </>
-          )}
+          ) : schedulableCount === 0 ? (
+            // No allocation data AND no query in flight: the query was never
+            // enabled. Positions exist (we're past the !hasPositions branch),
+            // so this is either an IRS-only book or a bond blotter with empty
+            // dates -- say which, out loud, instead of ending the panel after
+            // the ribbon as if the charts had never existed.
+            <AllocationUnavailable bondCount={bondCount} />
+          ) : null}
         </>
       )}
     </div>
