@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { SelectedInstrument } from "@/lib/rv-instruments";
+import { spreadId, type Leg, type SelectedInstrument } from "@/lib/rv-instruments";
 
 /**
  * Shared state for the Entry Signals (Z-Score) tab. Every dockview panel in
@@ -51,6 +51,49 @@ export interface EntrySignalsState {
   resetParams: () => void;
 }
 
+/** Shape of a spread as persisted by schema v0 (hard-coded 2 legs). */
+interface LegacySpreadV0 {
+  kind: "spread";
+  id: string;
+  legA: Leg;
+  legB: Leg;
+}
+
+/**
+ * v0 -> v1: `{ legA, legB }` becomes the generalized `legs: [{leg, weight}]`.
+ *
+ * v0's value was (legB − legA), so legB carries +1 and legA −1. legB is stored
+ * FIRST so the generalized label renderer still prints "B − A", exactly as the
+ * old hard-coded label did.
+ *
+ * The id is regenerated because the v0 format (`S:legA~legB`) encodes neither
+ * weights nor a leg count. Rewriting `focused` and `watchlist` in the same pass
+ * keeps them referentially consistent, so nothing dangles. The one visible
+ * consequence: colorForId(id) is derived from the id, so a migrated spread's
+ * line colour changes once.
+ */
+function migrateSpreadV0(inst: LegacySpreadV0): SelectedInstrument {
+  const legs = [
+    { leg: inst.legB, weight: 1 },
+    { leg: inst.legA, weight: -1 },
+  ];
+  return { kind: "spread", id: spreadId(legs), legs };
+}
+
+function isLegacySpreadV0(inst: unknown): inst is LegacySpreadV0 {
+  const i = inst as Partial<LegacySpreadV0>;
+  return i?.kind === "spread" && i.legA != null && i.legB != null;
+}
+
+/** Outrights are unchanged across v0/v1; only spreads need rewriting.
+ * Exported for entry-signals-store.test.ts — this runs against real saved user
+ * watchlists, so it is worth pinning directly rather than through persist. */
+export function migrateInstrumentV0(inst: unknown): SelectedInstrument | null {
+  if (inst == null) return null;
+  if (isLegacySpreadV0(inst)) return migrateSpreadV0(inst);
+  return inst as SelectedInstrument;
+}
+
 const DEFAULT_PARAMS = {
   lookback: 60,
   entryZ: 2.0,
@@ -92,6 +135,20 @@ export const useEntrySignalsStore = create<EntrySignalsState>()(
     }),
     {
       name: "entry-signals-storage",
+      // v1 generalized spreads from legA/legB to an N-leg weighted array.
+      // Anyone with a saved watchlist is on v0 (persist writes version 0 when
+      // unset), so without this their spreads would rehydrate with legs
+      // undefined and blow up in buildInstrumentSeries.
+      version: 1,
+      migrate: (persisted, fromVersion) => {
+        const s = persisted as Partial<EntrySignalsState> | undefined;
+        if (!s || fromVersion >= 1) return s as EntrySignalsState;
+        return {
+          ...s,
+          focused: migrateInstrumentV0(s.focused),
+          watchlist: (s.watchlist ?? []).map(migrateInstrumentV0).filter((i): i is SelectedInstrument => i != null),
+        } as EntrySignalsState;
+      },
       partialize: (s) => ({
         lookback: s.lookback,
         entryZ: s.entryZ,

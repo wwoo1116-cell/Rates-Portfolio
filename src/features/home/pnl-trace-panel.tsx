@@ -13,7 +13,7 @@ import { LineSeries, createSeriesMarkers } from "lightweight-charts";
 import type { IDockviewPanelProps } from "dockview-react";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, formatCrosshairDate } from "@/components/charts/crosshair-reticle";
-import { snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
+import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
 import { useMarketDataRange, useNpvTrace } from "@/hooks/use-api";
 import { RATE_SERIES_OPTIONS, rateValue } from "@/lib/rate-history-helpers";
 import type { RateHistoryPointOut, NpvTracePointOut } from "@/lib/api-client";
@@ -135,7 +135,12 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
         // same choice as rate-history-chart.tsx).
         const snapped = snapReticleToNearestSeries(traceChart, param, [traceSeriesRef.current]);
         const p = snapped ?? { x: param.point.x, y: param.point.y };
-        setHoverData({ point, x: p.x, y: p.y, paneWidth: traceChart.timeScale().width() });
+        setHoverData({
+          point,
+          x: p.x,
+          y: p.y,
+          paneWidth: paneOffsetX(traceChart) + traceChart.timeScale().width(),
+        });
       } else {
         setHoverData(null);
       }
@@ -180,7 +185,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="h-7 w-36 border border-border-subtle bg-bg-overlay px-2 text-body font-normal text-fg-primary"
+            className="h-7 w-36 border border-border-subtle bg-bg-elevated px-2 text-body font-normal text-fg-primary"
           />
         </label>
         <label className="flex flex-col gap-1 text-micro font-bold text-fg-muted">
@@ -190,7 +195,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
             value={maturityDate}
             min={startDate}
             onChange={(e) => setMaturityDate(e.target.value)}
-            className="h-7 w-36 border border-border-subtle bg-bg-overlay px-2 text-body font-normal text-fg-primary"
+            className="h-7 w-36 border border-border-subtle bg-bg-elevated px-2 text-body font-normal text-fg-primary"
           />
         </label>
         <label className="flex flex-col gap-1 text-micro font-bold text-fg-muted">
@@ -200,7 +205,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
             step="0.001"
             value={irsRatePct}
             onChange={(e) => setIrsRatePct(e.target.value)}
-            className="h-7 w-24 border border-border-subtle bg-bg-overlay px-2 text-body font-normal text-fg-primary"
+            className="h-7 w-24 border border-border-subtle bg-bg-elevated px-2 text-body font-normal text-fg-primary"
           />
         </label>
         <label className="flex flex-col gap-1 text-micro font-bold text-fg-muted">
@@ -210,7 +215,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
             step="10"
             value={notional100M}
             onChange={(e) => setNotional100M(e.target.value)}
-            className="h-7 w-24 border border-border-subtle bg-bg-overlay px-2 text-body font-normal text-fg-primary"
+            className="h-7 w-24 border border-border-subtle bg-bg-elevated px-2 text-body font-normal text-fg-primary"
           />
         </label>
         <div className="flex flex-col gap-1 text-micro font-bold text-fg-muted">
@@ -218,13 +223,13 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
           <div className="flex h-7 w-24 overflow-hidden rounded border border-border-subtle">
             <button
               onClick={() => setPayFixed(true)}
-              className={`flex-1 transition-colors ${payFixed ? "bg-sem-negative text-bg-base" : "bg-bg-overlay text-fg-muted hover:bg-bg-surface"}`}
+              className={`flex-1 transition-colors ${payFixed ? "bg-sem-negative text-bg-primary" : "bg-bg-elevated text-fg-muted hover:bg-bg-secondary"}`}
             >
               PAY
             </button>
             <button
               onClick={() => setPayFixed(false)}
-              className={`flex-1 transition-colors ${!payFixed ? "bg-sem-positive text-bg-base" : "bg-bg-overlay text-fg-muted hover:bg-bg-surface"}`}
+              className={`flex-1 transition-colors ${!payFixed ? "bg-sem-positive text-bg-primary" : "bg-bg-elevated text-fg-muted hover:bg-bg-secondary"}`}
             >
               REC
             </button>
@@ -258,7 +263,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
             {/* Floating Tooltip */}
             {hoverData && (
               <div
-                className="pointer-events-none absolute z-50 flex flex-col gap-1.5 rounded border border-border-subtle bg-bg-surface p-3 shadow-lg"
+                className="pointer-events-none absolute z-50 flex flex-col gap-1.5 rounded border border-border-subtle bg-bg-secondary p-3 shadow-lg"
                 style={{
                   left: hoverData.x,
                   top: hoverData.y,

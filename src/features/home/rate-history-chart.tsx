@@ -20,7 +20,7 @@ import type { IChartApi, ISeriesApi, MouseEventParams } from "lightweight-charts
 import { LineSeries } from "lightweight-charts";
 import { LwChartBase, rateFormatter } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
-import { snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
+import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
 import { InstrumentSelector } from "@/components/rate-history/instrument-selector";
 import { useCreditCurveSeries, useCreditCurveTaxonomy, useMarketDataRange, useRateHistory } from "@/hooks/use-api";
 import {
@@ -120,7 +120,7 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
       const date = params.time ? String(params.time) : undefined;
       const snapped = snapReticleToNearestSeries(chart, params, seriesMapRef.current.values());
       const p = snapped ?? { x: params.point.x, y: params.point.y };
-      setReticle({ x: p.x, y: p.y, date, paneWidth: chart.timeScale().width() });
+      setReticle({ x: p.x, y: p.y, date, paneWidth: paneOffsetX(chart) + chart.timeScale().width() });
     });
   }, []);
 

@@ -13,6 +13,7 @@ import type { IChartApi, ISeriesApi, ISeriesMarkersPluginApi, MouseEventParams, 
 import { LineSeries, createSeriesMarkers } from "lightweight-charts";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
+import { paneOffsetX } from "@/components/charts/snap-reticle";
 import { useEntrySignalsStore } from "@/stores/entry-signals-store";
 import { CHART_COLORS } from "./chart-theme";
 import { useEntrySignalsData } from "./use-entry-signals-data";
@@ -49,7 +50,15 @@ export function EquityCurvePanel() {
         return;
       }
       const date = String(params.time);
-      setReticle({ x: params.point.x, y: params.point.y, date, paneWidth: api.timeScale().width() });
+      // params.point is pane-space; the overlay is container-space. This panel
+      // doesn't snap to a series, so it adds paneOffsetX itself.
+      const offsetX = paneOffsetX(api);
+      setReticle({
+        x: params.point.x + offsetX,
+        y: params.point.y,
+        date,
+        paneWidth: offsetX + api.timeScale().width(),
+      });
       setSharedHoverTime(date);
     });
   }, []);

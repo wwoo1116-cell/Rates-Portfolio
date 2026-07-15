@@ -14,7 +14,7 @@ import type { IChartApi, ISeriesApi, MouseEventParams } from "lightweight-charts
 import { LineSeries, LineStyle } from "lightweight-charts";
 import { LwChartBase, rateFormatter } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
-import { snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
+import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
 import { alignToDates, rollingSeries } from "@/lib/math/rolling-stats";
 import { instrumentLabel } from "@/lib/rv-instruments";
 import { LOOKBACK_PRESETS, useEntrySignalsStore } from "@/stores/entry-signals-store";
@@ -121,7 +121,9 @@ export function PricePanel() {
       // Snap to the main price/spread line only (SMA/bands have no marker).
       const snapped = snapReticleToNearestSeries(api, params, [mainRef.current]);
       const p = snapped ?? { x: params.point.x, y: params.point.y };
-      setReticle({ x: p.x, y: p.y, date, paneWidth: api.timeScale().width() });
+      // p.x is already overlay-space (snapReticleToNearestSeries adds the
+      // offset); paneWidth must use the same origin or the label-flip drifts.
+      setReticle({ x: p.x, y: p.y, date, paneWidth: paneOffsetX(api) + api.timeScale().width() });
       setSharedHoverTime(date);
     });
   }, []);

@@ -21,9 +21,24 @@ export interface Leg {
   tenor: string;
 }
 
+/** One term of a spread expression: spread = Σ weight·leg. Weights are signed
+ * and user-editable; a classic 2-leg spread is (+1 B, −1 A) and a butterfly is
+ * (+1, −2, +1). */
+export interface SpreadLeg {
+  leg: Leg;
+  weight: number;
+}
+
 export type SelectedInstrument =
   | { kind: "outright"; id: string; leg: Leg }
-  | { kind: "spread"; id: string; legA: Leg; legB: Leg };
+  | { kind: "spread"; id: string; legs: SpreadLeg[] };
+
+/** Default weights when a leg count is chosen in the selector. N=2 keeps the
+ * historical (B − A) sign convention; N=3 defaults to a fly. */
+export const DEFAULT_SPREAD_WEIGHTS: Record<number, number[]> = {
+  2: [1, -1],
+  3: [1, -2, 1],
+};
 
 export function legKey(leg: Leg): string {
   return `${leg.sector}|${leg.rating ?? ""}|${leg.tenor}`;
@@ -38,14 +53,35 @@ export function outrightId(leg: Leg): string {
   return `O:${legKey(leg)}`;
 }
 
-export function spreadId(a: Leg, b: Leg): string {
-  return `S:${legKey(a)}~${legKey(b)}`;
+/**
+ * Identity of a spread, weights included — two packages over the same legs but
+ * different weights (a 1:1 spread vs a 1:2 weighted one) are different
+ * instruments and must not collide in the watchlist.
+ *
+ * NOTE this supersedes the 2-leg-only `S:${legKey(a)}~${legKey(b)}` format;
+ * entry-signals-store's persist migration (v1) rewrites old ids through here.
+ */
+export function spreadId(legs: SpreadLeg[]): string {
+  return `S:${legs.map(({ leg, weight }) => `${weight}*${legKey(leg)}`).join("~")}`;
+}
+
+/** One term, e.g. "IRS 5Y", "− IRS 3Y", "− 2×국고채 5Y". */
+function termLabel({ leg, weight }: SpreadLeg, isFirst: boolean): string {
+  const magnitude = Math.abs(weight);
+  const coefficient = magnitude === 1 ? "" : `${magnitude}×`;
+  if (isFirst) return `${weight < 0 ? "−" : ""}${coefficient}${legLabel(leg)}`;
+  return `${weight < 0 ? "−" : "+"} ${coefficient}${legLabel(leg)}`;
+}
+
+/** "IRS 5Y − IRS 3Y" for a 2-leg, "국고채 3Y − 2×국고채 5Y + 국고채 10Y" for a fly.
+ * The 2-leg rendering is unchanged from the old legA/legB version because the
+ * migration stores the +1 leg first (see migrateSpread). */
+export function spreadLabel(legs: SpreadLeg[]): string {
+  return legs.map((l, i) => termLabel(l, i === 0)).join(" ");
 }
 
 export function instrumentLabel(inst: SelectedInstrument): string {
-  return inst.kind === "outright"
-    ? legLabel(inst.leg)
-    : `${legLabel(inst.legB)} − ${legLabel(inst.legA)}`; // "B − A" reads as the spread's sign
+  return inst.kind === "outright" ? legLabel(inst.leg) : spreadLabel(inst.legs);
 }
 
 /** All distinct credit (non-IRS) legs referenced by the selected instruments --
@@ -58,10 +94,7 @@ export function creditLegsOf(instruments: SelectedInstrument[]): Leg[] {
   };
   for (const inst of instruments) {
     if (inst.kind === "outright") add(inst.leg);
-    else {
-      add(inst.legA);
-      add(inst.legB);
-    }
+    else for (const { leg } of inst.legs) add(leg);
   }
   return [...seen.values()];
 }
@@ -101,8 +134,11 @@ export interface BuiltSeries {
 /**
  * Resolve each selected instrument into a plottable series. Outrights carry
  * decimal values (formatted as % on the right axis); spreads carry bp values
- * ((legB − legA) × 10000, only on dates where BOTH legs have a value) on the
+ * (Σ weightᵢ·legᵢ × 10000, only on dates where EVERY leg has a value) on the
  * left axis.
+ *
+ * N=2 and N=3 share this one path: a 2-leg (+1 B, −1 A) evaluates to the same
+ * (B − A) × 10000 the hard-coded version produced.
  */
 export function buildInstrumentSeries(
   instruments: SelectedInstrument[],
@@ -131,12 +167,29 @@ export function buildInstrumentSeries(
         lineData,
       };
     }
-    const aVals = legValueMap(inst.legA, irsPoints, creditByKey);
-    const bVals = legValueMap(inst.legB, irsPoints, creditByKey);
+    const perLeg = inst.legs.map((l) => ({
+      weight: l.weight,
+      values: legValueMap(l.leg, irsPoints, creditByKey),
+    }));
     const lineData: { time: string; value: number }[] = [];
-    for (const [date, a] of aVals) {
-      const b = bVals.get(date);
-      if (b != null) lineData.push({ time: date, value: (b - a) * 10000 });
+    // Drive off the first leg's dates, then require every other leg to have a
+    // value on that date -- a partially-populated date would silently misprice
+    // the spread rather than omit it.
+    const [driver, ...rest] = perLeg;
+    if (driver) {
+      for (const [date, driverValue] of driver.values) {
+        let sum = driver.weight * driverValue;
+        let complete = true;
+        for (const { weight, values } of rest) {
+          const v = values.get(date);
+          if (v == null) {
+            complete = false;
+            break;
+          }
+          sum += weight * v;
+        }
+        if (complete) lineData.push({ time: date, value: sum * 10000 });
+      }
     }
     lineData.sort((x, y) => x.time.localeCompare(y.time));
     return {

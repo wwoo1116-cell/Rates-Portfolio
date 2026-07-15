@@ -12,7 +12,7 @@ import type { IChartApi, IPriceLine, ISeriesApi, ISeriesMarkersPluginApi, MouseE
 import { LineSeries, LineStyle, createSeriesMarkers } from "lightweight-charts";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
-import { snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
+import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
 import { alignToDates, rollingZScore } from "@/lib/math/rolling-stats";
 import { useEntrySignalsStore } from "@/stores/entry-signals-store";
 import { CHART_COLORS } from "./chart-theme";
@@ -57,7 +57,7 @@ export function ZScoreOscillatorPanel() {
       const date = String(params.time);
       const snapped = snapReticleToNearestSeries(api, params, [seriesRef.current]);
       const p = snapped ?? { x: params.point.x, y: params.point.y };
-      setReticle({ x: p.x, y: p.y, date, paneWidth: api.timeScale().width() });
+      setReticle({ x: p.x, y: p.y, date, paneWidth: paneOffsetX(api) + api.timeScale().width() });
       setSharedHoverTime(date);
     });
   }, []);

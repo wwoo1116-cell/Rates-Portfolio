@@ -59,8 +59,11 @@ export interface CrosshairReticlePoint {
 }
 
 export interface CrosshairReticleProps {
-  /** Pixel-space point within the chart pane (params.point from
-   *  subscribeCrosshairMove) -- pass `null` to hide the reticle entirely. */
+  /** Pixel-space point in the OVERLAY's coordinate space (i.e. the consumer's
+   *  `position: relative` wrapper), NOT raw pane space -- use
+   *  snapReticleToNearestSeries(), which adds paneOffsetX() for you. Passing
+   *  params.point straight through is what made the reticle sit left of the
+   *  cursor on charts with a visible left price scale. Pass `null` to hide. */
   point: CrosshairReticlePoint | null;
   /** Raw ISO ("YYYY-MM-DD") date for the hovered point. Rendered as the
    *  prominent top line of the badge, formatted "DD - MMM - YYYY" -- this is
@@ -75,8 +78,11 @@ export interface CrosshairReticleProps {
    *  "neutral" uses var(--fg-primary). Applies to the value line only --
    *  the date line always uses --fg-primary. */
   tone?: "positive" | "negative" | "neutral";
-  /** Chart pane width (chart.timeScale().width()) -- used only to decide
-   *  whether the label should flip left of the point to avoid clipping. */
+  /** X of the pane's RIGHT edge, in the same overlay space as `point` --
+   *  i.e. paneOffsetX(chart) + chart.timeScale().width(). Used only to decide
+   *  whether the label flips left of the point to avoid clipping, so it must be
+   *  measured from the same origin as `point.x` or the flip threshold drifts by
+   *  the left-axis width. */
   paneWidth?: number;
 }
 

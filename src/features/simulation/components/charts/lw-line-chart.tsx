@@ -16,7 +16,9 @@ import {
   createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   type SeriesMarker,
+  type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
 
@@ -54,16 +56,28 @@ export function dayToTime(baseDate: string, day: number): UTCTimestamp {
   return (Math.floor(baseMs / 1000) + day * 86400) as UTCTimestamp;
 }
 
-export function LwLineChart({ series, zeroLine = false, markers = [] }: LwLineChartProps) {
+/** Stable identity for the default: `markers = []` in the signature would mint a
+ * new array every render, re-running the series effect (and re-creating the
+ * markers plugin) on every render even when nothing changed. */
+const EMPTY_MARKERS: LwMarker[] = [];
+
+export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS }: LwLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Line">[]>([]);
+  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  // Guards every deferred callback that closes over `chart`. lightweight-charts
+  // throws "Object is disposed" if anything touches a chart after remove(), and
+  // a ResizeObserver notification already queued when the panel unmounts can
+  // still land after cleanup has run.
+  const disposedRef = useRef(false);
 
   // Create + dispose the chart once; ResizeObserver keeps it container-relative
   // (§3.3 — no viewport units; dockview resizes the panel, the chart follows).
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    disposedRef.current = false;
     const t = getSimulationChartTheme();
     const chart = createChart(el, {
       width: el.clientWidth || 320,
@@ -83,13 +97,23 @@ export function LwLineChart({ series, zeroLine = false, markers = [] }: LwLineCh
     chartRef.current = chart;
 
     const ro = new ResizeObserver((entries) => {
+      // `chart` is captured, so a notification delivered after remove() would
+      // hit a disposed object -- ro.observe() itself queues an initial callback,
+      // and dockview resizes the panel constantly.
+      if (disposedRef.current) return;
       const e = entries[0];
       if (e) chart.applyOptions({ width: e.contentRect.width, height: e.contentRect.height });
     });
     ro.observe(el);
 
     return () => {
+      // Order matters: flag first so any in-flight callback bails, then stop
+      // observing, detach the markers plugin (it holds a series reference), and
+      // only then dispose the chart.
+      disposedRef.current = true;
       ro.disconnect();
+      markersRef.current?.detach();
+      markersRef.current = null;
       chart.remove();
       chartRef.current = null;
       seriesRef.current = [];
@@ -99,7 +123,11 @@ export function LwLineChart({ series, zeroLine = false, markers = [] }: LwLineCh
   // Rebuild series whenever the data changes (memoize `series` in callers).
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart) return;
+    if (!chart || disposedRef.current) return;
+    // The markers plugin holds a reference to the series it was attached to, so
+    // it has to go before those series are removed.
+    markersRef.current?.detach();
+    markersRef.current = null;
     for (const s of seriesRef.current) {
       try {
         chart.removeSeries(s);
@@ -134,7 +162,7 @@ export function LwLineChart({ series, zeroLine = false, markers = [] }: LwLineCh
     });
 
     if (markers.length > 0 && created[0]) {
-      createSeriesMarkers(
+      markersRef.current = createSeriesMarkers(
         created[0],
         markers.map(
           (m): SeriesMarker<UTCTimestamp> => ({
