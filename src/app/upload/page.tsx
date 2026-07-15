@@ -37,6 +37,8 @@ export default function UploadPage() {
   const authHasHydrated = useAuthStore((s) => s.hasHydrated);
   const [files, setFiles] = useState<Partial<Record<FileSlotKey, File>>>({});
   const [submitting, setSubmitting] = useState(false);
+  // For failures that belong to the request rather than to any one file.
+  const [formError, setFormError] = useState<string | null>(null);
 
   const allSelected = SLOTS.every((s) => files[s.key] != null);
 
@@ -55,6 +57,7 @@ export default function UploadPage() {
   function handleFileSelected(key: FileSlotKey, file: File) {
     setFiles((prev) => ({ ...prev, [key]: file }));
     store.setSlot(key, { status: "selected", fileName: file.name, errorMessage: undefined });
+    setFormError(null);
   }
 
   function applyResults(response: MarketDataUploadResponse) {
@@ -74,6 +77,7 @@ export default function UploadPage() {
   async function handleProcess() {
     if (!allSelected || submitting) return;
     setSubmitting(true);
+    setFormError(null);
     SLOTS.forEach((s) => store.setSlot(s.key, { status: "uploading" }));
 
     try {
@@ -146,9 +150,14 @@ export default function UploadPage() {
         });
       }
     } catch (err) {
+      // A request that never came back says nothing about any individual file.
+      // Marking all four ERROR (which this used to do) reads as "your files are
+      // bad" and prints one cause four times, under rows it isn't even about.
+      // Report it once, and hand the slots back the way the user left them.
       const message = err instanceof ApiError ? err.message : "Unexpected error while uploading.";
       toast({ title: "Upload failed", description: message, variant: "error" });
-      SLOTS.forEach((s) => store.setSlot(s.key, { status: "error", errorMessage: message }));
+      setFormError(message);
+      SLOTS.forEach((s) => store.setSlot(s.key, { status: "selected", errorMessage: undefined }));
     } finally {
       setSubmitting(false);
     }
@@ -196,6 +205,12 @@ export default function UploadPage() {
               />
             ))}
           </div>
+
+          {formError && (
+            <p className="text-xs mt-4" style={{ color: "var(--sem-negative)" }}>
+              {formError}
+            </p>
+          )}
 
           <Button
             type="button"
