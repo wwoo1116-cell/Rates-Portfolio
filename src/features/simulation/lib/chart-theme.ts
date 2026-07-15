@@ -51,7 +51,7 @@ export function getSimulationChartTheme(): SimulationChartTheme {
   const aqua = resolveCssVar("--chart-aqua", "#91CCF1");
   const purple = resolveCssVar("--chart-purple", "#8A9BA8"); // source called this --chart-violet
   const tangerine = resolveCssVar("--chart-tangerine", "#D9822B");
-  const accent = resolveCssVar("--accent", "#137CBD");
+  const accent = resolveCssVar("--accent", "#3B82F6");
 
   return {
     background: resolveCssVar("--bg-surface", "#202B33"),

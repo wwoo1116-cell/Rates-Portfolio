@@ -14,7 +14,7 @@ import { formatPnlKrw } from "./pnl-format";
 
 /** Canvas can't resolve CSS custom properties, so series colours must be
  * literals — same constraint (and same values) as rate-history-chart. */
-const PNL_LINE = "#137CBD"; // --sem-info
+const PNL_LINE = "#3B82F6"; // --sem-info
 const ZERO_LINE = "rgba(255,255,255,0.25)";
 
 export function SpreadPnlChart({ data }: { data: { time: string; value: number }[] }) {

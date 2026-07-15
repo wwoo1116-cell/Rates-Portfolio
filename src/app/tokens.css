@@ -1,7 +1,7 @@
 /* ============================================================
    INSTITUTIONAL DARK — SINGLE THEME, NO TOGGLE
    Palantir Foundry / Goldman Sachs Marquee dialect
-   Accent: Pantone 158C (#F58220) alpha/lightness only
+   Accent: Marquee Blue #3B82F6 (DESIGN.md §color), alpha-modulated
    ============================================================ */
 :root {
   /* ── Backgrounds: Blueprint Dark Gray ── */
@@ -28,18 +28,19 @@
   --sem-positive-soft: rgba(15, 153, 96, 0.15);
   --sem-negative-soft: rgba(219, 55, 55, 0.15);
 
-  /* ── Accent: Primary Blue ── */
-  --accent:       #137CBD; /* Blueprint Intent.PRIMARY */
-  --accent-dim:   rgba(19, 124, 189, 0.60);
-  --accent-soft:  rgba(19, 124, 189, 0.15);
-  --accent-ghost: rgba(19, 124, 189, 0.07);
+  /* ── Accent: Marquee Blue (DESIGN.md §color is the source of truth —
+        owner decision, Session 5; was Blueprint Intent.PRIMARY #137CBD) ── */
+  --accent:       #3B82F6;
+  --accent-dim:   rgba(59, 130, 246, 0.60);
+  --accent-soft:  rgba(59, 130, 246, 0.15);
+  --accent-ghost: rgba(59, 130, 246, 0.07);
 
-  /* Heatmap / volume density scale: alpha modulation */
-  --heat-5: rgba(19, 124, 189, 0.90);
-  --heat-4: rgba(19, 124, 189, 0.65);
-  --heat-3: rgba(19, 124, 189, 0.42);
-  --heat-2: rgba(19, 124, 189, 0.22);
-  --heat-1: rgba(19, 124, 189, 0.08);
+  /* Heatmap / volume density scale: alpha modulation of the accent */
+  --heat-5: rgba(59, 130, 246, 0.90);
+  --heat-4: rgba(59, 130, 246, 0.65);
+  --heat-3: rgba(59, 130, 246, 0.42);
+  --heat-2: rgba(59, 130, 246, 0.22);
+  --heat-1: rgba(59, 130, 246, 0.08);
 
   /* ── Chart Accent Colors ── */
   --chart-ocean: #2B95D6;

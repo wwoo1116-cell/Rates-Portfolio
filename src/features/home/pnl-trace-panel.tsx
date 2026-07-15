@@ -76,7 +76,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
     if (!npvTrace.data || !traceChart) return;
     if (!traceSeriesRef.current) {
       traceSeriesRef.current = traceChart.addSeries(LineSeries, {
-        color: "#137CBD", // --sem-info (canvas can't resolve CSS custom properties)
+        color: "#3B82F6", // --sem-info (canvas can't resolve CSS custom properties)
         lineWidth: 2,
         title: "Cumulative PnL",
         priceFormat: { type: "custom", formatter: formatPnlKrw },

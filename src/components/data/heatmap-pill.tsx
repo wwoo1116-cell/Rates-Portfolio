@@ -35,7 +35,7 @@ export function HeatmapPill({
     }
   } else {
     // Unidirectional: accent alpha only
-    bgColor = `rgba(19, 124, 189,${(0.06 + t * 0.60).toFixed(2)})`;
+    bgColor = `rgba(59, 130, 246,${(0.06 + t * 0.60).toFixed(2)})`;
     textColor = value !== 0 ? "var(--accent)" : "var(--fg-muted)";
   }
 

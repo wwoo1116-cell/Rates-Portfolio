@@ -11,7 +11,7 @@
 export const CHART_COLORS = {
   fgMuted: "#8A9BA8", // --fg-muted  (SMA line)
   fgDim: "#5C7080", // --fg-dim    (±σ bands, warn thresholds)
-  accent: "#137CBD", // --accent    (zero line)
+  accent: "#3B82F6", // --accent    (zero line)
   positive: "#0F9960", // --sem-positive (cheap / entry-long)
   negative: "#DB3737", // --sem-negative (rich / entry-short)
 } as const;

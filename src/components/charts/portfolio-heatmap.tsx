@@ -16,7 +16,7 @@ const PADDING = 2;
 function heatColor(notional: number, maxNotional: number): string {
   const t = Math.min(notional / Math.max(maxNotional, 1), 1);
   const alpha = (0.08 + t * 0.82).toFixed(2);
-  return `rgba(19, 124, 189,${alpha})`;
+  return `rgba(59, 130, 246,${alpha})`;
 }
 
 // PnL sign indicator: directional data rendered as text color only, not fill.
