@@ -25,8 +25,10 @@
  */
 import { Spinner, Tooltip } from "@blueprintjs/core";
 import { usePortfolioAnalytics } from "@/hooks/use-portfolio-analytics";
+import { usePeriodPnl } from "@/hooks/use-period-pnl";
 import { useSettingsStore } from "@/stores/settings-store";
-import type { QuoteSource } from "@/lib/api-types";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { PeriodPnlFigure, QuoteSource } from "@/lib/api-types";
 
 function formatKrwCompact(value: number): string {
   const abs = Math.abs(value);
@@ -106,6 +108,69 @@ function UnknownCell({ tooltip }: { tooltip: string }) {
   );
 }
 
+/** One WTD/MTD/YTD figure on the period-comparison ribbon.
+ *
+ * Same honesty rules as the table below: a null PnL renders an em-dash (the
+ * baseline is outside the data range, or nothing was priceable at both dates
+ * -- "unknown", which 0 would misstate as "revalued, didn't move"), and a
+ * partial figure (unpriceable bonds excluded) carries the same ‡ the partial
+ * Totals use. Every figure names its resolved baseline date: "vs last Friday"
+ * is meaningless on a screen where holidays shift what Friday means. */
+function PeriodPnlStat({ label, figure }: { label: string; figure: PeriodPnlFigure }) {
+  const value = figure.pnl;
+  const color =
+    value === null || value === 0
+      ? "var(--fg-dim)"
+      : value > 0
+        ? "var(--sem-positive)"
+        : "var(--sem-negative)";
+  return (
+    <div className="flex items-baseline gap-1.5">
+      <span className="text-micro uppercase text-fg-dim">{label}</span>
+      {value === null ? (
+        <Tooltip
+          content={
+            figure.baseline_date
+              ? `${figure.baseline_date} 기준 재평가 가능한 종목이 없습니다 — 0이 아니라 미확정입니다`
+              : "기준일이 보유 시장데이터 범위 밖입니다 — 0이 아니라 미확정입니다"
+          }
+          compact
+          placement="bottom"
+        >
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontVariantNumeric: "tabular-nums",
+              fontSize: 12,
+              color: "var(--fg-dim)",
+              cursor: "help",
+            }}
+          >
+            —
+          </span>
+        </Tooltip>
+      ) : (
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontVariantNumeric: "tabular-nums",
+            fontSize: 12,
+            fontWeight: 600,
+            color,
+          }}
+        >
+          {value > 0 ? "+" : ""}
+          {formatKrwCompact(value)}
+          {!figure.complete && <span style={{ color: "var(--fg-dim)" }}>‡</span>}
+        </span>
+      )}
+      <span className="text-micro text-fg-dim">
+        {figure.baseline_date ? `vs ${figure.baseline_date}` : "기준일 없음"}
+      </span>
+    </div>
+  );
+}
+
 /** Per-source freshness ribbon. Replaces a single "market open" flag, which
  * couldn't be honest here: the sources have different coverage, so a blank MtM
  * cell needs to say WHICH feed is behind and as of when. */
@@ -140,6 +205,7 @@ export function BookDailyPnlTable() {
     bookDailyPnlLoading: isLoading,
     bookDailyPnlError: isError,
   } = usePortfolioAnalytics();
+  const { periodPnl, periodPnlLoading, periodPnlError } = usePeriodPnl();
   const fundingSpreadBp = useSettingsStore((s) => s.fundingSpreadBp);
 
   const asOf = bookDailyPnl?.as_of;
@@ -147,6 +213,10 @@ export function BookDailyPnlTable() {
   const rows = bookDailyPnl?.by_book ?? [];
   const anyPartial = rows.some((r) => !r.mtm_complete);
   const staleSources = sources.filter((s) => !s.has_as_of).map((s) => s.source);
+
+  // The ribbon shows the portfolio-level row; the response also carries
+  // per-book rows for a future drill-in.
+  const periodTotal = periodPnl?.rows.find((r) => r.book === "Total");
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
@@ -160,6 +230,43 @@ export function BookDailyPnlTable() {
           </span>
         </div>
       </div>
+
+      {/* Period comparison ribbon (WTD/MTD/YTD vs prior week/month/year-end
+          close). Sits INSIDE this panel, above the daily table -- summary
+          first, decomposition below; no new card. Absent entirely when no
+          bonds are schedulable: Portfolio Overview already explains that
+          data-quality state, and a ribbon of dashes would just repeat it. */}
+      {hasPositions && (periodPnl || periodPnlLoading || periodPnlError) && (
+        <div className="border-b border-border-subtle pb-3">
+          {periodTotal ? (
+            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+              <PeriodPnlStat label="WTD" figure={periodTotal.wtd} />
+              <PeriodPnlStat label="MTD" figure={periodTotal.mtd} />
+              <PeriodPnlStat label="YTD" figure={periodTotal.ytd} />
+            </div>
+          ) : periodPnlLoading ? (
+            <div className="flex gap-6">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-4 w-36" />
+              ))}
+            </div>
+          ) : (
+            <span className="text-label text-sem-negative">
+              기간 손익을 불러오지 못했습니다.
+            </span>
+          )}
+          {periodTotal && (
+            /* Load-bearing caveat, same treatment as the allocation charts:
+               without it these figures read as realized period P&L, which
+               they are not -- there is no position history to realize from. */
+            <p className="pt-1.5 text-micro text-fg-dim">
+              기간 손익은 실현 손익이 아니라 <span className="text-fg-muted">현재 보유
+              채권을 각 기준일 시장데이터로 재평가</span>한 값입니다. 기준일 당시 미발행
+              종목은 제외됩니다.
+            </p>
+          )}
+        </div>
+      )}
 
       {!hasPositions ? (
         <div className="flex flex-1 items-center justify-center text-center text-body text-fg-muted">
