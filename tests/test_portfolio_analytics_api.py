@@ -24,6 +24,8 @@ _ANALYTICS_PATHS = {
     # Bond-only, but it revalues the whole book five times over -- same reason
     # it must not run on the event loop.
     "/api/portfolio/allocation-history",
+    # Same shape of work as allocation-history (whole book at up to 4 dates).
+    "/api/portfolio/period-pnl",
 }
 
 
@@ -110,4 +112,59 @@ def test_legacy_payload_fields_are_ignored_not_rejected():
         daily_pnl_by_book=[{"book": "A", "total": 1.0}],
     )
     assert not hasattr(summary, "daily_pnl_by_book")
+
+
+def test_period_pnl_endpoint_contract(monkeypatch):
+    """/period-pnl through the full FastAPI stack: request parsing (the
+    allocation-history payload), the declared response_model (F-09: never an
+    undeclared dict), and null-not-zero surviving JSON serialisation.
+
+    Market data and curves are stubbed at the same seams the service tests use;
+    value_bond runs for real.
+    """
+    from datetime import date, timedelta
+
+    from fastapi.testclient import TestClient
+
+    from irs_pricer.api.app import app
+    from irs_pricer.api.models import PeriodPnlResponse
+    from irs_pricer.services import allocation_history_service as ahs
+
+    start, end = date(2026, 7, 1), date(2026, 7, 15)
+    available = [
+        d for d in (start + timedelta(days=i) for i in range((end - start).days + 1))
+        if d.weekday() < 5
+    ]
+    monkeypatch.setattr(ahs.market_data_service, "list_available_dates", lambda: available)
+    monkeypatch.setattr(
+        ahs.credit_curve_service, "market_yield_for",
+        lambda sector, rating, remaining_years, val_date=None: 0.03 + 0.001 * remaining_years,
+    )
+
+    client = TestClient(app)
+    resp = client.post("/api/portfolio/period-pnl", json={
+        "positions": [{
+            "position_id": "B1", "book": "RP Fund", "sector": "시은채",
+            "issue_date": "2024-01-10", "maturity_date": "2029-01-10",
+            "coupon_rate": 3.0, "payment_frequency": 4, "notional": 1e9,
+            "rating": "AA",
+        }],
+        "book": "RP Fund",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # The declared response_model is authoritative: the payload must round-trip
+    # through it (no undeclared extras, no missing fields).
+    PeriodPnlResponse.model_validate(body)
+
+    assert body["as_of"] == "2026-07-15"
+    assert [r["book"] for r in body["rows"]] == ["RP Fund", "Total"]
+    total = body["rows"][-1]
+    # WTD resolved to the previous Friday and carries a real number...
+    assert total["wtd"]["baseline_date"] == "2026-07-10"
+    assert isinstance(total["wtd"]["pnl"], float)
+    # ...while YTD predates all stubbed data: JSON null, not 0.
+    assert total["ytd"]["baseline_date"] is None
+    assert total["ytd"]["pnl"] is None
 

@@ -394,6 +394,42 @@ class AllocationHistoryRequest(BaseModel):
     as_of_date: date | None = None         # defaults to the latest available market date
 
 
+class PeriodPnlFigureOut(BaseModel):
+    """한 (북, 기간)의 재평가 기간 손익.
+
+    `pnl=None`은 0이 아니라 **모름/해당없음**이다: 기준일이 데이터 범위 밖이거나
+    (그때 `baseline_date`도 None), 두 시점 모두 가격산출 가능한 채권이 하나도
+    없다는 뜻. 0으로 채우면 "재평가했더니 안 움직였다"는 거짓 주장이 된다 --
+    book-daily-pnl의 mtm=None 규약과 동일하게 화면에는 "—"로 나가야 한다.
+
+    합계는 populated rows만 합산한다: excluded_not_held(기준일 당시 미발행/이미
+    만기 -- 방법론상 예상되는 제외)와 excluded_unpriceable(커브 부재 -- 데이터
+    결함, complete=False)은 pnl에 0으로도 안 들어간다. 자세한 규약은
+    portfolio_analytics_service._period_figure docstring.
+    """
+    baseline_date: date | None
+    pnl: float | None
+    included_positions: int
+    excluded_not_held: int
+    excluded_unpriceable: int
+    complete: bool
+
+
+class PeriodPnlRowOut(BaseModel):
+    book: str                # 북 이름, 마지막 행은 "Total"
+    wtd: PeriodPnlFigureOut  # vs lastWeekEnd  (지난주 마지막 영업일)
+    mtd: PeriodPnlFigureOut  # vs lastMonthEnd (지난달 마지막 영업일)
+    ytd: PeriodPnlFigureOut  # vs lastYearEnd  (작년 마지막 영업일)
+
+
+class PeriodPnlResponse(BaseModel):
+    """POST /api/portfolio/period-pnl. 현재 북을 과거 기준일로 재평가한
+    **가상** 기간 손익 -- 실현 손익이 아니다. UI는 배분 차트와 같은 재평가
+    캐비앳을 반드시 달아야 한다."""
+    as_of: date
+    rows: list[PeriodPnlRowOut]
+
+
 class PositionDeltaOut(BaseModel):
     position_id: str
     total_delta: float

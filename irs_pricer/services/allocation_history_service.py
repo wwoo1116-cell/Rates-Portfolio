@@ -125,8 +125,12 @@ class NotHeldOn(Exception):
     legitimately post-date the last-year-end column."""
 
 
-def _revalue(bond: BondSnapshotInput, d: date) -> tuple[float, float] | None:
+def revalue_bond(bond: BondSnapshotInput, d: date) -> tuple[float, float] | None:
     """(npv, pvbp) for one bond at date `d`.
+
+    Public because it is THE single revaluation path for "today's book at date
+    d": the allocation charts and portfolio_analytics_service.build_period_pnl
+    both go through here, so their figures can never disagree on pricing.
 
     pvbp is the KRW change in NPV per +1bp of market yield (negative for a long
     bond).
@@ -213,7 +217,7 @@ def build_allocation_history(
         if d is not None:
             for bond in bonds:
                 try:
-                    priced = _revalue(bond, d)
+                    priced = revalue_bond(bond, d)
                 except NotHeldOn:
                     continue
                 if priced is None:

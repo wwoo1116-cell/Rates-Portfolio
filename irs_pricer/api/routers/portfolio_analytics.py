@@ -8,6 +8,7 @@ from ..models import (
     AllocationHistoryRequest,
     DecimalRate,
     ParsedPositionOut,
+    PeriodPnlResponse,
     RateQuoteIn,
     _to_snapshot,
 )
@@ -136,13 +137,10 @@ def get_book_summary(request: PortfolioAnalyticsRequest) -> list[dict]:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-# Bond-only and snapshot-free: it loads each date's market data itself via
-# market_data_service, so unlike the three handlers above it takes no curve in
-# the request body. `def` for the same threadpool reason -- it prices the book
-# five times over.
-@router.post("/allocation-history")
-def get_allocation_history(request: AllocationHistoryRequest) -> dict:
-    positions = [
+def _to_bond_snapshot_inputs(request: AllocationHistoryRequest) -> list[BondSnapshotInput]:
+    """Shared by /allocation-history and /period-pnl -- the two revaluation
+    endpoints take the identical bond payload, so the mapping must not fork."""
+    return [
         BondSnapshotInput(
             position_id=p.position_id,
             book=p.book,
@@ -156,8 +154,34 @@ def get_allocation_history(request: AllocationHistoryRequest) -> dict:
         )
         for p in request.positions
     ]
+
+
+# Bond-only and snapshot-free: it loads each date's market data itself via
+# market_data_service, so unlike the three handlers above it takes no curve in
+# the request body. `def` for the same threadpool reason -- it prices the book
+# five times over.
+@router.post("/allocation-history")
+def get_allocation_history(request: AllocationHistoryRequest) -> dict:
+    positions = _to_bond_snapshot_inputs(request)
     try:
         return allocation_history_service.build_allocation_history(
+            positions, book=request.book, as_of_date=request.as_of_date
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+# 기간 손익 (WTD/MTD/YTD): 현재 북을 과거 기준일로 재평가한 가상 손익.
+# /allocation-history와 요청 계약을 공유한다 -- 같은 채권 정적 파라미터, 같은
+# 기준일 해석(resolve_anchors), 같은 재평가 기계(revalue_bond). `def`도 같은
+# 이유(스레드풀) -- 북 전체를 최대 4개 날짜로 평가한다.
+# response_model 명시: dict를 그대로 흘리다 계약이 문서/검증 없이 굳는 F-09
+# 패턴을 반복하지 않는다.
+@router.post("/period-pnl", response_model=PeriodPnlResponse)
+def get_period_pnl(request: AllocationHistoryRequest) -> PeriodPnlResponse:
+    positions = _to_bond_snapshot_inputs(request)
+    try:
+        return portfolio_analytics_service.build_period_pnl(
             positions, book=request.book, as_of_date=request.as_of_date
         )
     except ValueError as e:
