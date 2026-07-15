@@ -24,7 +24,11 @@ export function CurveViewPanel() {
     const t = getSimulationChartTheme();
     const points = buildTimePath(params, inputs.baseDate);
     const gov: LwSeriesDef = {
-      color: t.series.carry,
+      // Ocean (previewPalette[0]) — this panel used to lean on series.carry
+      // back when carry WAS ocean; S7 moved carry onto Jade (P&L-reserved),
+      // and a rates path must not wear a P&L hue, so it pins the original
+      // blue explicitly instead of riding the Total-Return series tokens.
+      color: t.previewPalette[0],
       lineWidth: 2,
       data: points.map((p) => ({ time: dayToTime(inputs.baseDate, p.day), value: p.gov3y })),
     };
