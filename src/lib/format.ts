@@ -54,3 +54,11 @@ export function formatKrwAxis(value: number): string {
   if (abs >= 1e4) return `${KRW_FORMATTER.format(Math.round(value / 1e4))}만`;
   return KRW_FORMATTER.format(Math.round(value));
 }
+
+/** formatKrwAxis with an explicit sign for positive values ("+3.2억",
+ * "-450만") — for SIGNED KRW chart surfaces (MtM/P&L) where the axis ticks,
+ * tooltip rows, and last-value badges must all carry the sign and never show
+ * sub-만원 digits (S10 Portfolio MtM formatting decision). */
+export function formatKrwAxisSigned(value: number): string {
+  return value > 0 ? `+${formatKrwAxis(value)}` : formatKrwAxis(value);
+}

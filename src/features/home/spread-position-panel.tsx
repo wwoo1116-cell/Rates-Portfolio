@@ -16,6 +16,7 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { SegmentedControl } from "@blueprintjs/core";
 
+import { ChartFrame } from "@/components/chart/ChartFrame";
 import { useCreditCurveSeries, useMarketDataRange, useRateHistory } from "@/hooks/use-api";
 import { formatPnlKrw } from "./pnl-format";
 import {
@@ -281,9 +282,14 @@ export function SpreadPositionPanel({ params }: { params: SpreadPositionPanelPar
               {lastPnl ? `${formatPnlKrw(lastPnl.value)} KRW` : "—"}
             </span>
           </div>
-          <div className="min-h-0 flex-1">
+          <ChartFrame
+            chartId="spread-position"
+            title={`Position — ${instrumentLabel(instrument)}`}
+            detachState={() => ({ instrument, entryDate }) satisfies SpreadPositionPanelParams}
+            className="min-h-0 flex-1"
+          >
             <SpreadPnlChart data={pnlPath} />
-          </div>
+          </ChartFrame>
         </div>
       )}
     </div>

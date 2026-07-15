@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IChartApi, ISeriesApi, ISeriesMarkersPluginApi, MouseEventParams, SeriesMarker, Time } from "lightweight-charts";
 import { LineSeries, createSeriesMarkers } from "lightweight-charts";
+import { ChartFrame } from "@/components/chart/ChartFrame";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX } from "@/components/charts/snap-reticle";
@@ -65,8 +66,10 @@ export function EquityCurvePanel() {
 
   useEffect(() => () => unregisterSyncChart(PANEL_ID), []);
 
+  // Keyed off the `chart` STATE (not chartRef.current) so a ChartFrame
+  // maximize — which remounts LwChartBase without remounting this panel —
+  // triggers a series rebuild on the fresh chart.
   useEffect(() => {
-    const chart = chartRef.current;
     if (!chart) return;
 
     if (!result) {
@@ -118,7 +121,7 @@ export function EquityCurvePanel() {
     markersRef.current?.setMarkers(markers);
 
     chart.timeScale().fitContent();
-  }, [result]);
+  }, [chart, result]);
 
   return (
     <div className="flex h-full flex-col gap-2 p-4">
@@ -134,7 +137,7 @@ export function EquityCurvePanel() {
         )}
       </div>
 
-      <div className="relative min-h-0 flex-1">
+      <ChartFrame chartId="es-equity" title="Backtest — Cumulative P&L" className="min-h-0 flex-1">
         <LwChartBase onChartReady={onChartReady} />
         <SyncedTimeGuide chart={chart} suppressed={reticle != null} />
         <CrosshairReticle point={reticle} date={reticle?.date} paneWidth={reticle?.paneWidth} />
@@ -146,7 +149,7 @@ export function EquityCurvePanel() {
             </PanelEmptyState>
           </div>
         )}
-      </div>
+      </ChartFrame>
     </div>
   );
 }
