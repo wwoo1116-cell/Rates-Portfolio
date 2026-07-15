@@ -71,9 +71,12 @@ def test_response_matches_frontend_contract_shape(representative_response: dict)
     body = representative_response
 
     # SimulateResponse keys (simulate-dto.ts) -- status is a source extra.
+    # fundingCurve/distribution are the s11 additive extensions (T3/T4): the
+    # source contract may only ever GROW by explicitly-listed keys, never change.
     assert set(body.keys()) == {
         "status", "chartData", "summary", "pvbpSensitivity",
         "bookDailyPnLs", "irsSettlementEvents", "irsDailyReconciliation",
+        "fundingCurve", "distribution",
     }
     assert body["status"] == "ok"
 
@@ -154,7 +157,15 @@ def _assert_deep_close(mine, golden, path=""):
 
 
 def test_matches_source_backend_golden(representative_response: dict) -> None:
-    _assert_deep_close(representative_response, GOLDEN_RESPONSE)
+    # The golden file is the SOURCE backend's response. s11 extended the route
+    # additively (fundingCurve/distribution) -- parity is asserted over every
+    # key the source emitted, at full depth, and the extras must be EXACTLY the
+    # two known extensions (a third unlisted key is a contract change, not an
+    # extension, and must fail here).
+    assert set(representative_response) - set(GOLDEN_RESPONSE) == {"fundingCurve", "distribution"}
+    _assert_deep_close(
+        {k: representative_response[k] for k in GOLDEN_RESPONSE}, GOLDEN_RESPONSE
+    )
 
     # Spot-pin the headline numbers so a stale/regenerated golden file can't
     # silently weaken this test (values from the 2026-07-15 source capture).
@@ -245,6 +256,69 @@ def test_bond_only_analytic(client: TestClient) -> None:
     assert ktb_row["total"] == 1_000_000
     grand = next(r for r in body["pvbpSensitivity"] if r["sector"] == "합계")
     assert grand["total"] == 1_000_000
+
+
+# ── s11 T3: distribution fan bands ───────────────────────────────────────────
+
+def test_distribution_bands(representative_response: dict) -> None:
+    """Additive percentile fan: p50 must equal the base totalPnL trace exactly
+    (the z=0 run IS the base run), bands must be ordered p5<=...<=p95 on every
+    day, aligned to chartData's day axis, and deterministic (no RNG)."""
+    dist = representative_response["distribution"]
+    assert dist is not None
+    assert dist["percentiles"] == [5, 25, 50, 75, 95]
+    assert dist["sigmaBpDaily"] == 2.0
+    assert dist["method"] == "quantile-scenario"
+
+    chart = representative_response["chartData"]
+    bands = dist["bands"]
+    assert [b["day"] for b in bands] == [row["day"] for row in chart]
+    for b, row in zip(bands, chart):
+        assert b["p5"] <= b["p25"] <= b["p50"] <= b["p75"] <= b["p95"], b
+        assert b["p50"] == pytest.approx(row["totalPnL"]), (
+            f"day {b['day']}: median band must be the base scenario trace"
+        )
+    # The fan must actually open: by the horizon the outer band pair straddles
+    # a nonzero spread (a zero-width fan means the offset runs were dropped).
+    assert bands[-1]["p95"] > bands[-1]["p5"]
+
+
+def test_distribution_is_deterministic(client: TestClient, representative_response: dict) -> None:
+    r2 = client.post("/api/simulate", json=REPRESENTATIVE_REQUEST)
+    assert r2.status_code == 200
+    assert r2.json()["distribution"] == representative_response["distribution"]
+
+
+# ── s11 T4: funding-rate strip ───────────────────────────────────────────────
+
+def test_funding_curve(representative_response: dict) -> None:
+    """fundingCurve rides the same day axis as chartData and its rates obey the
+    engine's own funding assumption: base fundingRate stepped by fundingEvents,
+    carryBp == (positionRate - fundingRate) * 1e4."""
+    fc = representative_response["fundingCurve"]
+    chart = representative_response["chartData"]
+    assert [p["day"] for p in fc] == [row["day"] for row in chart]
+
+    req_rate = REPRESENTATIVE_REQUEST["fundingRate"]
+    events = REPRESENTATIVE_REQUEST.get("fundingEvents") or \
+        (REPRESENTATIVE_REQUEST.get("shockCurves") or {}).get("fundingEvents", [])
+    base_date = REPRESENTATIVE_REQUEST["baseDate"][:10]
+
+    for p in fc:
+        expected = req_rate + sum(
+            ev.get("shiftBp", 0) / 10000.0
+            for ev in events
+            if ev.get("date") and ev["date"] <= p["date"]
+        )
+        assert p["fundingRate"] == pytest.approx(expected), p
+        if p["positionRate"] is not None:
+            assert p["carryBp"] == pytest.approx(
+                (p["positionRate"] - p["fundingRate"]) * 10000.0, abs=0.005
+            ), p
+    assert fc[0]["date"] == base_date
+    # The representative book holds live bonds: the strip must be populated,
+    # not a row of nulls.
+    assert all(p["positionRate"] is not None for p in fc)
 
 
 # ── 4. The live bridge's request shape (empty irsCurves) ─────────────────────

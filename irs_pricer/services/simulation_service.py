@@ -423,7 +423,17 @@ def build_chart_data(
     irs_curves: list[dict] | None = None,
     irs_shock_curve_prebuilt: list[tuple[float, float]] | None = None,
     custom_path: list[dict] | None = None,
-) -> tuple[list[dict], dict, list[dict], list[dict]]:
+    skip_recon: bool = False,
+) -> tuple[list[dict], dict, list[dict], list[dict], list[dict]]:
+    """5-튜플 (chart_data, summary, settlement_events, daily_recon, funding_curve).
+
+    funding_curve (s11 T4): 시뮬레이션 타임스텝별 조달금리/포지션 운용수익률/캐리 bp.
+    chartData와 같은 영업일 스케줄(+day 0 앵커)로 정렬된다.
+
+    skip_recon (s11 T3): 분포 밴드용 퍼센타일 런은 IRS 일별 대사표가 필요 없어
+    그 루프(영업일당 커브 부트스트랩+12 범프)를 건너뛴다. 기본 False — 원본
+    경로의 산출물은 변하지 않는다.
+    """
     try:
         base_date = date.fromisoformat(base_date_str)
     except Exception:
@@ -635,7 +645,7 @@ def build_chart_data(
     # 없으면 IRS 일별 대사표 자체가 정의되지 않으므로, 대사표만 비우고
     # 나머지(채권 chartData/summary/pvbp/book)는 정상 산출한다. IRS 포지션이
     # 있는데 커브가 없는 경우는 원본과 동일하게 FM 경로에서 실패한다.
-    if par_rates:
+    if par_rates and not skip_recon:
         for _val_date_r, _cal_day, _dt_cal in _bizday_schedule:
             # ── 테너별 누적 충격 bp 계산 (계단식 1D/3M + ramp 6M+) ─────────────
             _cum_r    = {_n: _cum_shock_r(_tau, _cal_day)    for _n, _tau in zip(_recon_names, _recon_tenors)}
@@ -746,9 +756,43 @@ def build_chart_data(
         if r < 1.0:  return "blend"
         return "long"
 
+    # ── s11 T4: 시간축 조달금리/캐리 스트립 ─────────────────────────────────
+    def _weighted_position_rate(t: int, multiplier: float, cur_date: date) -> float | None:
+        """비만기 채권의 평가액가중 운용수익률(소수). calculate_daily_carry의
+        carry_rate(mtmYield + 경로 충격 bp/100)와 같은 정의를 써서 캐리 표기가
+        엔진의 캐리 계산과 어긋나지 않게 한다. 살아있는 채권이 없으면 None."""
+        tot_eval = 0.0
+        acc = 0.0
+        for p in bond_positions:
+            initial_remaining = max(float(p.remainingDays or 0), 0.0)
+            matured = _is_matured(p, cur_date) or (initial_remaining > 0 and t >= initial_remaining)
+            if matured:
+                continue
+            ev = p.evaluationAmount or 0.0
+            if ev <= 0:
+                continue
+            shock_bp = get_position_shock_bp(p, shock_mode, shock_type, base_shock_bp, shock_curves, multiplier, t)
+            acc += ev * ((p.mtmYield or 0.0) + shock_bp / 100.0)
+            tot_eval += ev
+        return (acc / tot_eval) / 100.0 if tot_eval > 0 else None
+
+    def _funding_row(t: int, cur_date: date, multiplier: float) -> dict:
+        rate = calc_dynamic_funding_rate(funding_rate, funding_events, cur_date)
+        pos_rate = _weighted_position_rate(t, multiplier, cur_date)
+        return {
+            "day": t,
+            "date": cur_date.isoformat(),
+            "fundingRate": rate,        # 소수 (0.042 = 4.2%)
+            "positionRate": pos_rate,   # 소수; 살아있는 채권 없으면 None
+            "carryBp": None if pos_rate is None else round((pos_rate - rate) * 10000.0, 2),
+        }
+
+    funding_curve: list[dict] = []
+
     # Day 0 초기 항목 (모든 P&L = 0)
     chart_data.append({"day": 0, "mtmPnL": 0, "cumulativeCarry": 0, "swapPnL": 0, "totalPnL": 0,
                         "swapThetaPnL": 0, "swapValuationPnL": 0})
+    funding_curve.append(_funding_row(0, base_date, _factor(0)))
 
     prev_cal        = 0
     prev_short_mult = _short_factor(0)
@@ -917,6 +961,7 @@ def build_chart_data(
         if bok_breakdown:
             entry["bokBreakdown"] = bok_breakdown
         chart_data.append(entry)
+        funding_curve.append(_funding_row(t, current_date, multiplier))
 
         prev_cal        = t
         prev_short_mult = short_mult
@@ -930,7 +975,127 @@ def build_chart_data(
         "breakEvenDay": break_even_day,
     }
 
-    return chart_data, summary, irs_settlement_events, irs_daily_recon
+    return chart_data, summary, irs_settlement_events, irs_daily_recon, funding_curve
+
+
+# ── s11 T3: 분포(퍼센타일 팬) 밴드 ────────────────────────────────────────────
+# 확률 가정 (REPORT_s11.md §3에 상세 문서화):
+#   - 불확실성은 커브 "평행 레벨"에 대해서만 건다 (테너/크레딧 스프레드는
+#     시나리오 값에 고정). 오프셋 Δp = z_p · σ_daily · √(영업일수).
+#   - σ_daily 기본 2.0bp/영업일 (KRW 3Y 일변동 근사; 요청으로 조정 불가 — 상수).
+#   - 각 밴드는 "사용자 시나리오 + 만기 Δp까지 선형 램프되는 평행 충격"의 실제
+#     엔진 런이다. 만기 시점 분위수는 정확하고, 중간 시점은 만기 불확실성의
+#     선형 보간이다 (√t 브리지가 아님 — 엔진의 자체 램프 의미론에 맞춤).
+#   - 분위수 매핑은 코모노톤 근사: P&L 분위수 ≈ 금리 분위수 경로의 P&L.
+#     비단조 북 대비 일자별 정렬로 밴드 순서(p5≤…≤p95)를 강제한다.
+#   - 난수 없음 — 같은 요청은 항상 같은 밴드 (골든 테스트 안정).
+_DIST_SIGMA_BP_DAILY = 2.0
+_DIST_PERCENTILES = (5, 25, 50, 75, 95)
+_DIST_Z = {5: -1.6448536269514722, 25: -0.6744897501960817, 50: 0.0,
+           75: 0.6744897501960817, 95: 1.6448536269514722}
+
+
+def _offset_curve_points(points: list[dict], off_bp: float) -> list[dict]:
+    return [{**p, "val": float(p.get("val", 0)) + off_bp} for p in points]
+
+
+def _offset_shock_curves(sc: FrontendShockCurves | None, off_bp: float) -> FrontendShockCurves | None:
+    """모든 충격 커브(채권 섹터 + 스왑)에 평행 오프셋 bp를 더한 사본."""
+    if sc is None:
+        return None
+    return FrontendShockCurves(
+        bondCurves={k: _offset_curve_points(v, off_bp) for k, v in sc.bondCurves.items()},
+        swapCurve=_offset_curve_points(sc.swapCurve, off_bp),
+        fundingEvents=sc.fundingEvents,
+    )
+
+
+def _offset_custom_path(custom_path: list[dict] | None, off_bp: float, sim_days: int) -> list[dict] | None:
+    """웨이포인트 경로에 만기 Δp까지 선형 램프되는 오프셋을 더한 사본."""
+    if not custom_path:
+        return custom_path
+    horizon = max(sim_days, 1)
+    return [
+        {**p, "bp": float(p.get("bp", 0)) + off_bp * (int(p.get("day", 0)) / horizon)}
+        for p in custom_path
+    ]
+
+
+def build_distribution_bands(
+    base_chart: list[dict],
+    *,
+    positions: list[FrontendPosition],
+    shock_curves: FrontendShockCurves | None,
+    funding_rate: float,
+    funding_events: list[dict],
+    sim_days: int,
+    shock_type: str,
+    shock_mode: str,
+    base_shock_bp: float,
+    base_date_str: str,
+    irs_curves: list[dict] | None,
+    irs_shock_curve: list[tuple[float, float]],
+    custom_path: list[dict] | None,
+) -> dict:
+    """totalPnL의 퍼센타일 팬 밴드. z=0 런은 기본 시나리오와 입력이 동일하므로
+    base_chart를 그대로 재사용한다(p50 ≡ 기존 궤적 — 중앙값 일관성 보장).
+    나머지 4개 분위수는 skip_recon=True 엔진 런이다."""
+    try:
+        _bd = date.fromisoformat(base_date_str[:10])
+    except Exception:
+        _bd = date.today()
+    ranks = qe.biz_day_ranks(_bd, sim_days)
+    n_biz = int(ranks[-1]) if ranks[-1] > 0 else max(sim_days, 1)
+    sigma_t = _DIST_SIGMA_BP_DAILY * float(np.sqrt(n_biz))
+
+    days = [int(row.get("day", 0)) for row in base_chart]
+    runs: dict[int, dict[int, float]] = {
+        50: {int(r.get("day", 0)): float(r.get("totalPnL", 0)) for r in base_chart}
+    }
+    for pct in _DIST_PERCENTILES:
+        if pct == 50:
+            continue
+        off = _DIST_Z[pct] * sigma_t
+        shifted_base = base_shock_bp + off
+        if abs(shifted_base) < 1e-9:
+            # _factor()는 base_shock_bp==0이면 커스텀 경로를 무시한다(원본 특성).
+            # 그 불연속을 피하기 위해 무시할 수 있는 크기만큼 비켜 간다.
+            off += 1e-6
+            shifted_base = base_shock_bp + off
+        chart_p, *_rest = build_chart_data(
+            positions=positions,
+            shock_curves=_offset_shock_curves(shock_curves, off),
+            funding_rate=funding_rate,
+            funding_events=funding_events,
+            sim_days=sim_days,
+            shock_type=shock_type,
+            shock_mode=shock_mode,
+            base_shock_bp=shifted_base,
+            base_date_str=base_date_str,
+            irs_curves=irs_curves,
+            irs_shock_curve_prebuilt=[(t_, v_ + off) for t_, v_ in irs_shock_curve],
+            custom_path=_offset_custom_path(custom_path, off, sim_days),
+            skip_recon=True,
+        )
+        runs[pct] = {int(r.get("day", 0)): float(r.get("totalPnL", 0)) for r in chart_p}
+
+    bands: list[dict] = []
+    for d in days:
+        # 일자별 정렬 배정: 코모노톤(단조) 북에서는 항등이고, 비단조 북에서도
+        # p5≤p25≤p50≤p75≤p95 순서가 깨지지 않게 한다.
+        vals = sorted(runs[p].get(d, 0.0) for p in _DIST_PERCENTILES)
+        bands.append({
+            "day": d,
+            "p5": vals[0], "p25": vals[1], "p50": vals[2], "p75": vals[3], "p95": vals[4],
+        })
+
+    return {
+        "sigmaBpDaily": _DIST_SIGMA_BP_DAILY,
+        "sigmaTerminalBp": round(sigma_t, 4),
+        "percentiles": list(_DIST_PERCENTILES),
+        "method": "quantile-scenario",
+        "bands": bands,
+    }
 
 
 def build_pvbp_sensitivity(positions: list[FrontendPosition]) -> list[dict]:
@@ -1199,7 +1364,7 @@ def run_simulation(
 
     funding_events = funding_events or (shock_curves.fundingEvents if shock_curves else [])
 
-    chart_data, summary, irs_settlement_events, irs_daily_recon = build_chart_data(
+    chart_data, summary, irs_settlement_events, irs_daily_recon, funding_curve = build_chart_data(
         positions=positions,
         shock_curves=shock_curves,
         funding_rate=funding_rate,
@@ -1218,6 +1383,27 @@ def run_simulation(
     daily_curves = daily_shock_curves if daily_shock_curves is not None else shock_curves
     book_daily_pnls = build_book_daily_pnl(positions, daily_curves, funding_rate)
 
+    # s11 T3 — 분포 밴드는 **추가** 필드다: 실패해도 기존 응답은 그대로 나간다.
+    distribution = None
+    try:
+        distribution = build_distribution_bands(
+            chart_data,
+            positions=positions,
+            shock_curves=shock_curves,
+            funding_rate=funding_rate,
+            funding_events=funding_events,
+            sim_days=sim_days,
+            shock_type=shock_type,
+            shock_mode=shock_mode,
+            base_shock_bp=base_shock_bp,
+            base_date_str=base_date,
+            irs_curves=irs_curves,
+            irs_shock_curve=irs_shock_curve,
+            custom_path=custom_path or None,
+        )
+    except Exception:
+        logger.exception("[s11 T3] 분포 밴드 계산 실패 — distribution=null로 응답")
+
     return {
         "status": "ok",
         "chartData": chart_data,
@@ -1226,4 +1412,7 @@ def run_simulation(
         "bookDailyPnLs": book_daily_pnls,
         "irsSettlementEvents":    irs_settlement_events,
         "irsDailyReconciliation": irs_daily_recon,
+        # s11 추가 필드 (기존 계약 불변·확장 전용): T4 조달금리 스트립 + T3 분포 팬.
+        "fundingCurve": funding_curve,
+        "distribution": distribution,
     }

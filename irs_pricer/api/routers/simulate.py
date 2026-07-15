@@ -112,6 +112,36 @@ class IrsDailyReconRow(BaseModel):
     valuationPnl: int
 
 
+class FundingCurvePoint(BaseModel):
+    """s11 T4 — 시뮬레이션 타임스텝별 조달금리/포지션 운용수익률/캐리 bp.
+    positionRate/carryBp는 살아있는 채권이 없으면 null (0이 아니라 미정의)."""
+    day: int
+    date: str
+    fundingRate: float
+    positionRate: float | None
+    carryBp: float | None
+
+
+class DistributionBand(BaseModel):
+    day: int
+    p5: float
+    p25: float
+    p50: float
+    p75: float
+    p95: float
+
+
+class SimulationDistribution(BaseModel):
+    """s11 T3 — totalPnL 퍼센타일 팬. p50은 기본 시나리오 궤적과 동일하고,
+    각 밴드는 '시나리오 + 만기 Δp 평행 충격'의 실제 엔진 런이다
+    (simulation_service.build_distribution_bands의 가정 주석 참조)."""
+    sigmaBpDaily: float
+    sigmaTerminalBp: float
+    percentiles: list[int]
+    method: str
+    bands: list[DistributionBand]
+
+
 class SimulateResponse(BaseModel):
     status: str
     chartData: list[SimulationChartPoint]
@@ -120,6 +150,9 @@ class SimulateResponse(BaseModel):
     bookDailyPnLs: list[BookDailyPnLRow]
     irsSettlementEvents: list[IrsSettlementEvent]
     irsDailyReconciliation: list[IrsDailyReconRow]
+    # s11 확장 필드 — 기존 골든 계약에 대한 추가 전용(extend, don't mutate).
+    fundingCurve: list[FundingCurvePoint]
+    distribution: SimulationDistribution | None
 
 
 @router.post("/simulate", response_model=SimulateResponse)
