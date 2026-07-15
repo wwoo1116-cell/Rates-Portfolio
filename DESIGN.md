@@ -188,6 +188,32 @@ The palette is a controlled, mostly-neutral instrument panel with a single accen
 
 **The Two-Palette Rule.** Dark and light are not `filter: invert()` of each other. Each mode's neutral ramp and semantic ramp is independently tuned (compare `sem-positive-dark #00C176` to `sem-positive-light #16A34A` — deliberately different, not a lightness flip) because they serve two different desk activities.
 
+### Chart Palette — Morgan Stanley 2022 accessibility system (S7, owner-approved)
+
+**Scope: charting surfaces only.** Non-chart UI (tables, badges, toasts, status text) keeps the semantic tokens above. Chart code obtains colors exclusively through the semantic `--chart-*` tokens (mirrored for canvas in `src/lib/chart-colors.ts`) — never the raw `--ms-*` layer, never literal hex.
+
+**Source.** The master chart palette adopts the Morgan Stanley 2022 accessibility palette: a small set of hue families, each expanded as 20%-luminance steps (`hue`, `hue-80`, `hue-60`, `hue-40`, `hue-20`). Steps within a family differ by luminance; families differ by hue — so any two swatches separate on at least one axis for color-vision-deficient viewers.
+
+**Dark-background reselection.** MS published the palette against white. Contrast is not symmetric — a step that clears 3:1 against white generally fails against a dark surface, and vice versa — so the light-bg contrast figures do NOT transfer. Every step used here was re-selected by computing WCAG contrast against our `--bg-surface` (`#202B33`); the gate is enforced by `scripts/check_chart_contrast.ts` (≥ 3.0:1 for anything drawn as a line, marker, or small element).
+
+**The Jade/Berry Reservation Rule.** Jade (positive) and Berry (negative) replace green/red as the P&L semantic pair in all charts (`--chart-pnl-pos/-neg`, `-fill` variants for areas). Consequently the Jade and Berry hue families are RESERVED for P&L semantics and are never used as sector colors. Default steps are `-80` (contrast on dark); solid `--ms-jade`/`--ms-berry` only for bold elements (thick lines, large chips). One sanctioned exception: `--chart-series-carry` reuses Jade-80 inside the Simulation Total-Return chart, where no P&L up/down markers coexist, so the hue cannot be misread as sign.
+
+**The Cool-Family Sector Rule.** Sector encodings use only the cool hue families — Blue / Navy / Aqua — differentiated by luminance and saturation, keeping Jade/Berry unambiguous wherever sectors appear. Adjacent stack slices alternate luminance; same-luminance neighbors separate on the saturation axis (e.g. 여전채 vivid cyan `--ms-aqua-60` vs 회사채 desaturated near-white `--ms-navy-20`). The fixed mapping (identical in every view, matching the PVBP table's credit-descending order):
+
+| Sector | Token | Step | Role |
+|---|---|---|---|
+| 국고채 | `--chart-sector-ktb` | Blue | mid, saturated |
+| 통안채 | `--chart-sector-msb` | Navy-40 | light, desaturated |
+| 공사채 | `--chart-sector-agency` | Aqua | bright, saturated |
+| 특은채 | `--chart-sector-specbank` | Navy-80 | dark — **large fills only, see caveat** |
+| 시은채 | `--chart-sector-combank` | Blue-80 | mid |
+| 여전채 | `--chart-sector-cardcap` | Aqua-60 | very light cyan |
+| 회사채 | `--chart-sector-corp` | Navy-20 | near-white, desaturated |
+
+The maturity ramp is a single-hue luminance ramp (longer = lighter): 단기 Blue → 중기 Blue-80 → 장기 Blue-40. The simulation series set (`--chart-series-*`) keeps Purple-40/Tangerine-80 for component discriminability — sanctioned despite the cool-family rule because that rule scopes to *sector* encodings and no sectors appear on the Simulation chart.
+
+**Known caveat — Navy-80 (특은채).** Contrast vs `--bg-surface` ≈ 2.2:1, below the 3:1 gate. Sanctioned for LARGE FILLS ONLY (stacked-bar slices, where the neighboring slices — not the surface — form the effective background). Required mitigations: (a) a 1px separator stroke between stacked-bar slices using the existing border token; (b) legend swatch chips carry a subtle border so the dark chip stays legible; (c) the contrast gate carries an explicit large-fill-only allowlist entry for this token. Never use Navy-80 for lines, markers, or text.
+
 ## 3. Typography
 
 **UI Font:** Inter (`var(--font-inter)`), self-hosted via `next/font`. Used for every word AND every number on screen — there is no separate numeric/mono face.
