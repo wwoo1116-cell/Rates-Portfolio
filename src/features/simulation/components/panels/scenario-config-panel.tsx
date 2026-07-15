@@ -8,6 +8,10 @@
  */
 import { useEffect } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
+
 import { toNum } from "../../lib/scenario-curves";
 import { useSimulationDataStore } from "../../store/simulation-data-store";
 import { useSimulationPort } from "../../hooks/use-simulation";
@@ -58,14 +62,12 @@ export function ScenarioConfigPanel() {
         {/* 1. 시뮬레이션 기간 */}
         <div>
           <label className="mb-2 block text-label uppercase text-fg-muted">시뮬레이션 기간</label>
-          <input
-            type="range"
+          <Slider
             min={30}
             max={365}
             step={1}
             value={params.simDays}
             onChange={(e) => patchParams({ simDays: Number(e.target.value) })}
-            className="w-full accent-sem-info"
           />
           <div data-num className="mt-1 text-right text-body-strong text-sem-info">{params.simDays} Days</div>
         </div>
@@ -77,14 +79,16 @@ export function ScenarioConfigPanel() {
             <span className="bg-bg-tertiary px-2 py-0.5 text-micro text-fg-muted">D+{params.simDays} 고정</span>
           </div>
           <div className="flex items-center gap-2">
-            <input
-              type="text"
-              inputMode="decimal"
-              value={params.baseShockBp}
-              onChange={(e) => patchParams({ baseShockBp: e.target.value })}
-              data-num
-              className="flex-1 bg-bg-tertiary border border-transparent px-3 py-2 text-right text-body-strong text-fg-primary focus:border-sem-info focus:outline-none"
-            />
+            <div className="min-w-0 flex-1">
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={params.baseShockBp}
+                onChange={(e) => patchParams({ baseShockBp: e.target.value })}
+                data-num
+                className="text-right"
+              />
+            </div>
             <span className="text-body text-fg-muted">bp</span>
           </div>
         </div>
@@ -104,14 +108,13 @@ export function ScenarioConfigPanel() {
               return (
                 <div key={wp.day} className="flex items-center gap-2">
                   <span data-num className="w-12 flex-shrink-0 text-micro text-fg-muted">D+{wp.day}</span>
-                  <input
-                    type="range"
+                  <Slider
                     min={-absMax}
                     max={absMax}
                     step={1}
                     value={wp.bp}
                     onChange={(e) => setWaypoint(wp.day, Number(e.target.value))}
-                    className="flex-1 cursor-pointer accent-sem-info"
+                    className="min-w-0 flex-1"
                   />
                   <span data-num className={`w-14 flex-shrink-0 text-right text-micro font-semibold ${bpTone(wp.bp)}`}>
                     {wp.bp >= 0 ? "+" : ""}{wp.bp} bp
@@ -142,14 +145,16 @@ export function ScenarioConfigPanel() {
                 {TENOR_SPREADS.map(({ key, label }) => (
                   <div key={key} className="flex items-center gap-2">
                     <span className="w-14 flex-shrink-0 text-micro text-fg-muted">{label}</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={params[key]}
-                      onChange={(e) => patchParams({ [key]: e.target.value })}
-                      data-num
-                      className="flex-1 bg-bg-primary border border-border-subtle px-2 py-1 text-right text-micro text-fg-primary focus:border-sem-info focus:outline-none"
-                    />
+                    <div className="min-w-0 flex-1">
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={params[key]}
+                        onChange={(e) => patchParams({ [key]: e.target.value })}
+                        data-num
+                        className="text-right"
+                      />
+                    </div>
                     <span className="w-5 flex-shrink-0 text-micro text-fg-dim">bp</span>
                   </div>
                 ))}
@@ -162,16 +167,18 @@ export function ScenarioConfigPanel() {
                 {CREDIT_SECTORS.map((sector) => (
                   <div key={sector} className="flex items-center gap-1.5">
                     <span className="w-10 flex-shrink-0 text-micro text-fg-muted">{sector}</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={params.creditSpreads[sector] ?? "0"}
-                      onChange={(e) =>
-                        patchParams({ creditSpreads: { ...params.creditSpreads, [sector]: e.target.value } })
-                      }
-                      data-num
-                      className="min-w-0 flex-1 bg-bg-primary border border-border-subtle px-1.5 py-1 text-right text-micro text-fg-primary focus:border-sem-info focus:outline-none"
-                    />
+                    <div className="min-w-0 flex-1">
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={params.creditSpreads[sector] ?? "0"}
+                        onChange={(e) =>
+                          patchParams({ creditSpreads: { ...params.creditSpreads, [sector]: e.target.value } })
+                        }
+                        data-num
+                        className="text-right"
+                      />
+                    </div>
                     <span className="text-micro text-fg-dim">bp</span>
                   </div>
                 ))}
@@ -180,14 +187,16 @@ export function ScenarioConfigPanel() {
 
             <div className="flex items-center gap-2">
               <span className="w-14 flex-shrink-0 text-micro text-fg-muted">IRS 스프레드</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={params.irsSpread}
-                onChange={(e) => patchParams({ irsSpread: e.target.value })}
-                data-num
-                className="flex-1 bg-bg-primary border border-border-subtle px-2 py-1 text-right text-micro text-fg-primary focus:border-sem-info focus:outline-none"
-              />
+              <div className="min-w-0 flex-1">
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={params.irsSpread}
+                  onChange={(e) => patchParams({ irsSpread: e.target.value })}
+                  data-num
+                  className="text-right"
+                />
+              </div>
               <span className="w-5 flex-shrink-0 text-micro text-fg-dim">bp</span>
             </div>
           </div>
@@ -223,33 +232,36 @@ export function ScenarioConfigPanel() {
               <div className="space-y-1.5">
                 {params.shortEndEvents.map((ev) => (
                   <div key={ev.id} className="flex items-center gap-1.5">
-                    <input
-                      type="date"
-                      value={ev.date}
-                      onChange={(e) =>
-                        patchParams({
-                          shortEndEvents: params.shortEndEvents.map((x) =>
-                            x.id === ev.id ? { ...x, date: e.target.value } : x,
-                          ),
-                        })
-                      }
-                      className="min-w-0 flex-1 bg-bg-primary border border-border-subtle px-2 py-1 text-micro text-fg-secondary focus:border-sem-info focus:outline-none"
-                    />
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={ev.shiftBp}
-                      onChange={(e) =>
-                        patchParams({
-                          shortEndEvents: params.shortEndEvents.map((x) =>
-                            x.id === ev.id ? { ...x, shiftBp: e.target.value } : x,
-                          ),
-                        })
-                      }
-                      data-num
-                      className="w-14 bg-bg-primary border border-border-subtle px-1.5 py-1 text-right text-micro text-fg-primary focus:border-sem-info focus:outline-none"
-                      placeholder="bp"
-                    />
+                    <div className="min-w-0 flex-1">
+                      <Input
+                        type="date"
+                        value={ev.date}
+                        onChange={(e) =>
+                          patchParams({
+                            shortEndEvents: params.shortEndEvents.map((x) =>
+                              x.id === ev.id ? { ...x, date: e.target.value } : x,
+                            ),
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="w-16 flex-shrink-0">
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={ev.shiftBp}
+                        onChange={(e) =>
+                          patchParams({
+                            shortEndEvents: params.shortEndEvents.map((x) =>
+                              x.id === ev.id ? { ...x, shiftBp: e.target.value } : x,
+                            ),
+                          })
+                        }
+                        data-num
+                        className="px-2 text-right"
+                        placeholder="bp"
+                      />
+                    </div>
                     <span className="flex-shrink-0 text-micro text-fg-dim">bp</span>
                     <button
                       type="button"
@@ -269,15 +281,17 @@ export function ScenarioConfigPanel() {
         </details>
       </div>
 
-      <button
+      <Button
         type="button"
+        variant="primary"
+        size="lg"
         disabled={!canRun}
         onClick={() => void runCurrent()}
-        className="mt-4 bg-sem-info px-4 py-3 text-body-strong text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:bg-bg-tertiary disabled:text-fg-dim"
+        className="mt-4 w-full"
         title={inputs.positions.length === 0 ? "포지션 입력 필요 (S6에서 포트폴리오 스토어 연동)" : undefined}
       >
         {status === "running" ? "계산 중..." : "시뮬레이션 실행"}
-      </button>
+      </Button>
     </div>
   );
 }

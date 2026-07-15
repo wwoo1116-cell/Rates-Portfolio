@@ -13,7 +13,6 @@ point (Phase 3).
 | `api/` | `simulate-dto.ts` (request/response DTOs), `simulation-api.ts` (`simulationApi.simulate`) | ✅ ready, type-checked |
 | `store/` | `simulation-data-store.ts` (Zustand slice backing the port + cross-screen selectors) | ✅ ready, type-checked |
 | `hooks/` | `use-simulation.ts` (`useRunSimulation` mutation + `useSimulationPort`) | ✅ ready, type-checked |
-| `components/` | `scenario-simulator.tsx` (entry), `scenario-preview-chart.tsx` | ⏳ staged verbatim, `@ts-nocheck` (S5) |
 | `components/panels/` | `scenario-config` (S4 full input UI) · `results-grid` · `curve-view` · `distribution-chart` (S5 lightweight-charts) — port-driven | ✅ live |
 | `components/charts/` | `lw-line-chart.tsx` (S5 — slice-local lightweight-charts multi-line wrapper) | ✅ |
 | `lib/` | `chart-theme.ts` (chart colors from CSS-var tokens), `scenario-curves.ts` (S4 request assembly + tests), `scenario-preview.ts` (S5 preview path) | ✅ type-checked + unit-tested |
