@@ -206,6 +206,12 @@ class _PositionPnl:
     theta: float
     mtm: float | None
     funding: float = 0.0
+    # (close, T]에 실제 지급된 순현금. 세타에 이미 포함되어 있으며(쿠폰 분리 보정),
+    # 별도 필드로도 내보내는 이유는 항등식의 재구성 가능성이다:
+    #   ΔNPV(dirty) = (mtm + theta) - realized_cash
+    # 이 값 없이는 지급일마다 "NPV 변화 ≠ MtM + Theta"가 외부에서 설명 불가능한
+    # 잔차로 보인다 (s11 T1 진단).
+    realized_cash: float = 0.0
     # 재평가 불가로 해석적 폴백을 쓴 경우 사유. None이면 정상 재평가.
     degraded_reason: str | None = None
 
@@ -336,8 +342,17 @@ def _swap_pnl(
     즉 커브 형태 변화와 2차 효과가 전부 '세타'로 흘러들어갔다. 위 분해는
     잔차가 생길 수 없다 -- 망원급수 + 상수(현금)라 합이 곧 경제적 ΔPnL이다.
 
-    clean_npv 기준(price_portfolio.net_npv)을 쓴다: 이 코드베이스가 ΔNPV를
-    정의해 온 방식(historical_pnl_service)과 같아야 기존 총액이 보존되기 때문이다.
+    V는 **dirty_npv 기준**이다 (s11 T1). 이전의 clean 기준은 하루치 경과이자
+    증가분(accrued roll)을 세타에도 mtm에도 넣지 않았다: 쿠폰일 사이에는 세타에
+    캐리가 전혀 없다가 지급일에 정산금 전액이 한 번에 실리는, 울퉁불퉁한 귀속이
+    됐고, 무엇보다 채권 쪽(_bond_pnl)은 value_bond의 dirty(full price)로 분해하므로
+    집계가 두 기준을 섞었다. dirty 기준에서는
+        ΔNPV(dirty) + 실현 현금 = mtm + theta
+    가 상품·집계 수준에서 ₩1 이내로 정확히 성립하고(테스트
+    test_npv_identity_guard.py가 고정), 세타가 곧 일일 캐리(경과이자 + 롤다운)로
+    읽힌다. PnL Trace 패널의 daily_pnl(dirty + 누적현금)과도 같은 기준이 된다.
+    historical_pnl_service의 누적 PnL 시계열은 여전히 clean 기준이다 -- 그쪽을
+    맞출지는 별도 오너 결정 (REPORT_s11.md §Open).
 
     반환: (legs, fixing_warnings). 두 번째 원소는 세 차례의 재평가에서 나온
     CD 픽싱 데이터 품질 경고(engine/fixings.py)의 합집합 -- build_book_daily_pnl이
@@ -355,13 +370,13 @@ def _swap_pnl(
     # 전부 유일하지만, 그 가정에 기대지 않는 편이 안전하다.
     res_close = portfolio_service.price_portfolio(close_snapshot, swaps, fixings)
     fixing_warnings.extend(res_close.fixing_warnings)
-    v_close = [r.clean_npv for r in res_close.position_results]
+    v_close = [r.dirty_npv for r in res_close.position_results]
     cash = _realized_swap_cash(irs_positions, res_close.cashflows, close_date, as_of)
 
     def npvs(snap: MarketSnapshot) -> list[float]:
         res = portfolio_service.price_portfolio(snap, swaps, fixings)
         fixing_warnings.extend(res.fixing_warnings)
-        return [r.clean_npv for r in res.position_results]
+        return [r.dirty_npv for r in res.position_results]
 
     v_rolled = npvs(rolled_snapshot)
 
@@ -370,7 +385,8 @@ def _swap_pnl(
         # 않으며(할 커브가 없다), 세타는 그대로 확정값으로 남는다.
         return [
             _PositionPnl(position_id=p.position_id, instrument_type="irs", book=p.book,
-                         theta=rolled - close + c, mtm=None, funding=0.0)
+                         theta=rolled - close + c, mtm=None, funding=0.0,
+                         realized_cash=c)
             for p, close, rolled, c in zip(irs_positions, v_close, v_rolled, cash)
         ], fixing_warnings
 
@@ -390,6 +406,7 @@ def _swap_pnl(
             mtm=today - rolled,
             # 스왑 조달비용은 의도적으로 모델링하지 않는다 (채권만 해당).
             funding=0.0,
+            realized_cash=c,
         )
         for p, close, rolled, today, c in zip(irs_positions, v_close, v_rolled, v_today, cash)
     ], fixing_warnings
@@ -436,6 +453,7 @@ def _bond_pnl(
         # None = 모름 (Credit Matrix에 as_of 데이터가 없거나 커브 조회 실패).
         mtm: float | None = None
         reason: str | None = None
+        realized = 0.0
 
         if schedulable:
             try:
@@ -496,7 +514,8 @@ def _bond_pnl(
 
         out.append(_PositionPnl(
             position_id=p.position_id, instrument_type="bond", book=p.book,
-            mtm=mtm, theta=theta, funding=funding, degraded_reason=reason,
+            mtm=mtm, theta=theta, funding=funding, realized_cash=realized,
+            degraded_reason=reason,
         ))
     return out
 
@@ -514,7 +533,11 @@ def build_book_daily_pnl(
                 (둘 다 결정적 -- T 시점 개장 전에 이미 확정되어 있다)
         mtm   : 같은 날짜(T)에서 호가만 종가 -> 당일로 바꾼 값의 변화
 
-    두 항은 망원급수로 상쇄되어 합이 정확히 ΔNPV가 된다. 잔차 버킷이 없다.
+    두 항은 망원급수로 상쇄되어 합이 정확히 ΔNPV(dirty) + 실현 현금이 된다.
+    잔차 버킷이 없다. 스왑·채권 모두 **dirty(full price) 기준**이며(s11 T1 —
+    _swap_pnl docstring 참조), 실현 현금은 `realized_cash`로 행마다 함께 나가
+    소비자가 항등식을 재구성할 수 있다:
+        mtm_complete=True 인 행에서  ΔNPV(dirty) = total - realized_cash.
 
     `close_snapshot`은 **마지막 종가**다(호출자가 보내는 최신 스냅샷). 평가일 T는
     여기서 직접 구한다: T = 다음 영업일(종가일). 이렇게 두면 실시간 피드가 붙었을 때
@@ -606,6 +629,9 @@ def build_book_daily_pnl(
             # "세타 + 지금까지 들어온 MtM"이라는 뜻.
             "total": theta + (mtm or 0.0),
             "funding": sum(l.funding for l in group),
+            # 세타에 포함된 (close, T] 실현 순현금. 소비자가 항등식을 재구성할 수
+            # 있게 하는 값: complete=True면 ΔNPV(dirty) = total - realized_cash.
+            "realized_cash": sum(l.realized_cash for l in group),
             "mtm_complete": complete,
         }
 
@@ -630,6 +656,7 @@ def build_book_daily_pnl(
             "total": portfolio["total"],
             "mtm": portfolio["mtm"],
             "theta": portfolio["theta"],
+            "realized_cash": portfolio["realized_cash"],
             "mtm_complete": portfolio["mtm_complete"],
         },
         "by_book": by_book,
