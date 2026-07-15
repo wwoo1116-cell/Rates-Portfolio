@@ -39,6 +39,7 @@ import type {
   NonBusinessDaysResponse,
   NpvTraceRequest,
   NpvTraceResponse,
+  PeriodPnlResponse,
   PortfolioDeltaResponse,
   PortfolioPriceRequest,
   PortfolioPriceResponse,
@@ -225,6 +226,11 @@ export const portfolioAnalyticsApi = {
   bookSummary: (req: any) => apiPost<any[]>("/api/portfolio/book-summary", req),
   allocationHistory: (req: AllocationHistoryRequest) =>
     apiPost<AllocationHistoryResponse>("/api/portfolio/allocation-history", req),
+  // Same request contract as allocation-history (the backend shares the
+  // mapping); hypothetical period PnL of the current book vs prior
+  // week/month/year-end closes.
+  periodPnl: (req: AllocationHistoryRequest) =>
+    apiPost<PeriodPnlResponse>("/api/portfolio/period-pnl", req),
 };
 
 // ---------------------------------------------------------------------------

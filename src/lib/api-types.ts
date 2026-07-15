@@ -679,3 +679,46 @@ export interface AllocationHistoryResponse {
   /** Share of 평가금액, bucketed by remaining maturity at each column's date. */
   maturity: AllocationSeries;
 }
+
+// ---------------------------------------------------------------------------
+// Period PnL (POST /api/portfolio/period-pnl)
+// ---------------------------------------------------------------------------
+
+/** One (book, period) figure. HYPOTHETICAL period PnL: the CURRENT book
+ * revalued at the baseline date vs at the current date -- not realized P&L,
+ * not holdings history. The UI must carry the same revaluation caveat as the
+ * allocation charts. */
+export interface PeriodPnlFigure {
+  /** Resolved baseline (last business day of the prior week/month/year, KR
+   *  calendar, snapped back over weekends/holidays). Null when the anchor
+   *  predates all available market data. */
+  baseline_date: string | null;
+  /** Null means NOT KNOWN / NOT APPLICABLE — the baseline is outside the data
+   *  range or nothing was priceable at both dates. Never 0-for-unknown: 0
+   *  would assert "revalued, nothing moved". Render null as an em-dash. */
+  pnl: number | null;
+  /** Bonds priced at BOTH dates (the only ones inside `pnl`). */
+  included_positions: number;
+  /** Not yet issued at the baseline / matured since — expected exclusions
+   *  under the revaluation methodology, disclosed as a denominator. */
+  excluded_not_held: number;
+  /** Alive at both dates but unpriceable (no credit curve) — a data defect;
+   *  when > 0 the figure is a PARTIAL sum and `complete` is false. */
+  excluded_unpriceable: number;
+  complete: boolean;
+}
+
+export interface PeriodPnlRow {
+  /** Book name; the last row is the direct all-books aggregate "Total". */
+  book: string;
+  wtd: PeriodPnlFigure;
+  mtd: PeriodPnlFigure;
+  ytd: PeriodPnlFigure;
+}
+
+/** Shares the AllocationHistoryRequest payload — same bonds, same baseline
+ * resolution, same revaluation machinery server-side. */
+export interface PeriodPnlResponse {
+  as_of: string;
+  rows: PeriodPnlRow[];
+}

@@ -72,6 +72,28 @@ function loaded() {
     allocation: ALLOCATION,
     allocationLoading: false,
     allocationError: false,
+    bondCount: 3,
+    schedulableCount: 3,
+  });
+}
+
+/** The S3 failure state: bonds are in the store but every one has empty
+ * issue/maturity dates, so the allocation query is disabled -- no data, no
+ * loading, no error. */
+function bondsButNoneSchedulable(bondCount = 273) {
+  mockAnalytics.mockReturnValue({
+    hasPositions: true,
+    bookSummary: BOOK_SUMMARY,
+    bookSummaryLoading: false,
+    bookSummaryError: false,
+  });
+  mockAllocation.mockReturnValue({
+    hasPositions: false,
+    allocation: undefined,
+    allocationLoading: false,
+    allocationError: false,
+    bondCount,
+    schedulableCount: 0,
   });
 }
 
@@ -144,6 +166,8 @@ describe("PortfolioOverview", () => {
       allocation: undefined,
       allocationLoading: true,
       allocationError: false,
+      bondCount: 3,
+      schedulableCount: 3,
     });
     const { container } = render(<PortfolioOverview />);
 
@@ -163,9 +187,13 @@ describe("PortfolioOverview", () => {
       allocation: undefined,
       allocationLoading: false,
       allocationError: false,
+      bondCount: 0,
+      schedulableCount: 0,
     });
     render(<PortfolioOverview />);
     expect(screen.getByText(/Upload portfolio data/)).toBeDefined();
+    // State 1 of 3 (no positions at all) must NOT show the data-quality notice.
+    expect(screen.queryByText(/배분 차트를 표시할 수 없습니다/)).toBeNull();
   });
 
   it("surfaces an error instead of rendering a misleading empty chart", () => {
@@ -180,10 +208,65 @@ describe("PortfolioOverview", () => {
       allocation: undefined,
       allocationLoading: false,
       allocationError: true,
+      bondCount: 3,
+      schedulableCount: 3,
     });
     render(<PortfolioOverview />);
     expect(screen.getByText(/Failed to load/)).toBeDefined();
     expect(screen.queryByText("섹터 배분")).toBeNull();
+  });
+
+  // ── S3 empty-state hardening: the three-state branch ──────────────────────
+
+  it("names the cause and the remedy when bonds exist but none are schedulable", () => {
+    // The state that hid the charts for weeks: 273 bonds, all with empty
+    // issue/maturity dates, query silently disabled. The panel must say so
+    // instead of ending after the ribbon.
+    bondsButNoneSchedulable(273);
+    render(<PortfolioOverview />);
+
+    expect(screen.getByText("배분 차트를 표시할 수 없습니다")).toBeDefined();
+    // The cause names the count and the missing fields...
+    expect(screen.getByText(/273종목 모두 발행일·만기일이 비어 있어/)).toBeDefined();
+    // ...and the remedy names the action.
+    expect(screen.getByText(/Process Files를 다시 실행/)).toBeDefined();
+    // The ribbon (tolerant data source) still renders; the charts don't.
+    expect(screen.getByText("평가금액")).toBeDefined();
+    expect(screen.queryByText("섹터 배분")).toBeNull();
+    expect(screen.queryByText("만기 배분")).toBeNull();
+  });
+
+  it("does NOT show the notice when schedulable bonds exist and charts render", () => {
+    loaded();
+    render(<PortfolioOverview />);
+
+    expect(screen.getByText("섹터 배분")).toBeDefined();
+    expect(screen.queryByText(/배분 차트를 표시할 수 없습니다/)).toBeNull();
+    expect(screen.queryByText(/표시할 채권 포지션이 없습니다/)).toBeNull();
+  });
+
+  it("tells an IRS-only book why there are no charts, without the false remedy", () => {
+    // Positions exist (IRS), but there are zero bonds -- re-running Process
+    // Files would change nothing, so the date-quality notice would be wrong.
+    mockAnalytics.mockReturnValue({
+      hasPositions: true,
+      bookSummary: [],
+      bookSummaryLoading: false,
+      bookSummaryError: false,
+    });
+    mockAllocation.mockReturnValue({
+      hasPositions: false,
+      allocation: undefined,
+      allocationLoading: false,
+      allocationError: false,
+      bondCount: 0,
+      schedulableCount: 0,
+    });
+    render(<PortfolioOverview />);
+
+    expect(screen.getByText(/표시할 채권 포지션이 없습니다/)).toBeDefined();
+    expect(screen.queryByText(/배분 차트를 표시할 수 없습니다/)).toBeNull();
+    expect(screen.queryByText(/Process Files/)).toBeNull();
   });
 
   it("gives each series a distinct colour so adjacent segments stay readable", () => {

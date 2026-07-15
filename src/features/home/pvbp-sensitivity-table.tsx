@@ -9,9 +9,26 @@
 import { Spinner } from "@blueprintjs/core";
 import { usePortfolioAnalytics } from "@/hooks/use-portfolio-analytics";
 
-const TENOR_COLS = [
-  "3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "30Y",
+/** ALL 16 backend tenor buckets, in the backend's own order -- mirrors
+ * portfolio_analytics_service._TENOR_COLUMNS and must stay in sync with it.
+ *
+ * This used to be a 9-column "spec subset", which silently hid 98.9% of bond
+ * KRD mass (the book concentrates at 9M/1.5Y/4Y -- all hidden) and made the
+ * IRS row look ~12,255k short of its own Total (SESSION4_REPORT N-1/N-2).
+ * The panel scrolls horizontally rather than dropping data: a column set may
+ * never decide which risk the desk gets to see. */
+export const TENOR_COLS = [
+  "1D", "3M", "6M", "9M", "1Y", "1.5Y", "2Y", "3Y",
+  "4Y", "5Y", "6Y", "7Y", "8Y", "9Y", "10Y", "30Y",
 ] as const;
+
+const SECTOR_COL_PX = 100;
+const TENOR_COL_PX = 64;
+const TOTAL_COL_PX = 80;
+// The width at which all 17 columns render at full size. Narrower panels get
+// a horizontal scrollbar (the wrapper is already overflow-auto) instead of
+// squeezed-to-illegible cells.
+const TABLE_MIN_PX = SECTOR_COL_PX + TENOR_COLS.length * TENOR_COL_PX + TOTAL_COL_PX;
 
 function Cell({ value }: { value: number }) {
   const t = Math.min(Math.abs(value) / 10_000_000, 1);
@@ -53,16 +70,21 @@ export function PvbpSensitivityTable() {
     pvbpError: isError,
   } = usePortfolioAnalytics();
 
-  // The backend buckets 16 tenors but this table shows the 9 fixed by spec, so
-  // Total legitimately exceeds the sum of visible cells whenever risk sits in a
-  // hidden bucket (1D/9M/1.5Y/4Y/6Y/8Y/9Y). Disclose the gap instead of letting
-  // the row fail eyeball reconciliation -- and instead of re-bucketing, which
-  // would misattribute tenor risk to columns it isn't in.
+  // Dead-man switch, not a feature: with all 16 backend buckets drawn, every
+  // row's visible cells sum to its Total and this stays silent (a test pins
+  // that). If the backend ever grows a 17th bucket, the gap and the offending
+  // bucket names surface immediately instead of silently understating risk
+  // the way the old 9-column subset did.
   const grandTotal = pvbpSensitivity?.find((r: any) => r.sector === "합계");
   const hiddenAmount = grandTotal
     ? grandTotal.total - TENOR_COLS.reduce((s, c) => s + (grandTotal[c] ?? 0), 0)
     : 0;
   const hasHidden = Math.abs(hiddenAmount) >= 500; // below cell display precision (1k)
+  const unknownBuckets = grandTotal
+    ? Object.keys(grandTotal).filter(
+        (k) => k !== "sector" && k !== "total" && !(TENOR_COLS as readonly string[]).includes(k),
+      )
+    : [];
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
@@ -91,14 +113,14 @@ export function PvbpSensitivityTable() {
         <div className="min-h-0 overflow-auto flex-1">
           <table
             className="w-full border-collapse text-body"
-            style={{ tableLayout: "fixed", fontSize: 12 }}
+            style={{ tableLayout: "fixed", fontSize: 12, minWidth: TABLE_MIN_PX }}
           >
             <colgroup>
-              <col style={{ width: 100 }} />
+              <col style={{ width: SECTOR_COL_PX }} />
               {TENOR_COLS.map((c) => (
-                <col key={c} style={{ width: 72 }} />
+                <col key={c} style={{ width: TENOR_COL_PX }} />
               ))}
-              <col style={{ width: 80 }} />
+              <col style={{ width: TOTAL_COL_PX }} />
             </colgroup>
             <thead>
               <tr className="border-b border-border-subtle">
@@ -146,13 +168,15 @@ export function PvbpSensitivityTable() {
           </table>
 
           {hasHidden && (
-            /* Same ‡ + --fg-dim disclosure pattern as the Daily P&L partial
-               footnote: the number is right, the column set just can't show
-               all of it. */
+            /* Should never render: TENOR_COLS covers every backend bucket. If
+               it does, the backend grew a bucket this table doesn't know --
+               same ‡ + --fg-dim disclosure pattern as the Daily P&L partial
+               footnote until TENOR_COLS is updated. */
             <div className="pt-2 text-label text-fg-dim">
               ‡ Total includes {hiddenAmount > 0 ? "+" : ""}
-              {Math.round(hiddenAmount / 1000).toLocaleString()}k from tenor buckets not shown
-              (1D · 9M · 1.5Y · 4Y · 6Y · 8Y · 9Y).
+              {Math.round(hiddenAmount / 1000).toLocaleString()}k from tenor buckets missing from
+              this table{unknownBuckets.length > 0 ? ` (${unknownBuckets.join(" · ")})` : ""} —
+              update TENOR_COLS.
             </div>
           )}
         </div>
