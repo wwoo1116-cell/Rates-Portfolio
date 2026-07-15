@@ -44,6 +44,7 @@ from .routers import (
     portfolio,
     pricing,
     rate_history,
+    simulate,
     spread_backtest,
     trades,
     upload,
@@ -197,3 +198,4 @@ app.include_router(upload.router)
 app.include_router(portfolio_analytics.router)
 app.include_router(credit_curve.router)
 app.include_router(bond_cashflows.router)
+app.include_router(simulate.router)

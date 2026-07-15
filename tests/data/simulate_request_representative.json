@@ -1,0 +1,546 @@
+{
+ "baseDate": "2026-01-15",
+ "baseShockBp": 30.0,
+ "customPath": [
+  {
+   "bp": 0,
+   "day": 0
+  },
+  {
+   "bp": 10,
+   "day": 30
+  },
+  {
+   "bp": 20,
+   "day": 60
+  },
+  {
+   "bp": 30,
+   "day": 90
+  }
+ ],
+ "dailyShockCurves": {
+  "bondCurves": {
+   "국채": [
+    {
+     "t": 0.25,
+     "val": -1.0
+    },
+    {
+     "t": 1,
+     "val": -0.5
+    },
+    {
+     "t": 3,
+     "val": 1.0
+    },
+    {
+     "t": 10,
+     "val": 2.0
+    }
+   ],
+   "특은채": [
+    {
+     "t": 0.25,
+     "val": -0.5
+    },
+    {
+     "t": 1,
+     "val": 0.0
+    },
+    {
+     "t": 3,
+     "val": 1.5
+    },
+    {
+     "t": 10,
+     "val": 2.5
+    }
+   ]
+  },
+  "swapCurve": [
+   {
+    "t": 0.25,
+    "val": -0.8
+   },
+   {
+    "t": 1,
+    "val": -0.3
+   },
+   {
+    "t": 3,
+    "val": 1.2
+   },
+   {
+    "t": 10,
+    "val": 2.2
+   }
+  ]
+ },
+ "fundingEvents": [
+  {
+   "date": "2026-02-26",
+   "shiftBp": -25.0
+  }
+ ],
+ "fundingRate": 0.0285,
+ "irsCurves": [
+  {
+   "rate": 0.025,
+   "t": 0.0027397260273972603,
+   "tenor": "1d"
+  },
+  {
+   "rate": 0.0255,
+   "t": 0.25,
+   "tenor": "3m"
+  },
+  {
+   "rate": 0.0258,
+   "t": 0.5,
+   "tenor": "6m"
+  },
+  {
+   "rate": 0.0261,
+   "t": 0.75,
+   "tenor": "9m"
+  },
+  {
+   "rate": 0.0263,
+   "t": 1.0,
+   "tenor": "1y"
+  },
+  {
+   "rate": 0.0266,
+   "t": 1.5,
+   "tenor": "18m"
+  },
+  {
+   "rate": 0.0268,
+   "t": 2.0,
+   "tenor": "2y"
+  },
+  {
+   "rate": 0.0272,
+   "t": 3.0,
+   "tenor": "3y"
+  },
+  {
+   "rate": 0.0275,
+   "t": 4.0,
+   "tenor": "4y"
+  },
+  {
+   "rate": 0.0278,
+   "t": 5.0,
+   "tenor": "5y"
+  },
+  {
+   "rate": 0.0283,
+   "t": 7.0,
+   "tenor": "7y"
+  },
+  {
+   "rate": 0.0289,
+   "t": 10.0,
+   "tenor": "10y"
+  }
+ ],
+ "positions": [
+  {
+   "bondType": "bond",
+   "book": "RP Fund",
+   "couponRate": 3.0,
+   "direction": 1,
+   "duration": 2.85,
+   "entryYield": 2.95,
+   "evaluationAmount": 30050000000,
+   "frequency": 2,
+   "id": "B-KTB-3Y",
+   "krdMap": {
+    "3Y": 8550000
+   },
+   "maturityDate": "2029-01-15",
+   "mtmYield": 2.9,
+   "name": "국고03000-2901",
+   "notional": 30000000000,
+   "pvbp": 8550000,
+   "remainingDays": 1096,
+   "sector": "국고채",
+   "tenor": "3Y"
+  },
+  {
+   "bondType": "bond",
+   "book": "RP Fund",
+   "couponRate": 2.8,
+   "direction": 1,
+   "duration": 0.72,
+   "entryYield": 2.79,
+   "evaluationAmount": 19990000000,
+   "frequency": 4,
+   "id": "B-SPB-9M",
+   "krdMap": {
+    "9M": 1440000
+   },
+   "maturityDate": "2026-10-12",
+   "mtmYield": 2.88,
+   "name": "산업금융채권 26-05",
+   "notional": 20000000000,
+   "pvbp": 1440000,
+   "remainingDays": 270,
+   "sector": "특은채",
+   "tenor": "9M"
+  },
+  {
+   "bondType": "bond",
+   "book": "Trading",
+   "couponRate": 2.6,
+   "direction": 1,
+   "duration": 0.16,
+   "entryYield": 2.62,
+   "evaluationAmount": 9998000000,
+   "frequency": 4,
+   "id": "B-BNK-2M",
+   "krdMap": {
+    "3M": 165000
+   },
+   "maturityDate": "2026-03-16",
+   "mtmYield": 2.66,
+   "name": "중금채 26-03",
+   "notional": 10000000000,
+   "pvbp": 165000,
+   "remainingDays": 60,
+   "sector": "시은채",
+   "tenor": "2M"
+  },
+  {
+   "bondType": "swap",
+   "book": "RP Fund",
+   "couponRate": 2.72,
+   "currentFloatRate": 2.55,
+   "direction": 1,
+   "duration": 0.0,
+   "entryYield": 2.72,
+   "evaluationAmount": 0.0,
+   "frequency": 4,
+   "id": "S-IRS-2Y",
+   "krdMap": {},
+   "maturityDate": "2028-01-17",
+   "mtmYield": null,
+   "name": "KRW IRS 2Y RCV",
+   "nextFixingDate": "2026-03-16",
+   "notional": 20000000000,
+   "pvbp": 0.0,
+   "remainingDays": 733,
+   "sector": "IRS",
+   "startDate": "2025-03-17",
+   "tenor": "2Y"
+  },
+  {
+   "bondType": "swap",
+   "book": "Trading",
+   "couponRate": 2.83,
+   "currentFloatRate": 2.58,
+   "direction": -1,
+   "duration": 0.0,
+   "entryYield": 2.83,
+   "evaluationAmount": 0.0,
+   "frequency": 4,
+   "id": "S-IRS-5Y",
+   "krdMap": {},
+   "maturityDate": "2030-09-16",
+   "mtmYield": null,
+   "name": "KRW IRS 5Y PAY",
+   "nextFixingDate": "2026-03-16",
+   "notional": 10000000000,
+   "pvbp": 0.0,
+   "remainingDays": 1706,
+   "sector": "IRS",
+   "startDate": "2025-09-16",
+   "tenor": "5Y"
+  }
+ ],
+ "shockCurves": {
+  "bondCurves": {
+   "국채": [
+    {
+     "t": 0.0027397260273972603,
+     "val": -25.0
+    },
+    {
+     "t": 0.25,
+     "val": -25.0
+    },
+    {
+     "t": 0.5,
+     "val": -5.0
+    },
+    {
+     "t": 1,
+     "val": 35.0
+    },
+    {
+     "t": 2,
+     "val": 32.5
+    },
+    {
+     "t": 3,
+     "val": 30.0
+    },
+    {
+     "t": 5,
+     "val": 33.42857142857143
+    },
+    {
+     "t": 7,
+     "val": 36.857142857142854
+    },
+    {
+     "t": 10,
+     "val": 42.0
+    },
+    {
+     "t": 20,
+     "val": 43.5
+    },
+    {
+     "t": 30,
+     "val": 45.0
+    }
+   ],
+   "은행채": [
+    {
+     "t": 0.0027397260273972603,
+     "val": 0.0
+    },
+    {
+     "t": 0.25,
+     "val": 0.0
+    },
+    {
+     "t": 0.5,
+     "val": 20.0
+    },
+    {
+     "t": 1,
+     "val": 60.0
+    },
+    {
+     "t": 2,
+     "val": 57.5
+    },
+    {
+     "t": 3,
+     "val": 55.0
+    },
+    {
+     "t": 5,
+     "val": 58.42857142857143
+    },
+    {
+     "t": 7,
+     "val": 61.857142857142854
+    },
+    {
+     "t": 10,
+     "val": 67.0
+    },
+    {
+     "t": 20,
+     "val": 68.5
+    },
+    {
+     "t": 30,
+     "val": 70.0
+    }
+   ],
+   "카드채": [
+    {
+     "t": 0.0027397260273972603,
+     "val": 20.0
+    },
+    {
+     "t": 0.25,
+     "val": 20.0
+    },
+    {
+     "t": 0.5,
+     "val": 40.0
+    },
+    {
+     "t": 1,
+     "val": 80.0
+    },
+    {
+     "t": 2,
+     "val": 77.5
+    },
+    {
+     "t": 3,
+     "val": 75.0
+    },
+    {
+     "t": 5,
+     "val": 78.42857142857143
+    },
+    {
+     "t": 7,
+     "val": 81.85714285714286
+    },
+    {
+     "t": 10,
+     "val": 87.0
+    },
+    {
+     "t": 20,
+     "val": 88.5
+    },
+    {
+     "t": 30,
+     "val": 90.0
+    }
+   ],
+   "특은채": [
+    {
+     "t": 0.0027397260273972603,
+     "val": -5.0
+    },
+    {
+     "t": 0.25,
+     "val": -5.0
+    },
+    {
+     "t": 0.5,
+     "val": 15.0
+    },
+    {
+     "t": 1,
+     "val": 55.0
+    },
+    {
+     "t": 2,
+     "val": 52.5
+    },
+    {
+     "t": 3,
+     "val": 50.0
+    },
+    {
+     "t": 5,
+     "val": 53.42857142857143
+    },
+    {
+     "t": 7,
+     "val": 56.857142857142854
+    },
+    {
+     "t": 10,
+     "val": 62.0
+    },
+    {
+     "t": 20,
+     "val": 63.5
+    },
+    {
+     "t": 30,
+     "val": 65.0
+    }
+   ],
+   "회사채": [
+    {
+     "t": 0.0027397260273972603,
+     "val": 35.0
+    },
+    {
+     "t": 0.25,
+     "val": 35.0
+    },
+    {
+     "t": 0.5,
+     "val": 55.0
+    },
+    {
+     "t": 1,
+     "val": 95.0
+    },
+    {
+     "t": 2,
+     "val": 92.5
+    },
+    {
+     "t": 3,
+     "val": 90.0
+    },
+    {
+     "t": 5,
+     "val": 93.42857142857143
+    },
+    {
+     "t": 7,
+     "val": 96.85714285714286
+    },
+    {
+     "t": 10,
+     "val": 102.0
+    },
+    {
+     "t": 20,
+     "val": 103.5
+    },
+    {
+     "t": 30,
+     "val": 105.0
+    }
+   ]
+  },
+  "swapCurve": [
+   {
+    "t": 0.0027397260273972603,
+    "val": -22.0
+   },
+   {
+    "t": 0.25,
+    "val": -22.0
+   },
+   {
+    "t": 0.5,
+    "val": -2.0
+   },
+   {
+    "t": 1,
+    "val": 38.0
+   },
+   {
+    "t": 2,
+    "val": 35.5
+   },
+   {
+    "t": 3,
+    "val": 33.0
+   },
+   {
+    "t": 5,
+    "val": 36.42857142857143
+   },
+   {
+    "t": 7,
+    "val": 39.857142857142854
+   },
+   {
+    "t": 10,
+    "val": 45.0
+   },
+   {
+    "t": 20,
+    "val": 46.5
+   },
+   {
+    "t": 30,
+    "val": 48.0
+   }
+  ]
+ },
+ "shockMode": "matrix",
+ "shockType": "ramp",
+ "simDays": 90
+}
