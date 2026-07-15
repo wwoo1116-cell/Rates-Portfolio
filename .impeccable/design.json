@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-07-07T00:00:00.000Z",
+  "generatedAt": "2026-07-15T06:36:49.366Z",
   "title": "Design System: KRW FI / Rates Portfolio Management System",
   "extensions": {
     "colorMeta": {
@@ -8,60 +8,217 @@
         "role": "primary",
         "displayName": "Marquee Blue",
         "canonical": "#3B82F6",
-        "tonalRamp": ["#0B1220", "#12213D", "#1B3562", "#2554A0", "#3B82F6", "#6FA3F8", "#A6C6FB", "#D9E7FE"]
+        "tonalRamp": [
+          "#0B1220",
+          "#12213D",
+          "#1B3562",
+          "#2554A0",
+          "#3B82F6",
+          "#6FA3F8",
+          "#A6C6FB",
+          "#D9E7FE"
+        ]
       },
       "sem-positive-dark": {
         "role": "semantic",
         "displayName": "Trading Green",
         "canonical": "#00C176",
-        "tonalRamp": ["#04140E", "#062A1E", "#0A4230", "#0C6B44", "#00C176", "#4EDDA0", "#94EFC4", "#D2FBE7"]
+        "tonalRamp": [
+          "#04140E",
+          "#062A1E",
+          "#0A4230",
+          "#0C6B44",
+          "#00C176",
+          "#4EDDA0",
+          "#94EFC4",
+          "#D2FBE7"
+        ]
       },
       "sem-negative-dark": {
         "role": "semantic",
         "displayName": "Trading Red",
         "canonical": "#FF4A5C",
-        "tonalRamp": ["#1F0508", "#3D0A10", "#641119", "#A81E29", "#FF4A5C", "#FF8590", "#FFB8BF", "#FFE3E6"]
+        "tonalRamp": [
+          "#1F0508",
+          "#3D0A10",
+          "#641119",
+          "#A81E29",
+          "#FF4A5C",
+          "#FF8590",
+          "#FFB8BF",
+          "#FFE3E6"
+        ]
       },
       "sem-risk-dark": {
         "role": "semantic",
         "displayName": "Signal Amber",
         "canonical": "#F5A623",
-        "tonalRamp": ["#1F1404", "#3D2808", "#64400D", "#A96C13", "#F5A623", "#F8C567", "#FBDDA0", "#FDF0D2"]
+        "tonalRamp": [
+          "#1F1404",
+          "#3D2808",
+          "#64400D",
+          "#A96C13",
+          "#F5A623",
+          "#F8C567",
+          "#FBDDA0",
+          "#FDF0D2"
+        ]
       },
       "bg-primary-dark": {
         "role": "neutral",
         "displayName": "Void Ink",
         "canonical": "#0F1419",
-        "tonalRamp": ["#0F1419", "#1A2028", "#2A323D", "#3F4854", "#6B7280", "#A8B0BC", "#D4D9E0", "#F2F4F7"]
+        "tonalRamp": [
+          "#0F1419",
+          "#1A2028",
+          "#2A323D",
+          "#3F4854",
+          "#6B7280",
+          "#A8B0BC",
+          "#D4D9E0",
+          "#F2F4F7"
+        ]
       },
       "bg-primary-light": {
         "role": "neutral",
         "displayName": "Paper White",
         "canonical": "#FFFFFF",
-        "tonalRamp": ["#0A0E14", "#1F2937", "#4B5563", "#6B7280", "#9CA3AF", "#D1D5DB", "#EDF1F7", "#FFFFFF"]
+        "tonalRamp": [
+          "#0A0E14",
+          "#1F2937",
+          "#4B5563",
+          "#6B7280",
+          "#9CA3AF",
+          "#D1D5DB",
+          "#EDF1F7",
+          "#FFFFFF"
+        ]
       },
       "bg-header-dark": {
         "role": "neutral",
         "displayName": "Terminal Black",
         "canonical": "#0A0E14"
+      },
+      "ms-blue": {
+        "role": "chart",
+        "displayName": "MS Blue (chart sector/maturity family)",
+        "canonical": "#187ABA",
+        "tonalRamp": [
+          "#187ABA",
+          "#4695C8",
+          "#A3CAE3",
+          "#D1E4F1"
+        ]
+      },
+      "ms-navy": {
+        "role": "chart",
+        "displayName": "MS Navy (chart sector family)",
+        "canonical": "#335574",
+        "tonalRamp": [
+          "#335574",
+          "#99AAB9",
+          "#CCD5DC"
+        ]
+      },
+      "ms-aqua": {
+        "role": "chart",
+        "displayName": "MS Aqua (chart sector family)",
+        "canonical": "#4CCACD",
+        "tonalRamp": [
+          "#4CCACD",
+          "#94DFE1"
+        ]
+      },
+      "ms-jade": {
+        "role": "chart",
+        "displayName": "MS Jade (chart P&L positive — reserved)",
+        "canonical": "#65C581",
+        "tonalRamp": [
+          "#3EB661",
+          "#65C581",
+          "#B2E2C0"
+        ]
+      },
+      "ms-berry": {
+        "role": "chart",
+        "displayName": "MS Berry (chart P&L negative — reserved)",
+        "canonical": "#DC398C",
+        "tonalRamp": [
+          "#D3086F",
+          "#DC398C",
+          "#ED9CC5"
+        ]
+      },
+      "ms-purple-40": {
+        "role": "chart",
+        "displayName": "MS Purple-40 (simulation swap-theta series only)",
+        "canonical": "#C2ADEB",
+        "tonalRamp": [
+          "#C2ADEB"
+        ]
+      },
+      "ms-tangerine-80": {
+        "role": "chart",
+        "displayName": "MS Tangerine-80 (simulation swap-valuation series only)",
+        "canonical": "#FB9B63",
+        "tonalRamp": [
+          "#FB9B63"
+        ]
       }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "Hero KPI numbers and PriceDisplay big-figure span only." },
-      "h1": { "displayName": "H1", "purpose": "Page title." },
-      "h2": { "displayName": "H2", "purpose": "Section title within a panel." },
-      "body": { "displayName": "Body", "purpose": "Default UI text." },
-      "body-strong": { "displayName": "Body Strong", "purpose": "Table cell emphasis, button labels, active nav item." },
-      "label": { "displayName": "Label", "purpose": "Category tags, filter chip labels, column headers — always uppercase, wide tracking." },
-      "micro": { "displayName": "Micro", "purpose": "Timestamps, footnotes, percentage markers, input suffixes." }
+      "display": {
+        "displayName": "Display",
+        "purpose": "Hero KPI numbers and PriceDisplay big-figure span only."
+      },
+      "h1": {
+        "displayName": "H1",
+        "purpose": "Page title."
+      },
+      "h2": {
+        "displayName": "H2",
+        "purpose": "Section title within a panel."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default UI text."
+      },
+      "body-strong": {
+        "displayName": "Body Strong",
+        "purpose": "Table cell emphasis, button labels, active nav item."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Category tags, filter chip labels, column headers — always uppercase, wide tracking."
+      },
+      "micro": {
+        "displayName": "Micro",
+        "purpose": "Timestamps, footnotes, percentage markers, input suffixes."
+      }
     },
     "shadows": [
-      { "name": "sm", "value": "0 1px 3px rgba(0, 0, 0, 0.4)", "purpose": "Dark-mode popovers, dropdowns, floating/dragged dockview panels." },
-      { "name": "md", "value": "0 4px 12px rgba(0, 0, 0, 0.16)", "purpose": "Light-mode popovers and modals." }
+      {
+        "name": "sm",
+        "value": "0 1px 3px rgba(0, 0, 0, 0.4)",
+        "purpose": "Dark-mode popovers, dropdowns, floating/dragged dockview panels."
+      },
+      {
+        "name": "md",
+        "value": "0 4px 12px rgba(0, 0, 0, 0.16)",
+        "purpose": "Light-mode popovers and modals."
+      }
     ],
     "motion": [
-      { "name": "color-swap", "value": "background-color 0.15s ease-out, border-color 0.15s ease-out", "purpose": "Default hover/focus transition for buttons, inputs, nav items — quick, no easing flourish." },
-      { "name": "sidebar-collapse", "value": "width 0.15s ease-out", "purpose": "Sidebar expand/collapse." }
+      {
+        "name": "color-swap",
+        "value": "background-color 0.15s ease-out, border-color 0.15s ease-out",
+        "purpose": "Default hover/focus transition for buttons, inputs, nav items — quick, no easing flourish."
+      },
+      {
+        "name": "sidebar-collapse",
+        "value": "width 0.15s ease-out",
+        "purpose": "Sidebar expand/collapse."
+      }
     ],
     "breakpoints": []
   },
@@ -142,11 +299,46 @@
       "Dark = trading surface, Light = analysis surface — two tuned palettes, not an inversion"
     ],
     "rules": [
-      { "name": "The Points-Not-Fills Rule", "body": "Semantic color renders as a dot, badge, thin line, or emphasized digit. The moment a semantic color becomes a panel or card background, it has become decoration — revert it.", "section": "colors" },
-      { "name": "The Two-Palette Rule", "body": "Dark and light are not filter: invert() of each other. Each mode's neutral ramp and semantic ramp is independently tuned because they serve two different desk activities.", "section": "colors" },
-      { "name": "The Case Invariant Rule", "body": "Category tags are always uppercase with wide tracking; values are always mixed case. There is no exception.", "section": "typography" },
-      { "name": "The Tabular-Everywhere Rule", "body": "Any element that renders a number is tabular-nums and, for anything beyond an inline count, JetBrains Mono.", "section": "typography" },
-      { "name": "The Flat-Panel Rule", "body": "Cards and panels never receive a shadow at rest. Shadow appears only on transient/overlay surfaces.", "section": "elevation" }
+      {
+        "name": "The Points-Not-Fills Rule",
+        "body": "Semantic color renders as a dot, badge, thin line, or emphasized digit. The moment a semantic color becomes a panel or card background, it has become decoration — revert it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two-Palette Rule",
+        "body": "Dark and light are not filter: invert() of each other. Each mode's neutral ramp and semantic ramp is independently tuned because they serve two different desk activities.",
+        "section": "colors"
+      },
+      {
+        "name": "The Case Invariant Rule",
+        "body": "Category tags are always uppercase with wide tracking; values are always mixed case. There is no exception.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular-Everywhere Rule",
+        "body": "Any element that renders a number is tabular-nums and, for anything beyond an inline count, JetBrains Mono.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-Panel Rule",
+        "body": "Cards and panels never receive a shadow at rest. Shadow appears only on transient/overlay surfaces.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Jade/Berry Reservation Rule",
+        "body": "Jade (positive) and Berry (negative) replace green/red as the P&L semantic pair in all charts; the Jade and Berry hue families are reserved for P&L semantics and never appear as sector colors. Default steps are -80; solid Jade/Berry only for bold elements.",
+        "section": "colors"
+      },
+      {
+        "name": "The Cool-Family Sector Rule",
+        "body": "Sector encodings use only Blue/Navy/Aqua hues, differentiated by luminance and saturation. Adjacent stack slices alternate luminance; same-luminance neighbors separate on the saturation axis. Navy-80 (특은채) is large-fills-only (≈2.2:1 vs --bg-surface): never lines, markers, or text.",
+        "section": "colors"
+      },
+      {
+        "name": "The Chart-Token-Only Rule",
+        "body": "Chart code obtains colors exclusively through semantic --chart-* tokens or their mirrors in src/lib/chart-colors.ts — never the raw --ms-* layer, never literal hex outside the token/mapping files.",
+        "section": "colors"
+      }
     ],
     "dos": [
       "Do build hierarchy from background luminance steps (2–5%) and type weight — never from color.",

@@ -89,8 +89,10 @@ export interface CrosshairReticleProps {
 export function CrosshairReticle({ point, date, label, tone = "neutral", paneWidth }: CrosshairReticleProps) {
   if (!point) return null;
 
+  // Chart-surface badge: sign wears the chart P&L pair (Jade/Berry, S7), not
+  // the app-wide sem tokens — this overlay only ever renders on charts.
   const toneColor =
-    tone === "positive" ? "var(--sem-positive)" : tone === "negative" ? "var(--sem-negative)" : "var(--fg-primary)";
+    tone === "positive" ? "var(--chart-pnl-pos)" : tone === "negative" ? "var(--chart-pnl-neg)" : "var(--fg-primary)";
   const formattedDate = date ? formatCrosshairDate(date) : undefined;
 
   let labelStyle: CSSProperties | null = null;
