@@ -9,18 +9,17 @@ import {
   type IDockviewPanelHeaderProps,
   type IDockviewHeaderActionsProps,
 } from "dockview-react";
-import { StatusView } from "./status-view";
+import { PortfolioOverview } from "./portfolio-overview";
 import { PvbpSensitivityTable } from "./pvbp-sensitivity-table";
 import { BookDailyPnlTable } from "./book-daily-pnl-table";
-import { BookSummaryCard } from "./book-summary-card";
 import { DockviewTab } from "@/components/layout/dockview-tab";
 import { DockviewActions } from "@/components/layout/dockview-actions";
 import { useWorkspacePanelsStore } from "@/stores/workspace-panels-store";
 import type { ManagedPanelDef } from "@/lib/workspace-panels";
 import "dockview-react/dist/styles/dockview.css";
 
-const StatusPanel = memo(function StatusPanel() {
-  return <StatusView />;
+const OverviewPanel = memo(function OverviewPanel() {
+  return <PortfolioOverview />;
 });
 
 const PvbpSensitivityPanel = memo(function PvbpSensitivityPanel() {
@@ -31,15 +30,10 @@ const BookDailyPnlPanel = memo(function BookDailyPnlPanel() {
   return <BookDailyPnlTable />;
 });
 
-const BookSummaryPanel = memo(function BookSummaryPanel() {
-  return <BookSummaryCard />;
-});
-
 const components = {
-  status: (props: IDockviewPanelProps) => <StatusPanel {...props} />,
+  overview: (props: IDockviewPanelProps) => <OverviewPanel {...props} />,
   pvbp: (props: IDockviewPanelProps) => <PvbpSensitivityPanel {...props} />,
   bookpnl: (props: IDockviewPanelProps) => <BookDailyPnlPanel {...props} />,
-  booksummary: (props: IDockviewPanelProps) => <BookSummaryPanel {...props} />,
 };
 
 const defaultTabComponent = (props: IDockviewPanelHeaderProps) => <DockviewTab {...props} />;
@@ -47,18 +41,23 @@ const rightHeaderActionsComponent = (props: IDockviewHeaderActionsProps) => (
   <DockviewActions {...props} />
 );
 
-// v6: Removed redundant "Risk Heatmap" panel (which was client-side Tenor x DV01), 
+// v6: Removed redundant "Risk Heatmap" panel (which was client-side Tenor x DV01),
 // as it is superseded by the new backend-computed "PVBP Sensitivity" panel.
-const STORAGE_KEY = "dockview-layout:home-v6";
+// v7: Merged "Status" + "Book Summary" into one "Portfolio Overview" panel.
+// The bump is mandatory, not cosmetic: a saved v6 layout names the `status` and
+// `booksummary` components, which no longer exist, so fromJSON would restore
+// panels that can never render. A new key means no saved layout, which falls
+// through to addDefaultPanels below.
+const STORAGE_KEY = "dockview-layout:home-v7";
 const WORKSPACE_ID = "home";
 
 const MANAGED_PANELS: ManagedPanelDef[] = [
-  { id: "home-status-panel", title: "Status", component: "status" },
+  { id: "home-overview-panel", title: "Portfolio Overview", component: "overview" },
   {
     id: "home-pvbp-panel",
     title: "PVBP (DV01) Sensitivity",
     component: "pvbp",
-    referencePanelId: "home-status-panel",
+    referencePanelId: "home-overview-panel",
     direction: "below",
   },
   {
@@ -68,40 +67,29 @@ const MANAGED_PANELS: ManagedPanelDef[] = [
     referencePanelId: "home-pvbp-panel",
     direction: "right",
   },
-  {
-    id: "home-booksummary-panel",
-    title: "Book Summary",
-    component: "booksummary",
-    referencePanelId: "home-pvbp-panel",
-    direction: "right",
-  },
 ];
 
 function addDefaultPanels(api: DockviewApi) {
   api.clear();
-  const statusPanel = api.addPanel({
-    id: "home-status-panel",
-    component: "status",
-    title: "Status",
-    initialHeight: 160,
+  const overviewPanel = api.addPanel({
+    id: "home-overview-panel",
+    component: "overview",
+    title: "Portfolio Overview",
+    // Taller than the old Status panel's 160: this one carries the KPI ribbon
+    // AND two stacked-bar charts, which need vertical room to be readable.
+    initialHeight: 360,
   });
   const pvbpPanel = api.addPanel({
     id: "home-pvbp-panel",
     component: "pvbp",
     title: "PVBP (DV01) Sensitivity",
-    position: { referencePanel: statusPanel, direction: "below" },
+    position: { referencePanel: overviewPanel, direction: "below" },
   });
-  const bookpnlPanel = api.addPanel({
+  api.addPanel({
     id: "home-bookpnl-panel",
     component: "bookpnl",
     title: "Daily P&L by Book",
     position: { referencePanel: pvbpPanel, direction: "right" },
-  });
-  api.addPanel({
-    id: "home-booksummary-panel",
-    component: "booksummary",
-    title: "Book Summary",
-    position: { referencePanel: bookpnlPanel, direction: "below" },
   });
 }
 

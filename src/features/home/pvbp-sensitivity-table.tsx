@@ -45,13 +45,34 @@ function Cell({ value }: { value: number }) {
 }
 
 export function PvbpSensitivityTable() {
-  const { hasPositions, pvbpSensitivity, isLoading, isError } = usePortfolioAnalytics();
+  const {
+    hasPositions,
+    closeDate,
+    pvbpSensitivity,
+    pvbpLoading: isLoading,
+    pvbpError: isError,
+  } = usePortfolioAnalytics();
+
+  // The backend buckets 16 tenors but this table shows the 9 fixed by spec, so
+  // Total legitimately exceeds the sum of visible cells whenever risk sits in a
+  // hidden bucket (1D/9M/1.5Y/4Y/6Y/8Y/9Y). Disclose the gap instead of letting
+  // the row fail eyeball reconciliation -- and instead of re-bucketing, which
+  // would misattribute tenor risk to columns it isn't in.
+  const grandTotal = pvbpSensitivity?.find((r: any) => r.sector === "합계");
+  const hiddenAmount = grandTotal
+    ? grandTotal.total - TENOR_COLS.reduce((s, c) => s + (grandTotal[c] ?? 0), 0)
+    : 0;
+  const hasHidden = Math.abs(hiddenAmount) >= 500; // below cell display precision (1k)
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
       <div className="flex items-center justify-between">
         <span className="text-h2 text-fg-primary">PVBP Sensitivity</span>
-        <span className="text-label text-fg-muted">Sector × Tenor (₩/bp · 000)</span>
+        <span className="text-label text-fg-muted">
+          {/* Priced off the CLOSE snapshot -- Daily P&L next door shows the
+              next business day (its as_of), so both panels carry their date. */}
+          {closeDate ? `${closeDate} close · ` : ""}Sector × Tenor (₩/bp · 000)
+        </span>
       </div>
 
       {!hasPositions ? (
@@ -123,6 +144,17 @@ export function PvbpSensitivityTable() {
               ))}
             </tbody>
           </table>
+
+          {hasHidden && (
+            /* Same ‡ + --fg-dim disclosure pattern as the Daily P&L partial
+               footnote: the number is right, the column set just can't show
+               all of it. */
+            <div className="pt-2 text-label text-fg-dim">
+              ‡ Total includes {hiddenAmount > 0 ? "+" : ""}
+              {Math.round(hiddenAmount / 1000).toLocaleString()}k from tenor buckets not shown
+              (1D · 9M · 1.5Y · 4Y · 6Y · 8Y · 9Y).
+            </div>
+          )}
         </div>
       )}
     </div>

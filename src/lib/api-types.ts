@@ -528,6 +528,62 @@ export interface ParsedPositionOut {
   mtm_yield: number | null;
   duration: number | null;
   pvbp: number | null;
+  // Static bond params. Needed for the backend to build a coupon schedule and
+  // therefore to revalue a bond at a rolled valuation date (= compute theta).
+  // Null for swaps, and null for bonds whose blotter row had no issue date --
+  // the backend falls back to an analytic split for those rather than
+  // dropping them.
+  issue_date: string | null;
+  coupon_rate: number | null;
+  payment_frequency: number | null;
+  rating: string | null;
+}
+
+/** Freshness of one quote source. Swaps price off IRS/CD, bonds off the Credit
+ * Matrix, and the two have genuinely different coverage — so "is the market
+ * open?" has no single answer and the UI shows each source's own state. */
+export interface QuoteSource {
+  source: string;
+  /** Latest date this source has any data for. Null if unreadable. */
+  latest: string | null;
+  /** Whether this source has data for `as_of` specifically. */
+  has_as_of: boolean;
+}
+
+export interface DailyPnlFigures {
+  theta: number;
+  /** Null means NOT KNOWN — this row's source has no quotes for `as_of` yet.
+   * It is never 0-for-unknown: 0 would assert "quotes arrived, nothing moved",
+   * a different and false claim. Render null as an em-dash, never as a number. */
+  mtm: number | null;
+  /** theta + whatever mtm is known. Equals mtm + theta exactly when
+   * `mtm_complete`; otherwise it's a PARTIAL figure and must be marked as such
+   * rather than shown as a finished total. */
+  total: number;
+  /** Funding is deliberately outside `total`: it's a financing cost, not a
+   * change in NPV. */
+  funding: number;
+  /** False when any constituent position's MtM is still unknown. */
+  mtm_complete: boolean;
+}
+
+export interface DailyPnlBookRow extends DailyPnlFigures {
+  book: string;
+}
+
+/** POST /api/portfolio/book-daily-pnl.
+ *
+ * An envelope rather than a bare row list because `as_of`/`quote_sources` are
+ * properties of the calculation, not of any one row.
+ *
+ * This is the seam for the future live-quote feed: when a source starts
+ * supplying `as_of` data, its `has_as_of` flips and the corresponding `mtm`
+ * values fill in — no change needed on this side. */
+export interface BookDailyPnlResponse {
+  as_of: string;
+  quote_sources: QuoteSource[];
+  daily_pnl: Omit<DailyPnlFigures, "funding">;
+  by_book: DailyPnlBookRow[];
 }
 
 export interface MarketDataUploadResponse {
@@ -556,4 +612,70 @@ export interface PriorSnapshotRequest extends PortfolioAnalyticsRequest {
 
 export interface BookSummaryRequest extends PortfolioAnalyticsRequest {
   daily_pnl_by_book: any[]; // generic dict list
+}
+
+// ---------------------------------------------------------------------------
+// Allocation history (POST /api/portfolio/allocation-history)
+// ---------------------------------------------------------------------------
+
+/** One bond, with the static params blotter-parser.ts hydrates. Carries no
+ *  curve: unlike the other analytics endpoints, this one loads each snapshot's
+ *  market data server-side. */
+export interface AllocationHistoryPositionIn {
+  position_id: string;
+  book: string;
+  sector: string;
+  issue_date: string; // "YYYY-MM-DD"
+  maturity_date: string;
+  coupon_rate: number; // percent, e.g. 3.125
+  payment_frequency: number; // coupons per year
+  notional: number; // raw KRW
+  rating: string | null;
+}
+
+export interface AllocationHistoryRequest {
+  positions: AllocationHistoryPositionIn[];
+  book?: string | null; // e.g. "RP Fund"; omit for all books
+  as_of_date?: string | null; // defaults to the latest available market date
+}
+
+export type AllocationAnchorKey =
+  | "lastYearEnd"
+  | "lastMonthEnd"
+  | "lastWeekEnd"
+  | "prevDay"
+  | "current";
+
+/** One x-axis column. Series shares live alongside the metadata under their own
+ *  (Korean) names -- they can't collide with the English metadata keys. Read
+ *  them via the sibling `keys` array; values are percentages summing to 100
+ *  (0 for an unresolved column). */
+export interface AllocationRow {
+  key: AllocationAnchorKey;
+  label: string;
+  /** null when the anchor predates all available market data. */
+  valuationDate: string | null;
+  /** Bonds this column is actually over. Older columns are legitimately
+   *  smaller -- holdings bought since then did not exist yet. */
+  positionCount: number;
+  [series: string]: string | number | null;
+}
+
+export interface AllocationSeries {
+  /** Stable stack/colour order, led by the current column's share. */
+  keys: string[];
+  rows: AllocationRow[];
+}
+
+export interface AllocationHistoryResponse {
+  asOfDate: string;
+  totalPositions: number;
+  /** Bonds excluded from every column because their sector/rating has no credit
+   *  curve. Distinct from a column's positionCount. */
+  unpriceablePositions: number;
+  /** Share of portfolio PVBP (risk), not 평가금액 -- value share barely moves
+   *  over a constant book. */
+  sector: AllocationSeries;
+  /** Share of 평가금액, bucketed by remaining maturity at each column's date. */
+  maturity: AllocationSeries;
 }

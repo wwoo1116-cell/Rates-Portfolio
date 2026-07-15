@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLatestMarketSnapshot, useMarketDataRange, useMarketDataSnapshot } from "@/hooks/use-api";
+import { useLatestMarketSnapshot } from "@/hooks/use-api";
 import { useManualPositionsStore } from "@/stores/manual-positions-store";
 import { useBondPositionsStore } from "@/stores/bond-positions-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -16,20 +16,6 @@ export function usePortfolioAnalytics() {
   const fundingSpreadBp = useSettingsStore((state) => state.fundingSpreadBp);
   
   const { snapshot, isLoading: snapshotLoading, isError: snapshotError } = useLatestMarketSnapshot();
-  const rangeQuery = useMarketDataRange();
-  
-  const latestDate = rangeQuery.data?.max_date;
-  const availableDates = rangeQuery.data?.available_dates || [];
-  
-  const priorDate = useMemo(() => {
-    if (!latestDate || availableDates.length < 2) return undefined;
-    const sorted = [...availableDates].sort();
-    const idx = sorted.indexOf(latestDate);
-    if (idx > 0) return sorted[idx - 1];
-    return undefined;
-  }, [latestDate, availableDates]);
-
-  const priorSnapshotQuery = useMarketDataSnapshot(priorDate);
 
   const combinedPositions: ParsedPositionOut[] = useMemo(() => {
     const irs: ParsedPositionOut[] = irsPositions.map(p => ({
@@ -50,6 +36,11 @@ export function usePortfolioAnalytics() {
       mtm_yield: null,
       duration: null,
       pvbp: null,
+      // Bond-only static params; a swap has no coupon schedule of this shape.
+      issue_date: null,
+      coupon_rate: null,
+      payment_frequency: null,
+      rating: null,
     }));
     
     const bonds: ParsedPositionOut[] = bondPositions.map(p => ({
@@ -58,7 +49,11 @@ export function usePortfolioAnalytics() {
       sector: p.sector,
       book: p.book,
       start_date: null,
-      maturity_date: null,
+      // maturity_date used to be hardcoded null here even though the store has
+      // it. Without it (and the four static params below) the backend can't
+      // build a coupon schedule, so it can't revalue the bond at a rolled
+      // valuation date -- i.e. it can't compute theta at all, only carry.
+      maturity_date: p.maturityDate || null,
       notional: p.notionalKrwEok * 100_000_000,
       fixed_rate: null,
       pay_fixed: null,
@@ -70,6 +65,15 @@ export function usePortfolioAnalytics() {
       mtm_yield: p.mtmYield,
       duration: p.duration,
       pvbp: p.pvbp,
+      // Static bond params, already hydrated by blotter-parser.ts and already
+      // sent to /api/portfolio/allocation-history (see use-allocation-history).
+      // Sent as null rather than filtered out when absent: a bond with no issue
+      // date still has carry, and the backend falls back to an analytic split
+      // for it. Dropping it here would silently understate the book instead.
+      issue_date: p.issueDate || null,
+      coupon_rate: p.couponRate ?? null,
+      payment_frequency: p.paymentFrequency ?? null,
+      rating: p.rating ?? null,
     }));
     return [...irs, ...bonds];
   }, [irsPositions, bondPositions]);
@@ -85,19 +89,22 @@ export function usePortfolioAnalytics() {
     };
   }, [snapshot, combinedPositions]);
 
-  const priorRequest = useMemo(() => {
-    if (!baseRequest || !priorSnapshotQuery.data) return undefined;
+  // Daily P&L needs the LAST CLOSE (= baseRequest's snapshot) and nothing else.
+  // It used to also send the close-before-that as prior_*, back when the panel
+  // meant "yesterday vs the day before". It now means "T vs last close", where
+  // the backend resolves T = next business day after the close and decides for
+  // itself whether T has quotes yet -- both theta legs price off the close
+  // curve, so the older snapshot has no role. That also drops a whole
+  // snapshot round trip out of this panel's path.
+  const dailyPnlRequest = useMemo(() => {
+    if (!baseRequest) return undefined;
     return {
       ...baseRequest,
-      prior_valuation_date: priorSnapshotQuery.data.valuation_date,
-      prior_cd_rate: priorSnapshotQuery.data.cd_rate,
-      prior_on_rate: priorSnapshotQuery.data.on_rate,
-      prior_swap_quotes: priorSnapshotQuery.data.swap_quotes,
       // Included in the body (and thus the query key) so changing the spread
       // in Settings refetches Home's Daily P&L with the new funding assumption.
       funding_spread_bp: fundingSpreadBp,
     };
-  }, [baseRequest, priorSnapshotQuery.data, fundingSpreadBp]);
+  }, [baseRequest, fundingSpreadBp]);
 
   const pvbpSensitivityQuery = useQuery({
     queryKey: ["portfolio-analytics", "pvbp-sensitivity", baseRequest],
@@ -106,45 +113,48 @@ export function usePortfolioAnalytics() {
   });
 
   const bookDailyPnlQuery = useQuery({
-    queryKey: ["portfolio-analytics", "book-daily-pnl", priorRequest],
-    queryFn: () => portfolioAnalyticsApi.bookDailyPnl(priorRequest!),
-    enabled: Boolean(priorRequest),
+    queryKey: ["portfolio-analytics", "book-daily-pnl", dailyPnlRequest],
+    queryFn: () => portfolioAnalyticsApi.bookDailyPnl(dailyPnlRequest!),
+    enabled: Boolean(dailyPnlRequest),
   });
 
-  const bookSummaryRequest = useMemo(() => {
-    if (!baseRequest || !bookDailyPnlQuery.data) return undefined;
-    return {
-      ...baseRequest,
-      daily_pnl_by_book: bookDailyPnlQuery.data,
-    };
-  }, [baseRequest, bookDailyPnlQuery.data]);
-
+  // Book Summary depends only on baseRequest -- NOT on bookDailyPnlQuery.data.
+  // It used to wait for /book-daily-pnl to resolve and then POST that entire
+  // result back as `daily_pnl_by_book`, which the backend's build_book_summary
+  // never read. That turned two independent panels into a serial chain
+  // (range -> snapshot -> prior snapshot -> daily-pnl -> summary, five
+  // sequential round trips) purely to populate a dead field. Both panels now
+  // fetch in parallel off the same snapshot.
   const bookSummaryQuery = useQuery({
-    queryKey: ["portfolio-analytics", "book-summary", bookSummaryRequest],
-    queryFn: () => portfolioAnalyticsApi.bookSummary(bookSummaryRequest!),
-    enabled: Boolean(bookSummaryRequest),
+    queryKey: ["portfolio-analytics", "book-summary", baseRequest],
+    queryFn: () => portfolioAnalyticsApi.bookSummary(baseRequest!),
+    enabled: Boolean(baseRequest),
   });
 
-  const isLoading = 
-    snapshotLoading || 
-    priorSnapshotQuery.isLoading || 
-    (Boolean(baseRequest) && pvbpSensitivityQuery.isLoading) || 
-    (Boolean(priorRequest) && bookDailyPnlQuery.isLoading) || 
-    (Boolean(bookSummaryRequest) && bookSummaryQuery.isLoading);
-
-  const isError = 
-    snapshotError || 
-    priorSnapshotQuery.isError || 
-    pvbpSensitivityQuery.isError || 
-    bookDailyPnlQuery.isError || 
-    bookSummaryQuery.isError;
-
+  // Per-panel loading, not one shared flag. The old single `isLoading` was true
+  // while ANY query was in flight, so every panel showed a spinner until the
+  // slowest one landed -- PVBP sat on "Computing…" waiting for Book Summary's
+  // data that it never uses. Each panel now reflects only what it needs.
   return {
     hasPositions: combinedPositions.length > 0,
+
+    // The close date every close-based panel (PVBP, Portfolio Overview) prices
+    // off. Exposed so those panels can label themselves: Daily P&L shows the
+    // NEXT business day (its as_of comes from the backend), so without labels
+    // the Home tab shows two different dates with no explanation.
+    closeDate: snapshot?.valuation_date,
+
     pvbpSensitivity: pvbpSensitivityQuery.data,
+    pvbpLoading: snapshotLoading || (Boolean(baseRequest) && pvbpSensitivityQuery.isLoading),
+    pvbpError: snapshotError || pvbpSensitivityQuery.isError,
+
     bookDailyPnl: bookDailyPnlQuery.data,
+    bookDailyPnlLoading:
+      snapshotLoading || (Boolean(dailyPnlRequest) && bookDailyPnlQuery.isLoading),
+    bookDailyPnlError: snapshotError || bookDailyPnlQuery.isError,
+
     bookSummary: bookSummaryQuery.data,
-    isLoading,
-    isError,
+    bookSummaryLoading: snapshotLoading || (Boolean(baseRequest) && bookSummaryQuery.isLoading),
+    bookSummaryError: snapshotError || bookSummaryQuery.isError,
   };
 }

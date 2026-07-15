@@ -9,9 +9,12 @@
  * always produces the same JSON response shape either way.
  */
 import type {
+  AllocationHistoryRequest,
+  AllocationHistoryResponse,
   BacktestSummaryOut,
   BondCashflowRequest,
   BondCashflowResponse,
+  BookDailyPnlResponse,
   CreditSeriesRequest,
   CreditSeriesResponse,
   CurveRequest,
@@ -216,8 +219,12 @@ export const portfolioApi = {
 
 export const portfolioAnalyticsApi = {
   pvbpSensitivity: (req: any) => apiPost<any[]>("/api/portfolio/pvbp-sensitivity", req),
-  bookDailyPnl: (req: any) => apiPost<any[]>("/api/portfolio/book-daily-pnl", req),
+  // Returns an envelope, not a row list: as_of/quotes_available describe the
+  // calculation as a whole, not any one row. See BookDailyPnlResponse.
+  bookDailyPnl: (req: any) => apiPost<BookDailyPnlResponse>("/api/portfolio/book-daily-pnl", req),
   bookSummary: (req: any) => apiPost<any[]>("/api/portfolio/book-summary", req),
+  allocationHistory: (req: AllocationHistoryRequest) =>
+    apiPost<AllocationHistoryResponse>("/api/portfolio/allocation-history", req),
 };
 
 // ---------------------------------------------------------------------------

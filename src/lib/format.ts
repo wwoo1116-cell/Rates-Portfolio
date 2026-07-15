@@ -28,3 +28,17 @@ export function formatNotionalKrw(notional100M: number): string {
   const millions = notional100M * 100;
   return `${KRW_FORMATTER.format(Math.round(millions))}M KRW`;
 }
+
+/** Raw KRW in Korean short-scale units, for space-constrained readouts (Home's
+ * data ribbon) where formatKrw's full digit string would blow the line:
+ * e.g. 1.23e12 -> "1.23조", 5.4e9 -> "54.0억".
+ *
+ * Values under 1억 fall through to plain grouped digits -- below that the unit
+ * prefix stops buying anything. This is a display-only abbreviation; anything
+ * doing arithmetic wants the raw number. */
+export function formatKrwCompact(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1e12) return `${(value / 1e12).toFixed(2)}조`;
+  if (abs >= 1e8) return `${(value / 1e8).toFixed(1)}억`;
+  return KRW_FORMATTER.format(Math.round(value));
+}
