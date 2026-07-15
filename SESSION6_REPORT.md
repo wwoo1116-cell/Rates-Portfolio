@@ -284,5 +284,6 @@ live discount/accrual PnL and the tooltip decays instead of freezing.
 | `d7330f2` | T1 — decimal contract at the engine boundary + unit-guard tests |
 | `8305d73` | T2 — engine/fixings.py reset-date selection, warnings surfaced, services rewired |
 | `a3fe691` | T3 — bump-reval DV01 replacing the annuity proxy |
+| `149ac1b` | T4 capture script + before/after artifacts (committed concurrently by the owner while this session ran — the repo's known concurrent-session pattern; contents match this session's captures) |
 | `219addd` | T5 — regression matrix + adapted repro script + post-fix dump |
-| (this)   | T4 — dashboard impact capture (before/after) + SESSION6_REPORT.md |
+| `a6aa1b7` | T4 — impact quantification + SESSION6_REPORT.md |
