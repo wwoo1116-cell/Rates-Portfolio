@@ -14,9 +14,15 @@ miss. A module-global dict behind a lock is the whole requirement.
 TTL semantics are deliberately blunt: an entry older than `ttl_seconds` is
 recomputed on next access. There's no background refresh and no stale-while-
 revalidate, so a cached value is never more than TTL old. Market data lands
-once a day, so a 60s ceiling is far tighter than the data actually moves; the
-TTL exists to bound staleness after an intraday re-upload, not to track a
-live feed.
+once a day, and every sanctioned way it changes already invalidates
+explicitly -- upload.py clears both caches, reset_db_availability() clears
+this one, update_live() invalidates the dates list. What the TTL still
+covers is change that BYPASSES those paths: someone replacing a workbook in
+the shared Data/ folder by hand (a real possibility now that Data/ is a
+visible sibling folder rather than the repo root), or an external ETL writing
+to MySQL directly. Five minutes bounds that staleness while cutting the
+recompute of the shared portfolio delta (~0.4s) from once a minute to once
+per five -- it is not tracking a live feed, and must not try to.
 
 Thread-safe: FastAPI runs sync endpoints in a threadpool, so several requests
 touch these entries concurrently. The lock guards the dict; the factory runs
@@ -36,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-DEFAULT_TTL_SECONDS = 60.0
+DEFAULT_TTL_SECONDS = 300.0
 
 _store: dict[Hashable, tuple[float, Any]] = {}
 _lock = threading.Lock()
