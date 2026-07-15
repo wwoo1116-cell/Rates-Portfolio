@@ -120,6 +120,28 @@ function legValueMap(
   return creditByKey.get(legKey(leg)) ?? new Map();
 }
 
+/**
+ * Per-leg `date -> decimal yield` maps for one spread, in leg order.
+ *
+ * The sizing panel (B4) needs each leg's raw yield — to approximate its PVBP at
+ * the entry date and to walk its own P&L path — whereas buildInstrumentSeries
+ * only returns the combined bp series. Exposed here so both consume the same
+ * legValueMap/credit-key resolution rather than re-deriving it.
+ */
+export function spreadLegValueMaps(
+  legs: SpreadLeg[],
+  irsPoints: RateHistoryPointOut[],
+  creditResults: CreditSeriesResultOut[],
+): Map<string, number>[] {
+  const creditByKey = new Map<string, Map<string, number>>();
+  for (const r of creditResults) {
+    const m = new Map<string, number>();
+    for (const p of r.points) m.set(p.valuation_date, p.value);
+    creditByKey.set(creditKey(r.sector, r.rating ?? null, r.tenor), m);
+  }
+  return legs.map((l) => legValueMap(l.leg, irsPoints, creditByKey));
+}
+
 export interface BuiltSeries {
   id: string;
   kind: "outright" | "spread";

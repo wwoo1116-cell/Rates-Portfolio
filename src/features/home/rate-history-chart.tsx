@@ -32,7 +32,38 @@ import {
 } from "@/lib/rv-instruments";
 
 const PNL_TRACE_PANEL_ID = "home-pnltrace-panel";
+const SPREAD_POSITION_PANEL_ID = "home-spread-position-panel";
 const RATES_PANEL_ID = "home-rates-panel";
+
+/**
+ * Which plotted series did the click land nearest?
+ *
+ * lightweight-charts' click reports a time and a pixel point but not a series,
+ * and this chart overlays several. Each candidate's value is converted through
+ * ITS OWN price scale (bp/left for spreads, %/right for outrights), so the
+ * comparison is in real screen pixels rather than mixing axis units -- the same
+ * reason snap-reticle.ts resolves per-series.
+ */
+function nearestSeriesId(
+  param: MouseEventParams,
+  seriesMap: Map<string, ISeriesApi<"Line">>,
+): string | null {
+  if (!param.point) return null;
+  let bestId: string | null = null;
+  let bestDist = Infinity;
+  for (const [id, series] of seriesMap) {
+    const datum = param.seriesData.get(series) as { value?: number } | undefined;
+    if (datum?.value == null || !Number.isFinite(datum.value)) continue;
+    const y = series.priceToCoordinate(datum.value);
+    if (y == null) continue;
+    const dist = Math.abs(y - param.point.y);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestId = id;
+    }
+  }
+  return bestId;
+}
 
 // A couple of IRS outrights by default (resolve from rate-history immediately,
 // no credit fetch needed) so the chart isn't blank on first load.
@@ -81,6 +112,11 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
     (CrosshairReticlePoint & { date?: string; paneWidth: number }) | null
   >(null);
 
+  // onChartReady is mounted once with empty deps (re-registering subscribeClick
+  // would leak handlers), so anything the click needs is read through a ref.
+  const instrumentsRef = useRef(instruments);
+  useLayoutEffect(() => { instrumentsRef.current = instruments; }, [instruments]);
+
   const pointsRef = useRef(points);
   useLayoutEffect(() => { pointsRef.current = points; }, [points]);
 
@@ -93,19 +129,37 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
     chart.subscribeClick((param) => {
       if (!param.time || !apiRef.current) return;
       const date = String(param.time);
+      const api = apiRef.current;
+      const reference = api.getPanel(RATES_PANEL_ID);
+      const position = reference
+        ? ({ referencePanel: RATES_PANEL_ID, direction: "right" } as const)
+        : undefined;
+
+      // Clicking nearest to a SPREAD opens the position sizer for that spread
+      // at that date (B4); an outright keeps the original raw-market PnL Trace.
+      const clickedId = nearestSeriesId(param, seriesMapRef.current);
+      const clicked = instrumentsRef.current.find((i) => i.id === clickedId);
+      if (clicked?.kind === "spread") {
+        api.getPanel(SPREAD_POSITION_PANEL_ID)?.api.close();
+        api.addPanel({
+          id: SPREAD_POSITION_PANEL_ID,
+          component: "spreadposition",
+          title: "Position",
+          params: { instrument: clicked, entryDate: date },
+          position,
+        });
+        return;
+      }
+
       const point = pointsRef.current.find((p) => p.valuation_date === date);
       if (!point) return;
-
-      const existing = apiRef.current.getPanel(PNL_TRACE_PANEL_ID);
-      if (existing) existing.api.close();
-
-      const reference = apiRef.current.getPanel(RATES_PANEL_ID);
-      apiRef.current.addPanel({
+      api.getPanel(PNL_TRACE_PANEL_ID)?.api.close();
+      api.addPanel({
         id: PNL_TRACE_PANEL_ID,
         component: "pnltrace",
         title: "PnL Trace",
         params: { point },
-        position: reference ? { referencePanel: RATES_PANEL_ID, direction: "right" } : undefined,
+        position,
       });
     });
 

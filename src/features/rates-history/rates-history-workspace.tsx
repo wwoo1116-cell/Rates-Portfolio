@@ -11,6 +11,10 @@ import {
 } from "dockview-react";
 import { RateHistoryChart } from "@/features/home/rate-history-chart";
 import { PnlTracePanel } from "@/features/home/pnl-trace-panel";
+import {
+  SpreadPositionPanel,
+  type SpreadPositionPanelParams,
+} from "@/features/home/spread-position-panel";
 import { DockviewTab } from "@/components/layout/dockview-tab";
 import { DockviewActions } from "@/components/layout/dockview-actions";
 import { useWorkspacePanelsStore } from "@/stores/workspace-panels-store";
@@ -26,9 +30,14 @@ const PnlTracePanelMemo = memo(function PnlTracePanelMemo(props: IDockviewPanelP
   return <PnlTracePanel {...props} />;
 });
 
+const SpreadPositionPanelMemo = memo(function SpreadPositionPanelMemo(props: IDockviewPanelProps) {
+  return <SpreadPositionPanel params={props.params as SpreadPositionPanelParams} />;
+});
+
 const components = {
   rates: (props: IDockviewPanelProps) => <RateHistoryPanel {...props} />,
   pnltrace: (props: IDockviewPanelProps) => <PnlTracePanelMemo {...props} />,
+  spreadposition: (props: IDockviewPanelProps) => <SpreadPositionPanelMemo {...props} />,
 };
 
 const defaultTabComponent = (props: IDockviewPanelHeaderProps) => <DockviewTab {...props} />;
