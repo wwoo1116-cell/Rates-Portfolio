@@ -11,7 +11,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.{ts,tsx}"],
+    // scripts/ carries the S7 chart gates (contrast vs --bg-surface, no-raw-hex
+    // in chart components) so they run with the suite, i.e. in CI.
+    include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
   },
   resolve: {
     alias: {

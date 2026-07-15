@@ -5,6 +5,8 @@ import type { IChartApi, MouseEventParams } from "lightweight-charts";
 import { LineSeries } from "lightweight-charts";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, formatCrosshairDate } from "@/components/charts/crosshair-reticle";
+import { PNL_COLORS, withAlpha } from "@/lib/chart-colors";
+import { getSimulationChartTheme } from "./lib/chart-theme";
 import { NumericCell } from "@/components/ui/numeric-cell";
 import { PriceDisplay } from "@/components/data/price-display";
 import {
@@ -56,7 +58,7 @@ export function PricerPage() {
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
       crosshairMarkerBorderColor: "var(--accent)",
-      crosshairMarkerBackgroundColor: "#202B33",
+      crosshairMarkerBackgroundColor: getSimulationChartTheme().background, // --bg-surface
       title: "IRS 5Y Mid",
     });
     midSeries.setData(
@@ -66,9 +68,10 @@ export function PricerPage() {
       })),
     );
 
-    // Bid line (dimmer)
+    // Bid line (dimmer) — chart P&L pair (Jade/Berry replace green/red on
+    // chart surfaces, S7), alpha-dimmed against the mid line.
     const bidSeries = chart.addSeries(LineSeries, {
-      color: "rgba(15, 153, 96,0.55)",
+      color: withAlpha(PNL_COLORS.pos, 0.55),
       lineWidth: 1,
       lineStyle: 2,
       priceLineVisible: false,
@@ -85,7 +88,7 @@ export function PricerPage() {
 
     // Ask line (dimmer)
     const askSeries = chart.addSeries(LineSeries, {
-      color: "rgba(219, 55, 55,0.55)",
+      color: withAlpha(PNL_COLORS.neg, 0.55),
       lineWidth: 1,
       lineStyle: 2,
       priceLineVisible: false,

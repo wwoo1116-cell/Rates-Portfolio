@@ -14,7 +14,7 @@ import type { IDockviewPanelProps } from "dockview-react";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, formatCrosshairDate } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
-import { PNL_COLORS } from "@/lib/chart-colors";
+import { CHART_CHROME_COLORS, PNL_COLORS } from "@/lib/chart-colors";
 import { formatPnlKrw } from "./pnl-format";
 import { useMarketDataRange, useNpvTrace } from "@/hooks/use-api";
 import { RATE_SERIES_OPTIONS, rateValue } from "@/lib/rate-history-helpers";
@@ -77,7 +77,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
     if (!npvTrace.data || !traceChart) return;
     if (!traceSeriesRef.current) {
       traceSeriesRef.current = traceChart.addSeries(LineSeries, {
-        color: "#3B82F6", // --sem-info (canvas can't resolve CSS custom properties)
+        color: CHART_CHROME_COLORS.accentLine, // --sem-info (canvas can't resolve CSS custom properties)
         lineWidth: 2,
         title: "Cumulative PnL",
         priceFormat: { type: "custom", formatter: formatPnlKrw },

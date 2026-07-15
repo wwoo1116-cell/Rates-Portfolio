@@ -110,6 +110,19 @@ const UNKNOWN_KEY_COLOR = "#5C7080"; // --fg-dim
  * literal for the same reason as everything else in this file. */
 export const ZERO_LINE_COLOR = "#5C7080"; // --fg-dim
 
+/** Canvas literals for chart CHROME (axis text, labels, neutral lines) —
+ * hoisted verbatim from inline component hexes so the S7 no-raw-hex guard
+ * has one reviewable home. The *Stale entries mirror PRE-Blueprint token
+ * values that the components have been painting all along; re-aligning them
+ * to the live tokens is a visual change and a pending owner decision
+ * (HANDOFF_chart_colors.md), not something this refactor smuggles in. */
+export const CHART_CHROME_COLORS = {
+  accentLine: "#3B82F6", // --accent (PnL trace / spread-PnL cumulative lines)
+  axisTextStale: "#6b7888", // pre-Blueprint --fg-muted (tenor-curve axis, heatmap sector labels)
+  neutralTextStale: "#a0aab8", // pre-Blueprint --fg-secondary (heatmap zero-flow cells)
+  leafLabelStale: "#e8ecf0", // pre-Blueprint --fg-primary (heatmap leaf labels)
+} as const;
+
 const warnedKeys = new Set<string>();
 function warnUnknownKey(kind: string, key: string): void {
   if (process.env.NODE_ENV === "production" || warnedKeys.has(key)) return;
@@ -159,6 +172,14 @@ export const PNL_COLORS = {
   neg: MS.berry80,      // --chart-pnl-neg
   negFill: MS.berry40,  // --chart-pnl-neg-fill
 } as const;
+
+/** rgba() form of a palette hex, for canvas options that need translucency
+ * (e.g. dimmed bid/ask companion lines). Keeps alpha variants derivable from
+ * the single palette constant instead of hand-baked rgba literals. */
+export function withAlpha(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
 
 /** Simulation Total-Return series — composite hierarchy: total emphasized
  * (line width 3), components subdued. Key names match chart-theme.ts /
