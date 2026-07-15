@@ -627,62 +627,71 @@ def build_chart_data(
 
     irs_daily_recon: list[dict] = []
     _prev_cal_r = 0
-    for _val_date_r, _cal_day, _dt_cal in _bizday_schedule:
-        # ── 테너별 누적 충격 bp 계산 (계단식 1D/3M + ramp 6M+) ─────────────
-        _cum_r    = {_n: _cum_shock_r(_tau, _cal_day)    for _n, _tau in zip(_recon_names, _recon_tenors)}
-        _cum_prev = {_n: _cum_shock_r(_tau, _prev_cal_r) for _n, _tau in zip(_recon_names, _recon_tenors)}
-        _daily_dbp_r = {_n: _cum_r[_n] - _cum_prev[_n] for _n in _recon_names}
+    # ── 배포 계약 보정 — 원본과 다른 유일한 런타임 동작 ─────────────────────
+    # 실제 프론트 브리지(position-bridge.ts, S6)는 irsParRates를 아직 싣지 않아
+    # irsCurves가 빈 배열로 온다. 원본(rates-simulator-main)은 이 경우 아래
+    # 대사 루프의 bootstrap_zero_curve/build_bumped_curves가 빈 par 커브로
+    # ValueError를 던져 요청 전체가 500이었다(2026-07-15 실측). par 커브가
+    # 없으면 IRS 일별 대사표 자체가 정의되지 않으므로, 대사표만 비우고
+    # 나머지(채권 chartData/summary/pvbp/book)는 정상 산출한다. IRS 포지션이
+    # 있는데 커브가 없는 경우는 원본과 동일하게 FM 경로에서 실패한다.
+    if par_rates:
+        for _val_date_r, _cal_day, _dt_cal in _bizday_schedule:
+            # ── 테너별 누적 충격 bp 계산 (계단식 1D/3M + ramp 6M+) ─────────────
+            _cum_r    = {_n: _cum_shock_r(_tau, _cal_day)    for _n, _tau in zip(_recon_names, _recon_tenors)}
+            _cum_prev = {_n: _cum_shock_r(_tau, _prev_cal_r) for _n, _tau in zip(_recon_names, _recon_tenors)}
+            _daily_dbp_r = {_n: _cum_r[_n] - _cum_prev[_n] for _n in _recon_names}
 
-        # ── par 커브 구성: 6M+ ramp + 1D/3M BOK 계단 앙커 ──────────────────
-        # 6M+ par 노드는 ramp 충격 그대로 적용
-        _cum_bok_rt = _cum_bok_r(_cal_day)
-        _par_day_r: list[tuple[float, float]] = [
-            (t_p, r_p + float(np.interp(t_p, _irs_sc_t, _irs_sc_bp))
-             * (_ramp_factor_r(_cal_day) if shock_type == "ramp" else (1.0 if _cal_day > 0 else 0.0))
-             * 1e-4)
-            for t_p, r_p in par_rates
-        ]
-        # 1D/3M 앙커: 기본 float rate + BOK 누적 bp 반영 (계단식)
-        _avg_flt_r_shocked = _avg_flt0 + _cum_bok_rt * 1e-4
-        _par_anch_r = qe._inject_short_anchors(_par_day_r, _avg_flt_r_shocked)
+            # ── par 커브 구성: 6M+ ramp + 1D/3M BOK 계단 앙커 ──────────────────
+            # 6M+ par 노드는 ramp 충격 그대로 적용
+            _cum_bok_rt = _cum_bok_r(_cal_day)
+            _par_day_r: list[tuple[float, float]] = [
+                (t_p, r_p + float(np.interp(t_p, _irs_sc_t, _irs_sc_bp))
+                 * (_ramp_factor_r(_cal_day) if shock_type == "ramp" else (1.0 if _cal_day > 0 else 0.0))
+                 * 1e-4)
+                for t_p, r_p in par_rates
+            ]
+            # 1D/3M 앙커: 기본 float rate + BOK 누적 bp 반영 (계단식)
+            _avg_flt_r_shocked = _avg_flt0 + _cum_bok_rt * 1e-4
+            _par_anch_r = qe._inject_short_anchors(_par_day_r, _avg_flt_r_shocked)
 
-        # 기준 + KRD_TENORS 범프 커브 (일당 1회 빌드)
-        _zc_base_r   = qe.bootstrap_zero_curve(_par_anch_r)
-        _zc_bumped_r = qe.build_bumped_curves(_par_anch_r)
+            # 기준 + KRD_TENORS 범프 커브 (일당 1회 빌드)
+            _zc_base_r   = qe.bootstrap_zero_curve(_par_anch_r)
+            _zc_bumped_r = qe.build_bumped_curves(_par_anch_r)
 
-        # 포트폴리오 KRD (배치 DF LUT 최적화)
-        # 마켓 컨벤션: "N일자 KRD/PVBP"는 N의 결제일(다음 영업일) 기준으로 재평가한
-        # 값을 보고한다 — irs_fm_mtm(simulate_irs_path_fm 내부에서 이미 동일 규칙
-        # 적용됨)과 일관되도록 여기서도 val_date를 결제일로 한 번 밀어서 넘긴다.
-        _pvbp_r = qe.portfolio_krd_day(_pos_trades, next_kr_business_day(_val_date_r), _zc_base_r, _zc_bumped_r)
+            # 포트폴리오 KRD (배치 DF LUT 최적화)
+            # 마켓 컨벤션: "N일자 KRD/PVBP"는 N의 결제일(다음 영업일) 기준으로 재평가한
+            # 값을 보고한다 — irs_fm_mtm(simulate_irs_path_fm 내부에서 이미 동일 규칙
+            # 적용됨)과 일관되도록 여기서도 val_date를 결제일로 한 번 밀어서 넘긴다.
+            _pvbp_r = qe.portfolio_krd_day(_pos_trades, next_kr_business_day(_val_date_r), _zc_base_r, _zc_bumped_r)
 
-        _pnl_r       = {_n: -_pvbp_r[_n] * _daily_dbp_r[_n] for _n in _recon_names}
-        _total_est   = round(sum(_pnl_r.values()))
-        _settle      = round(float(np.sum(irs_daily_scf[_prev_cal_r + 1:_cal_day + 1])))
-        _total_act   = round(float(irs_fm_mtm[_cal_day] - irs_fm_mtm[_prev_cal_r]))
-        _npv_change  = _total_act - _settle
-        _residual    = _total_act - _total_est     # 잔차: 실제P&L − 추정P&L (양수=모델 과소추정)
-        # 세타손익: 커브를 base_date 시점에 고정한 궤적(irs_fm_mtm_theta)의 같은 구간 변화.
-        # 평가손익(=마켓무브): 실제P&L에서 세타손익을 뺀 나머지 — "그날 실제로 커브가
-        # 움직여서 생긴" 손익만 분리한 값.
-        _theta_pnl   = round(float(irs_fm_mtm_theta[_cal_day] - irs_fm_mtm_theta[_prev_cal_r]))
-        _valuation_pnl = _total_act - _theta_pnl
-        irs_daily_recon.append({
-            "date":         _val_date_r.isoformat(),
-            "day":          _cal_day,
-            "pvbp":         {_n: round(_pvbp_r[_n]) for _n in _recon_names},
-            "cumulativeBp": {_n: round(_cum_r[_n], 3) for _n in _recon_names},
-            "dailyDbp":     {_n: round(_daily_dbp_r[_n], 4) for _n in _recon_names},
-            "pnl":          {_n: round(_pnl_r[_n]) for _n in _recon_names},
-            "totalEstPnl":  _total_est,
-            "totalActual":  _total_act,
-            "settleCf":     _settle,
-            "npvChange":    _npv_change,
-            "residual":     _residual,
-            "thetaPnl":     _theta_pnl,
-            "valuationPnl": _valuation_pnl,
-        })
-        _prev_cal_r = _cal_day
+            _pnl_r       = {_n: -_pvbp_r[_n] * _daily_dbp_r[_n] for _n in _recon_names}
+            _total_est   = round(sum(_pnl_r.values()))
+            _settle      = round(float(np.sum(irs_daily_scf[_prev_cal_r + 1:_cal_day + 1])))
+            _total_act   = round(float(irs_fm_mtm[_cal_day] - irs_fm_mtm[_prev_cal_r]))
+            _npv_change  = _total_act - _settle
+            _residual    = _total_act - _total_est     # 잔차: 실제P&L − 추정P&L (양수=모델 과소추정)
+            # 세타손익: 커브를 base_date 시점에 고정한 궤적(irs_fm_mtm_theta)의 같은 구간 변화.
+            # 평가손익(=마켓무브): 실제P&L에서 세타손익을 뺀 나머지 — "그날 실제로 커브가
+            # 움직여서 생긴" 손익만 분리한 값.
+            _theta_pnl   = round(float(irs_fm_mtm_theta[_cal_day] - irs_fm_mtm_theta[_prev_cal_r]))
+            _valuation_pnl = _total_act - _theta_pnl
+            irs_daily_recon.append({
+                "date":         _val_date_r.isoformat(),
+                "day":          _cal_day,
+                "pvbp":         {_n: round(_pvbp_r[_n]) for _n in _recon_names},
+                "cumulativeBp": {_n: round(_cum_r[_n], 3) for _n in _recon_names},
+                "dailyDbp":     {_n: round(_daily_dbp_r[_n], 4) for _n in _recon_names},
+                "pnl":          {_n: round(_pnl_r[_n]) for _n in _recon_names},
+                "totalEstPnl":  _total_est,
+                "totalActual":  _total_act,
+                "settleCf":     _settle,
+                "npvChange":    _npv_change,
+                "residual":     _residual,
+                "thetaPnl":     _theta_pnl,
+                "valuationPnl": _valuation_pnl,
+            })
+            _prev_cal_r = _cal_day
 
     # 커스텀 경로 사전 처리 (웨이포인트 기반 factor 보간)
     _sorted_cp = sorted(

@@ -197,10 +197,8 @@ def test_bond_only_analytic(client: TestClient) -> None:
         "shockMode": "parallel",
         "baseShockBp": 10,
         "baseDate": "2026-01-05",
-        # A flat par curve so the (IRS-free) daily KRD reconciliation loop has
-        # something to bootstrap. NOTE (ported as-is): an EMPTY irsCurves crashes
-        # the source implementation identically (build_bumped_curves on an empty
-        # par list) -- the live frontend always sends the market par curve.
+        # A flat par curve so the daily KRD reconciliation loop runs (the
+        # empty-curve path is covered by test_bond_only_empty_irs_curves).
         "irsCurves": [{"t": 1.0, "rate": 0.03}, {"t": 5.0, "rate": 0.03}],
         "customPath": [],
     }
@@ -247,3 +245,45 @@ def test_bond_only_analytic(client: TestClient) -> None:
     assert ktb_row["total"] == 1_000_000
     grand = next(r for r in body["pvbpSensitivity"] if r["sector"] == "합계")
     assert grand["total"] == 1_000_000
+
+
+# ── 4. The live bridge's request shape (empty irsCurves) ─────────────────────
+
+def test_bond_only_empty_irs_curves(client: TestClient) -> None:
+    """The S6 position bridge (UIUX_test position-bridge.ts) does not carry IRS
+    par rates yet: every real click on 시뮬레이션 실행 posts irsCurves: [] with
+    bond-only positions. The SOURCE implementation 500s on that (its daily-KRD
+    reconciliation loop bootstraps the par curve unconditionally -- ValueError
+    on the empty list, measured 2026-07-15). This port's ONE deliberate runtime
+    divergence: with an empty par curve the IRS reconciliation table is simply
+    empty, and every bond-side output is still produced."""
+    req = {
+        "positions": [{
+            "id": "b1", "name": "KTB", "book": "RP Fund", "bondType": "bond",
+            "sector": "국고채", "couponRate": 3.0, "notional": 10_000_000_000,
+            "evaluationAmount": 10_000_000_000, "mtmYield": 3.0,
+            "duration": 1.0, "pvbp": 1_000_000, "tenor": "1Y",
+            "remainingDays": 365, "krdMap": {},
+        }],
+        "shockCurves": {"bondCurves": {"국채": [{"t": 1, "val": 10}]}, "swapCurve": [{"t": 1, "val": 13}]},
+        "dailyShockCurves": {"bondCurves": {}, "swapCurve": []},
+        "fundingRate": 0.042,
+        "fundingEvents": [],
+        "simDays": 10,
+        "shockType": "ramp",
+        "shockMode": "matrix",
+        "baseShockBp": 10,
+        "baseDate": "2026-01-05",
+        "irsCurves": [],
+        "customPath": [{"day": 0, "bp": 0}, {"day": 10, "bp": 10}],
+    }
+    r = client.post("/api/simulate", json=req)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "ok"
+    assert len(body["chartData"]) == 9  # day 0 + 8 business days
+    assert body["irsDailyReconciliation"] == []
+    assert body["irsSettlementEvents"] == []
+    # The bond math is unaffected by the missing par curve.
+    assert body["chartData"][-1]["mtmPnL"] != 0
+    assert body["summary"]["finalSwap"] == 0
