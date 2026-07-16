@@ -59,7 +59,8 @@ const config: Config = {
           aqua: "var(--chart-aqua)",
           purple: "var(--chart-purple)",
           tangerine: "var(--chart-tangerine)",
-          berry: "var(--chart-berry)",
+          // S12: renamed from berry (legacy red accent ≠ locked Berry family)
+          scarlet: "var(--chart-scarlet)",
           // S7 MS-palette semantic chart tokens (tokens.css) — chart surfaces
           // only. DOM text/swatches on charts use these; canvas series colors
           // go through src/lib/chart-colors.ts mirrors instead.

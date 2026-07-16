@@ -61,7 +61,11 @@
   --chart-aqua:  #91CCF1;
   --chart-purple: #8A9BA8;
   --chart-tangerine: #D9822B;
-  --chart-berry: #E75353;
+  /* S12: renamed from --chart-berry — this legacy red accent was never the
+     MS Berry family, and the old name collided with the locked Berry
+     semantic. (The simulation slice's resolveCssVar("--chart-berry",
+     "#E75353") falls back to this same hex until integration.) */
+  --chart-scarlet: #E75353;
 
   /* ============================================================
      MASTER CHART PALETTE — Morgan Stanley 2022 accessibility system
@@ -102,8 +106,10 @@
   --chart-maturity-mid:   var(--ms-blue-80);   /* 중기 1~3Y */
   --chart-maturity-long:  var(--ms-blue-40);   /* 장기 ≥3Y  */
 
-  /* P&L semantics — replaces green/red in charts. Jade/Berry hue families
-     are RESERVED for P&L; they never appear as sector colors. */
+  /* P&L semantics — the universal signed/directional pair (S12 lockdown:
+     Jade/Berry replaced green/red EVERYWHERE, and the hue families are
+     locked to signed semantics exclusively — never sectors, series identity,
+     or non-signed ramps. Guard: scripts/check_semantic_color_lockdown). */
   --chart-pnl-pos:      var(--ms-jade-80);   /* lines, markers, small text */
   --chart-pnl-pos-fill: var(--ms-jade-40);   /* area fills, low opacity */
   --chart-pnl-neg:      var(--ms-berry-80);  /* lines, markers, small text */
@@ -122,10 +128,12 @@
   --chart-heat-neg:  var(--ms-berry-80);
   --chart-heat-text: #FFFFFF;
 
-  /* Simulation series — composite hierarchy: total emphasized, components subdued */
+  /* Simulation series — composite hierarchy: total emphasized, components
+     subdued. S12: carry moved Jade-80 → Aqua (Jade/Berry lockdown revoked
+     the old carry exception; no sectors appear on the Simulation chart). */
   --chart-series-total:     var(--ms-blue-20);       /* 합계, line width 3 */
   --chart-series-mtm:       var(--ms-blue-80);
-  --chart-series-carry:     var(--ms-jade-80);
+  --chart-series-carry:     var(--ms-aqua);
   --chart-series-swaptheta: var(--ms-purple-40);
   --chart-series-swapmtm:   var(--ms-tangerine-80);
 

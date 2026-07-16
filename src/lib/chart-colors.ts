@@ -10,11 +10,13 @@ export const CHART_SERIES_COLORS = [
   "#91CCF1", // --chart-aqua
   "#8A9BA8", // --chart-purple
   "#D9822B", // --chart-tangerine
-  "#E75353", // --chart-berry
+  "#E75353", // --chart-scarlet (S12: renamed from "--chart-berry" — this
+  //            legacy red accent was never the MS Berry family, and the name
+  //            collided with the now-locked Berry semantic)
 ] as const;
 
-// Spreads reuse the same token palette (tangerine/berry) -- dashed line style
-// (not a distinct hue) is what separates them from the rate-level lines.
+// Spreads reuse the same token palette (tangerine/scarlet) -- dashed line
+// style (not a distinct hue) is what separates them from the rate-level lines.
 export const SPREAD_SERIES_COLORS = ["#D9822B", "#E75353"] as const;
 
 // Larger palette for the RV selector's dynamic multi-series overlay -- the
@@ -52,16 +54,21 @@ export function colorForId(id: string): string {
    properties (canvas can't resolve var(); see file header).
    This module is the ONLY place chart code obtains these colors.
    Rules (DESIGN.md §2 "Chart Palette"):
-   - Jade/Berry hue families are RESERVED for P&L semantics.
+   - Jade/Berry hue families are LOCKED to signed/directional
+     semantics — app-wide, exclusively (S12 owner decision). They
+     may appear ONLY through the semantic exports below (PNL_COLORS,
+     HEAT_*); sector maps, series palettes, and non-signed ramps must
+     never reference them. Enforced by
+     scripts/check_semantic_color_lockdown.test.ts.
+     (This REVOKES the old S7 exception that let SIM_SERIES_COLORS
+     .carry reuse Jade-80 — carry is Aqua now.)
    - Sector hues are cool-family only (Blue/Navy/Aqua).
-   Two sanctioned exceptions:
-   1. SIM_SERIES_COLORS.carry reuses Jade-80 inside the Simulation
-      Total-Return chart only — no P&L up/down markers coexist
-      there, so the hue cannot be misread as sign.
-   2. SIM_SERIES_COLORS keeps Purple-40/Tangerine-80 despite the
-      cool-family sector rule — that rule scopes to SECTOR
-      encodings, and no sectors appear on the Simulation chart,
-      so these hues stay isolated there for series discriminability.
+   One sanctioned exception:
+   1. SIM_SERIES_COLORS keeps Purple-40/Tangerine-80 (and now Aqua
+      for carry) despite the cool-family sector rule — that rule
+      scopes to SECTOR encodings, and no sectors appear on the
+      Simulation chart, so these hues stay isolated there for
+      series discriminability.
    ============================================================ */
 
 const MS = {
@@ -225,11 +232,14 @@ export function heatRampFill(value: number, range: number): string {
 
 /** Simulation Total-Return series — composite hierarchy: total emphasized
  * (line width 3), components subdued. Key names match chart-theme.ts /
- * lastRun.chartData fields. See the sanctioned-exception notes above. */
+ * lastRun.chartData fields. See the sanctioned-exception notes above.
+ * S12: carry moved Jade-80 → Aqua (the Jade/Berry lockdown revoked the old
+ * exception; Aqua is carry's nearest non-signed perceptual neighbor and no
+ * sectors appear on the Simulation chart to collide with). */
 export const SIM_SERIES_COLORS = {
   total: MS.blue20,           // --chart-series-total      합계
   mtm: MS.blue80,             // --chart-series-mtm        채권 MTM
-  carry: MS.jade80,           // --chart-series-carry      캐리 (exception 1)
-  swapTheta: MS.purple40,     // --chart-series-swaptheta  스왑세타 (exception 2)
-  swapValuation: MS.tangerine80, // --chart-series-swapmtm 스왑평가 (exception 2)
+  carry: MS.aqua,             // --chart-series-carry      캐리
+  swapTheta: MS.purple40,     // --chart-series-swaptheta  스왑세타 (exception 1)
+  swapValuation: MS.tangerine80, // --chart-series-swapmtm 스왑평가 (exception 1)
 } as const;
