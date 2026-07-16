@@ -253,7 +253,7 @@ export function BookDailyPnlTable() {
               ))}
             </div>
           ) : (
-            <span className="text-label text-sem-negative">
+            <span className="text-label text-sem-danger">
               기간 손익을 불러오지 못했습니다.
             </span>
           )}
@@ -279,7 +279,7 @@ export function BookDailyPnlTable() {
           <Spinner size={16} /> Computing…
         </div>
       ) : isError ? (
-        <div className="flex flex-1 items-center justify-center text-body text-sem-negative">
+        <div className="flex flex-1 items-center justify-center text-body text-sem-danger">
           Failed to load P&amp;L data.
         </div>
       ) : (

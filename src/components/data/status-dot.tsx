@@ -2,10 +2,14 @@ import { cn } from "@/lib/utils";
 
 export type StatusDotVariant = "live" | "stale" | "offline" | "neutral";
 
+// S12: connection status is not a signed value, so it can't keep green (and
+// Jade is locked to signed semantics). live = near-white + the existing ping
+// animation carries "healthy"; stale keeps accent; offline is a danger state.
+// Judgment call — flagged in REPORT_s12.md for the owner's calibration pass.
 const VARIANT_CLASSES: Record<StatusDotVariant, string> = {
-  live: "bg-sem-positive",
+  live: "bg-fg-primary",
   stale: "bg-sem-risk",
-  offline: "bg-sem-negative",
+  offline: "bg-sem-danger",
   neutral: "bg-fg-dim",
 };
 

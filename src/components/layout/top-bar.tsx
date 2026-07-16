@@ -87,7 +87,7 @@ export function TopBar() {
             {name}
           </option>
         ))}
-        <option value="__reset__" style={{ background: "var(--bg-overlay)", color: "var(--sem-negative)" }}>
+        <option value="__reset__" style={{ background: "var(--bg-overlay)", color: "var(--sem-danger)" }}>
           Reset Layout
         </option>
       </select>

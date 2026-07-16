@@ -25,7 +25,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-const TONES: BadgeTone[] = ["positive", "negative", "risk", "info"];
+const TONES: BadgeTone[] = ["pnl-positive", "pnl-negative", "danger", "risk", "info"];
 const STATUS_VARIANTS: StatusDotVariant[] = ["live", "stale", "offline", "neutral"];
 
 export function ComponentGallery() {

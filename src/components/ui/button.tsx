@@ -22,7 +22,7 @@ const VARIANT_STYLES: Record<NonNullable<ButtonProps["variant"]>, string> = {
   icon:
     "bg-transparent text-[var(--fg-muted)] hover:bg-[var(--bg-overlay)] hover:text-[var(--fg-secondary)] disabled:opacity-40",
   danger:
-    "bg-transparent border border-[var(--border-subtle)] text-[var(--sem-negative)] hover:bg-[var(--sem-negative-soft)] disabled:opacity-40",
+    "bg-transparent border border-[var(--border-subtle)] text-[var(--sem-danger)] hover:bg-[var(--sem-danger-soft)] disabled:opacity-40",
 };
 
 const SIZE_STYLES: Record<NonNullable<ButtonProps["size"]>, string> = {

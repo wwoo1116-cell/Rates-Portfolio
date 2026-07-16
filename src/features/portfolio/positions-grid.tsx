@@ -42,7 +42,7 @@ function DeleteCellRenderer(params: { data?: Position }) {
         e.stopPropagation();
         useManualPositionsStore.getState().removePosition(id);
       }}
-      className="flex h-full w-full items-center justify-center text-fg-muted hover:text-sem-negative transition-colors"
+      className="flex h-full w-full items-center justify-center text-fg-muted hover:text-sem-danger transition-colors"
     >
       <Trash2 size={13} strokeWidth={1.5} />
     </button>

@@ -293,7 +293,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
           and the chart block below are mutually exclusive by construction. */}
       {npvTrace.isError && (
         <div className="flex min-h-0 flex-1 items-center justify-center border border-border-subtle bg-bg-elevated">
-          <p className="max-w-md p-4 text-center text-body text-sem-negative">
+          <p className="max-w-md p-4 text-center text-body text-sem-danger">
             {npvTrace.error instanceof Error ? npvTrace.error.message : "Could not trace this trade -- confirm the pricing server is reachable."}
           </p>
         </div>

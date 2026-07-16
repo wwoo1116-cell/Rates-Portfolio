@@ -22,11 +22,25 @@
   --border-subtle: rgba(16, 22, 26, 0.30);
   --border-strong: rgba(16, 22, 26, 0.50);
 
-  /* ── Directional semantic (PnL, spreads) ── */
-  --sem-positive:      #0F9960; /* Blueprint Intent.SUCCESS */
-  --sem-negative:      #DB3737; /* Blueprint Intent.DANGER  */
-  --sem-positive-soft: rgba(15, 153, 96, 0.15);
-  --sem-negative-soft: rgba(219, 55, 55, 0.15);
+  /* ── Error / destructive semantic (S12) — NOT directional ──
+     Red survives ONLY for errors, validation failures, and destructive
+     affordances. Signed/directional values use the Jade/Berry pair
+     (--chart-pnl-*) exclusively — owner lockdown, S12. */
+  --sem-danger:      #DB3737; /* Blueprint Intent.DANGER */
+  --sem-danger-soft: rgba(219, 55, 55, 0.15);
+
+  /* DEPRECATED (S12) — do not reference in new code. --sem-positive /
+     --sem-negative survive ONLY as Jade/Berry ALIASES because the live s11
+     Simulation slice still consumes them (files this pass may not touch);
+     every other consumer was migrated to --chart-pnl-* (signed) or
+     --sem-danger (errors). The lockdown guard
+     (scripts/check_semantic_color_lockdown.test.ts) fails any reference
+     outside this file + tailwind.config.ts.
+     TODO(integration): migrate the simulation slice, then DELETE these. */
+  --sem-positive:      var(--chart-pnl-pos);
+  --sem-negative:      var(--chart-pnl-neg);
+  --sem-positive-soft: rgba(101, 197, 129, 0.15); /* Jade-80 @ 15% */
+  --sem-negative-soft: rgba(220, 57, 140, 0.15);  /* Berry-80 @ 15% */
 
   /* ── Accent: Marquee Blue (DESIGN.md §color is the source of truth —
         owner decision, Session 5; was Blueprint Intent.PRIMARY #137CBD) ── */

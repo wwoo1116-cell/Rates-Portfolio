@@ -209,7 +209,7 @@ export default function UploadPage() {
           </div>
 
           {formError && (
-            <p className="text-xs mt-4" style={{ color: "var(--sem-negative)" }}>
+            <p className="text-xs mt-4" style={{ color: "var(--sem-danger)" }}>
               {formError}
             </p>
           )}

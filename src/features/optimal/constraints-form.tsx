@@ -217,7 +217,7 @@ export function ConstraintsForm() {
             )}
           />
           {errors.universe && (
-            <span className="text-micro text-sem-negative">{errors.universe.message}</span>
+            <span className="text-micro text-sem-danger">{errors.universe.message}</span>
           )}
         </div>
 

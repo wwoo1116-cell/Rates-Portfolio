@@ -5,7 +5,10 @@ import { Callout, Card } from "@blueprintjs/core";
 export function ResultsDashboard() {
   return (
     <div style={{ display: "flex", height: "100%", flexDirection: "column", padding: 16, gap: 16, overflow: "auto" }}>
-      <Callout intent="success" title="Optimization Complete">
+      {/* S12: intent="success" rendered Blueprint's own vendor-green tint
+          (compiled CSS, outside the token layer). Success = confirmation,
+          not a signed value → primary/accent. */}
+      <Callout intent="primary" title="Optimization Complete">
         The solver converged in 4.2 seconds. Found optimal allocation satisfying 12/12 constraints. Expected yield improvement: +14 bps.
       </Callout>
 

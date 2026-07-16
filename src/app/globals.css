@@ -123,9 +123,12 @@ body {
   --pt-heading-color: var(--fg-primary);
   --pt-link-color: var(--accent);
   --pt-intent-primary: var(--accent);
-  --pt-intent-success: var(--sem-positive);
+  /* S12: SUCCESS is a confirmation, not a signed value — Jade is locked to
+     signed semantics, so Blueprint success maps to accent (see toast-store,
+     which no longer emits Intent.SUCCESS at all). */
+  --pt-intent-success: var(--accent);
   --pt-intent-warning: var(--accent);
-  --pt-intent-danger: var(--sem-negative);
+  --pt-intent-danger: var(--sem-danger);
 
   color: var(--fg-primary);
   background: var(--bg-base);
