@@ -1,0 +1,87 @@
+npm warn exec The following package was not found and will be installed: tsx@4.23.1
+market data range: 2010-03-02 .. 2026-07-15
+
+
+=== A: 국고 10Y−3Y, lookback 60, entry 3σ (expect 35 trades / 70.4M) ===
+  series: 2592 bars, 2016-01-04 .. 2026-07-14
+  KPIs: trades=24 net=10,600,000 win=54% sharpe=0.06 mdd=48,600,000
+  holding days: min=1 median=18 max=79
+  points[0]: 2016-01-04 cumulative=0 (data starts at ZERO)
+  daily revaluation: 536 days with dailyPnl≠0, 528 in-position days, of 2592 total (flat-position days are flat by design)
+  [T1 equity markers vs trades] expected=48 actual=48
+    injective (no orphan markers): PASS
+    surjective (no missing markers): PASS
+    aligned/on-bar (time ∈ bar array): PASS
+  [T1 oscillator markers vs trade entries] expected=24 actual=29
+    injective (no orphan markers): FAIL — 9 orphans; first: 2016-06-24|belowBar|circle|LONG
+    surjective (no missing markers): FAIL — 4 missing; first: 2016-11-11|aboveBar|circle|SHORT
+    aligned/on-bar (time ∈ bar array): PASS
+    first break: expected={"time":"2016-11-11","position":"aboveBar","shape":"circle","text":"SHORT"} actual={"time":"2016-06-24","position":"belowBar","shape":"circle","text":"LONG"}
+  [window 640px] minBarSpacing clamp: 1280/2592 bars visible; left edge = 2021-04-29
+    cumulative accrued BEFORE left edge: -12,200,000
+    trades with exit in window: 9 · entries in window: 9
+  [window 900px] minBarSpacing clamp: 1800/2592 bars visible; left edge = 2019-03-27
+    cumulative accrued BEFORE left edge: -8,600,000
+    trades with exit in window: 15 · entries in window: 15
+  [window 1280px] minBarSpacing clamp: 2560/2592 bars visible; left edge = 2016-02-22
+    cumulative accrued BEFORE left edge: 0
+    trades with exit in window: 24 · entries in window: 24
+  [window 1500px] all 2592 bars fit (max 3000) — no clamp
+
+=== B: IRS 10Y−3Y, defaults entry 2σ (expect 92 trades / 71.45M) ===
+  series: 4040 bars, 2010-03-11 .. 2026-07-15
+  KPIs: trades=92 net=71,450,000 win=64% sharpe=0.26 mdd=53,100,000
+  holding days: min=1 median=11 max=81
+  points[0]: 2010-03-11 cumulative=0 (data starts at ZERO)
+  daily revaluation: 1685 days with dailyPnl≠0, 1675 in-position days, of 4040 total (flat-position days are flat by design)
+  [T1 equity markers vs trades] expected=184 actual=184
+    injective (no orphan markers): PASS
+    surjective (no missing markers): PASS
+    aligned/on-bar (time ∈ bar array): PASS
+  [T1 oscillator markers vs trade entries] expected=92 actual=154
+    injective (no orphan markers): FAIL — 80 orphans; first: 2010-06-25|belowBar|circle|LONG
+    surjective (no missing markers): FAIL — 18 missing; first: 2015-01-15|belowBar|circle|LONG
+    aligned/on-bar (time ∈ bar array): PASS
+    first break: expected={"time":"2015-01-15","position":"belowBar","shape":"circle","text":"LONG"} actual={"time":"2010-06-25","position":"belowBar","shape":"circle","text":"LONG"}
+  [window 640px] minBarSpacing clamp: 1280/4040 bars visible; left edge = 2021-05-03
+    cumulative accrued BEFORE left edge: 19,750,000
+    trades with exit in window: 36 · entries in window: 35
+  [window 900px] minBarSpacing clamp: 1800/4040 bars visible; left edge = 2019-03-29
+    cumulative accrued BEFORE left edge: -25,250,000
+    trades with exit in window: 51 · entries in window: 50
+  [window 1280px] minBarSpacing clamp: 2560/4040 bars visible; left edge = 2016-02-24
+    cumulative accrued BEFORE left edge: -14,800,000
+    trades with exit in window: 68 · entries in window: 67
+  [window 1500px] minBarSpacing clamp: 3000/4040 bars visible; left edge = 2014-05-13
+    cumulative accrued BEFORE left edge: -12,800,000
+    trades with exit in window: 78 · entries in window: 77
+
+=== C: IRS 3Y outright, defaults entry 2σ (expect 69 trades / −432.4M) ===
+  series: 4040 bars, 2010-03-11 .. 2026-07-15
+  KPIs: trades=69 net=-432,400,000 win=43% sharpe=-0.59 mdd=487,250,000
+  holding days: min=1 median=22 max=139
+  points[0]: 2010-03-11 cumulative=0 (data starts at ZERO)
+  daily revaluation: 2056 days with dailyPnl≠0, 2075 in-position days, of 4040 total (flat-position days are flat by design)
+  [T1 equity markers vs trades] expected=138 actual=138
+    injective (no orphan markers): PASS
+    surjective (no missing markers): PASS
+    aligned/on-bar (time ∈ bar array): PASS
+  [T1 oscillator markers vs trade entries] expected=69 actual=171
+    injective (no orphan markers): FAIL — 116 orphans; first: 2010-09-09|belowBar|circle|LONG
+    surjective (no missing markers): FAIL — 14 missing; first: 2011-08-10|belowBar|circle|LONG
+    aligned/on-bar (time ∈ bar array): PASS
+    first break: expected={"time":"2011-08-10","position":"belowBar","shape":"circle","text":"LONG"} actual={"time":"2010-09-09","position":"belowBar","shape":"circle","text":"LONG"}
+  [window 640px] minBarSpacing clamp: 1280/4040 bars visible; left edge = 2021-05-03
+    cumulative accrued BEFORE left edge: -236,050,000
+    trades with exit in window: 21 · entries in window: 21
+  [window 900px] minBarSpacing clamp: 1800/4040 bars visible; left edge = 2019-03-29
+    cumulative accrued BEFORE left edge: -158,100,000
+    trades with exit in window: 28 · entries in window: 28
+  [window 1280px] minBarSpacing clamp: 2560/4040 bars visible; left edge = 2016-02-24
+    cumulative accrued BEFORE left edge: -143,300,000
+    trades with exit in window: 49 · entries in window: 48
+  [window 1500px] minBarSpacing clamp: 3000/4040 bars visible; left edge = 2014-05-13
+    cumulative accrued BEFORE left edge: -62,150,000
+    trades with exit in window: 55 · entries in window: 55
+
+done
