@@ -1,0 +1,42 @@
+INFO irs_pricer.loaders.portfolio: parsed 686 positions (273 bond, 413 irs) from Portfolio Data.xlsx
+INFO irs_pricer.engine.curve_cache: curve_cache installed (maxsize=32768)
+DEBUG irs_pricer.loaders.cache: disk cache hit: True Data.xlsx
+DEBUG irs_pricer.loaders.cache: disk cache hit: Call Rate Data.xlsx
+DEBUG irs_pricer.loaders.cache: memory cache hit: True Data.xlsx
+INFO irs_pricer.services.simulation_service: [SIM PROFILE] total=85.7s positions=650 (swaps=377) simDays=180 scenarios=5 (base + 4 percentile runs)
+INFO irs_pricer.services.simulation_service: [SIM PROFILE] phases (wall):
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   swap-market-resolve                0.06s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   swap-static-pricing (enrich)       1.01s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   base-run (bond+swap pricing+recon)      16.89s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   assembly (pvbp+bookPnL)            0.00s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   scenario-expansion (4 runs)       67.72s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE] functions (calls / cumulative secs \u2014 nested, overlaps phases):
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   qe.bootstrap_zero_curve          11519 calls       0.58s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   qe.build_bumped_curves             120 calls       0.05s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   qe.simulate_irs_path_fm           1885 calls      82.82s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   qe.compute_irs_krd_map             377 calls       0.59s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   qe.portfolio_krd_day               120 calls       0.96s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   svc.calculate_daily_mtm            600 calls       0.08s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   svc.calculate_daily_carry          600 calls       0.09s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE] total=85.2s positions=650 (swaps=377) simDays=180 scenarios=5 (base + 4 percentile runs)
+INFO irs_pricer.services.simulation_service: [SIM PROFILE] phases (wall):
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   swap-market-resolve                0.04s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   swap-static-pricing (enrich)       1.09s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   base-run (bond+swap pricing+recon)      19.22s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   assembly (pvbp+bookPnL)            0.00s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   scenario-expansion (4 runs)       64.86s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE] functions (calls / cumulative secs \u2014 nested, overlaps phases):
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   qe.bootstrap_zero_curve          11519 calls       0.08s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   qe.build_bumped_curves             120 calls       0.01s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   qe.simulate_irs_path_fm           1885 calls      82.26s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   qe.compute_irs_krd_map             377 calls       0.49s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   qe.portfolio_krd_day               120 calls       1.00s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   svc.calculate_daily_mtm            600 calls       0.08s
+INFO irs_pricer.services.simulation_service: [SIM PROFILE]   svc.calculate_daily_carry          600 calls       0.09s
+[S21 FULLBOOK] DATA_DIR=C:\Users\infomax\Desktop\Assistant\Projects_AS\Rates Portfolio\Data
+[S21 FULLBOOK] baseDate=2026-07-16 simDays=180
+[S21 FULLBOOK] book: 650 positions (273 bonds + 377 live swaps; s18 baseline was 686/413)
+[S21 FULLBOOK] COLD wall 85.7s (s18 pre-fix baseline: 1,409.7s / 658,505 raw bootstraps)
+[S21 FULLBOOK] cache: misses(=distinct keys) 237, hits 11282, hit_rate 0.9794, entries 237, capacity 32768 (headroom 138.3x)
+[S21 FULLBOOK] exclusions: 0
+[S21 FULLBOOK] WARM wall 85.2s (new misses 0)

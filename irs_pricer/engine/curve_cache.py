@@ -41,6 +41,56 @@ alias two genuinely different curves onto one entry, and identical inputs
 recomputed the same way are bit-identical, so exactness costs no hit rate.
 Verified bit-identical to the unmemoized engine over the production
 portfolio (max abs diff 0.0) -- see tests/test_curve_cache.py.
+
+KEY TOTALITY (why a module-global memo is safe at all)
+------------------------------------------------------
+bootstrap_zero_curve has exactly one input: the par-rate vector. The key IS
+that vector, at full float precision -- so the key is TOTAL over the curve's
+determinants, and every upstream quantity that shapes a curve (snapshot
+quotes, the short anchors _inject_short_anchors derives from a swap's next
+fixing, /api/simulate's baseDate -- which sets the tenor->year-fraction
+resolution in resolve_curve_maturity_dates/parse_irs_curves -- the scenario
+shock vector, sigma_bp's percentile scaling) reaches the bootstrap only BY
+CHANGING THAT VECTOR. Two computations that could legitimately differ can
+therefore never share an entry, which makes invalidation unnecessary and
+cross-run staleness impossible by construction: TTLs, run-scoping, and
+eviction-on-upload exist for caches whose keys are PARTIAL (the upload
+router's clear() is belt-and-braces, not a correctness requirement).
+
+Nor does correctness need the snapshot to be immutable during a run. The
+simulate path builds its par vectors once per (scenario, day) as fresh local
+lists from the Pydantic-parsed request (simulation_service.build_chart_data:
+parse_irs_curves at the top, per-day shocked copies `[(t, r+shock), ...]`
+below it) and never mutates one in place; but even a caller that DID mutate
+its inputs mid-run would produce a different key and a freshly computed
+curve, never a stale hit. Both halves are pinned executable in
+tests/test_curve_cache.py (key-totality tests, s21).
+
+One seam to keep honest: on a hit the caller gets the array computed from
+`list(key)` -- the float()-coerced reconstruction of the first caller's
+input, not the current caller's object. For the float tuples every engine
+path passes, that reconstruction is exact (pinned); a caller passing exotic
+numeric types falls through to the uncached original via the TypeError
+guard in _bootstrap_memoized.
+
+CONCURRENCY
+-----------
+Endpoints are sync `def`, so Starlette runs them on its threadpool: many
+threads per worker process can hit this cache at once, and uvicorn
+--workers 4 (the standard start since iv4) means 4 processes each holding an
+independent copy (4 cold warmups, ~11MB apiece -- accepted cost). CPython's
+functools.lru_cache is thread-safe for this use: its C implementation takes
+an internal lock around bookkeeping, and the worst concurrent-miss race is
+two threads bootstrapping the same key in parallel -- both produce
+bit-identical arrays (the function is pure and deterministic), one insert
+wins, no result is ever wrong. No extra locking is warranted.
+
+KILL SWITCH
+-----------
+IRS_PRICER_CURVE_CACHE=0 stops the app lifespan from installing the wrapper
+(default: installed). It is the A/B mechanism for the byte-identity evidence
+and the operational escape hatch; the engine then runs unmemoized, correct
+and slow.
 """
 
 from __future__ import annotations
@@ -59,17 +109,29 @@ logger = logging.getLogger(__name__)
 # Distinct curves per DASHBOARD snapshot measure ~16-20. A full /api/simulate
 # run is the binding case (iv4 perf finding): its bootstrap inputs are
 # swap-INDEPENDENT — measured 1,010 distinct keys for 1 swap and exactly
-# 1,010 for 8 distinct-maturity swaps (1.00x growth) — but a 180-day,
-# 5-scenario run produces ~2.5k distinct (scenario, day) curves, just over
-# the old 2048 ceiling. The sim's access order (per-swap sweeps over the
-# whole day axis) is the pathological cyclic pattern for LRU: keys exceeding
-# capacity by even a few percent collapse the hit rate to ~0, which is how
-# s18 measured 658,505 real bootstraps (93% of a 24-minute full-book wall)
-# on a server with this cache installed. 32k entries x ~350B ≈ 11MB per
-# worker: cheap insurance that a whole run's key set always fits.
-_MAX_ENTRIES = 32768
+# 1,010 for 8 distinct-maturity swaps (1.00x growth). The sim's access order
+# (per-swap sweeps over the whole day axis) is the pathological cyclic
+# pattern for LRU: keys exceeding capacity by even a few percent collapse
+# the hit rate to ~0, which is how s18 measured 658,505 real bootstraps
+# (93% of a 24-minute full-book wall) on a server with this cache installed.
+#
+# s21 real-book measurement: iv4's ~2.5k-keys-per-run extrapolation from the
+# fixture was LOW. A ramp/matrix 180-day 5-scenario run over the live book
+# (650 positions, 377 swaps) produces 11,661 distinct keys — the fixture's
+# swap clones shared one start date and therefore one short-anchor variant,
+# while the real book's varied next-fixing dates mint ~13 curve variants per
+# (scenario, day), not ~3. 32,768 gave only 2.8x headroom against that; the
+# sizing policy is ≥4x the measured worst real run (the LRU cliff is silent
+# and this is cheap insurance), so 65,536. ~350B/entry ≈ 22MB per worker,
+# x4 workers ≈ 90MB — accepted. Capacity pin:
+# tests/test_curve_cache.py::test_simulate_key_set_fits_cache_with_headroom.
+_MAX_ENTRIES = 65536
 
 ParRates = Sequence[tuple[float, float]]
+
+# Read by the app lifespan (api/app.py): "0" means "do not install". Lives
+# here so the switch is discoverable next to the thing it switches.
+ENV_FLAG = "IRS_PRICER_CURVE_CACHE"
 
 _original = quant_engine.bootstrap_zero_curve
 _installed = False
