@@ -18,7 +18,36 @@ import { spreadId, type Leg, type SelectedInstrument } from "@/lib/rv-instrument
 
 export const LOOKBACK_PRESETS = [20, 60, 120] as const;
 
+/** Staged flow (s17): Configure -> Running -> Results. */
+export type EsStage = "configure" | "running" | "results";
+
+/** Immutable snapshot of everything a run depends on, taken at 실행 time.
+ * The Results stage's backtest block (KPIs, trades, cumulative P&L) computes
+ * from THIS — never from the live store params — so it stays pinned to the
+ * run that produced it while the signals/z-score surfaces keep tracking the
+ * live config. Persisted so a detached equity window can reproduce the same
+ * run (the detached window shares localStorage, not memory). */
+export interface EsRunConfig {
+  instrument: SelectedInstrument;
+  lookback: number;
+  entryZ: number;
+  warnZ: number;
+  exitZ: number;
+  stopZ: number;
+  costBp: number;
+  notional: number;
+  /** ISO timestamp of when 실행 was pressed. */
+  ranAt: string;
+}
+
 export interface EntrySignalsState {
+  // Staged flow (s17). `stage` is deliberately NOT persisted — every session
+  // starts at Configure; Results only ever appears after a run. `pendingRun`
+  // exists only while the Running stage is in flight.
+  stage: EsStage;
+  lastRun: EsRunConfig | null;
+  pendingRun: EsRunConfig | null;
+
   // Analysis params (persisted) — frontend rolling stats.
   lookback: number;
   entryZ: number;
@@ -49,6 +78,20 @@ export interface EntrySignalsState {
   removeFromWatchlist: (id: string) => void;
   clearWatchlist: () => void;
   resetParams: () => void;
+
+  // Staged-flow actions (s17).
+  /** Snapshot the current config + focused instrument and enter Running.
+   * No-op when nothing is focused (the CTA is disabled in that state). */
+  startRun: () => void;
+  /** Promote pendingRun to the pinned lastRun and show Results. The previous
+   * lastRun stays pinned (and visible) until this fires — re-run REPLACES. */
+  completeRun: () => void;
+  /** Abandon the in-flight run: back to the old Results if one exists,
+   * otherwise back to Configure. */
+  cancelRun: () => void;
+  /** 조건 수정 — return to Configure. Inputs are the live store params, which
+   * the flow never clears, so every value round-trips. */
+  editConfig: () => void;
 }
 
 /** Shape of a spread as persisted by schema v0 (hard-coded 2 legs). */
@@ -111,6 +154,9 @@ export const useEntrySignalsStore = create<EntrySignalsState>()(
       ...DEFAULT_PARAMS,
       focused: null,
       watchlist: [],
+      stage: "configure" as EsStage,
+      lastRun: null,
+      pendingRun: null,
 
       setLookback: (lookback) => set({ lookback: Math.max(2, Math.round(lookback)) }),
       setEntryZ: (entryZ) => set({ entryZ: Math.max(0, entryZ) }),
@@ -132,6 +178,37 @@ export const useEntrySignalsStore = create<EntrySignalsState>()(
         }),
       clearWatchlist: () => set({ watchlist: [], focused: null }),
       resetParams: () => set({ ...DEFAULT_PARAMS }),
+
+      startRun: () =>
+        set((s) => {
+          if (!s.focused) return s;
+          return {
+            pendingRun: {
+              instrument: s.focused,
+              lookback: s.lookback,
+              entryZ: s.entryZ,
+              warnZ: s.warnZ,
+              exitZ: s.exitZ,
+              stopZ: s.stopZ,
+              costBp: s.costBp,
+              notional: s.notional,
+              ranAt: new Date().toISOString(),
+            },
+            stage: "running" as EsStage,
+          };
+        }),
+      completeRun: () =>
+        set((s) => ({
+          lastRun: s.pendingRun ?? s.lastRun,
+          pendingRun: null,
+          stage: "results" as EsStage,
+        })),
+      cancelRun: () =>
+        set((s) => ({
+          pendingRun: null,
+          stage: (s.lastRun ? "results" : "configure") as EsStage,
+        })),
+      editConfig: () => set({ stage: "configure" as EsStage }),
     }),
     {
       name: "entry-signals-storage",
@@ -160,6 +237,10 @@ export const useEntrySignalsStore = create<EntrySignalsState>()(
         notional: s.notional,
         focused: s.focused,
         watchlist: s.watchlist,
+        // s17 additive: pinned run params (NOT stage/pendingRun — a fresh
+        // session always starts at Configure). Pre-s17 storage simply lacks
+        // the key and rehydrates lastRun as its null default.
+        lastRun: s.lastRun,
       }),
     },
   ),

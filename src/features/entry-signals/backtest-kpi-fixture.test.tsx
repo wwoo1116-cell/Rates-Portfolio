@@ -7,9 +7,12 @@
  * block is reached, but never these numbers.
  *
  * The series is deterministic (fixed LCG seed) and runs through the REAL
- * pipeline the UI uses — zustand store params -> useFocusedBacktest scaling
+ * pipeline the UI uses — zustand store run config -> pinned-backtest scaling
  * (spread => bp as-is) -> lib/math/backtest -> SummaryTiles formatting. Only
  * the data hook and ag-grid (jsdom-hostile, not part of the pin) are mocked.
+ * Post-restructure the harness feeds the SAME params through store.lastRun
+ * (the pinned seam that replaced the live-params hook); the expected values
+ * are untouched from the pre-restructure capture.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -93,6 +96,12 @@ beforeEach(() => {
     ...PIN_PARAMS,
     focused: FIXTURE_INSTRUMENT,
     watchlist: [FIXTURE_INSTRUMENT],
+    // s17 staged flow: the KPI block renders the pinned run snapshot.
+    lastRun: {
+      ...PIN_PARAMS,
+      instrument: FIXTURE_INSTRUMENT,
+      ranAt: "2026-07-16T00:00:00.000Z",
+    },
   });
 });
 

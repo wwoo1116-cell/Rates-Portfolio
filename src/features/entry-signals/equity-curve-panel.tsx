@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * Bottom-left panel: the mean-reversion backtest's cumulative-P&L equity curve
- * for the focused instrument, computed client-side (lib/math/backtest.ts) so it
- * works for any spread OR outright. Entry/exit markers come from the sim's
- * trade list. The sim runs over the focused instrument's own date array, so it
- * is index-aligned with the Price and Z-Score charts (logical-range lockstep).
+ * The mean-reversion backtest's cumulative-P&L equity curve, computed
+ * client-side (lib/math/backtest.ts). Since s17 this chart is PINNED to the
+ * run snapshot (store.lastRun via usePinnedBacktest) — the staged flow's
+ * Results stage keeps it a snapshot while the z-score/signals stay live.
+ * lastRun persists, so the detached /chart/es-equity window reproduces the
+ * same run. Entry/exit markers come from the sim's trade list.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -16,19 +17,16 @@ import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX } from "@/components/charts/snap-reticle";
 import { formatKrwAxisSigned } from "@/lib/format";
-import { useEntrySignalsStore } from "@/stores/entry-signals-store";
 import { CHART_COLORS } from "./chart-theme";
-import { useEntrySignalsData } from "./use-entry-signals-data";
-import { useFocusedBacktest } from "./use-backtest";
+import { usePinnedBacktest } from "./use-pinned-backtest";
 import { PanelEmptyState, SyncedTimeGuide } from "./panel-shell";
 import { registerSyncChart, setSharedHoverTime, unregisterSyncChart } from "./use-synced-time-scales";
 
 const PANEL_ID = "es-equity";
 
 export function EquityCurvePanel() {
-  const { focusedSeries } = useEntrySignalsData();
-  const focused = useEntrySignalsStore((s) => s.focused);
-  const result = useFocusedBacktest(focusedSeries);
+  const pinned = usePinnedBacktest();
+  const result = pinned?.result ?? null;
 
   const chartRef = useRef<IChartApi | null>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
@@ -143,10 +141,10 @@ export function EquityCurvePanel() {
         <SyncedTimeGuide chart={chart} suppressed={reticle != null} />
         <CrosshairReticle point={reticle} date={reticle?.date} paneWidth={reticle?.paneWidth} />
 
-        {!focused && (
+        {!pinned && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <PanelEmptyState>
-              Focus an instrument in the Signals panel to run its mean-reversion backtest.
+              백테스트를 실행하면 누적 손익 곡선이 여기에 표시됩니다.
             </PanelEmptyState>
           </div>
         )}

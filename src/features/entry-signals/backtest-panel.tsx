@@ -1,20 +1,18 @@
 "use client";
 
 /**
- * Bottom-right (below Signals) panel: the backtest summary stat tiles + trade
- * list for the focused instrument, plus the backtest-only parameter controls
- * (exit / stop / cost / notional). Uses the client-side sim (useFocusedBacktest),
- * so it works for any spread or outright.
+ * Backtest summary stat tiles + trade list. Since s17 this block is PINNED:
+ * it renders the run snapshot (store.lastRun via usePinnedBacktest), not the
+ * live params — the staged flow's Results stage owns the distinction between
+ * live monitoring and this snapshot. The parameter controls that used to sit
+ * here moved to the Configure stage.
  */
 
 import { useMemo } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, type ColDef } from "ag-grid-community";
 import type { BtSummary, BtTrade } from "@/lib/math/backtest";
-import { useEntrySignalsStore } from "@/stores/entry-signals-store";
-import { NumberField } from "./panel-shell";
-import { useEntrySignalsData } from "./use-entry-signals-data";
-import { useFocusedBacktest } from "./use-backtest";
+import { usePinnedBacktest } from "./use-pinned-backtest";
 import { createTradeColumnDefs } from "./trades-columns";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-balham.css";
@@ -59,44 +57,28 @@ function SummaryTiles({ summary }: { summary: BtSummary }) {
   );
 }
 
-function BacktestParams() {
-  const exitZ = useEntrySignalsStore((s) => s.exitZ);
-  const stopZ = useEntrySignalsStore((s) => s.stopZ);
-  const costBp = useEntrySignalsStore((s) => s.costBp);
-  const notional = useEntrySignalsStore((s) => s.notional);
-  const setExitZ = useEntrySignalsStore((s) => s.setExitZ);
-  const setStopZ = useEntrySignalsStore((s) => s.setStopZ);
-  const setCostBp = useEntrySignalsStore((s) => s.setCostBp);
-  const setNotional = useEntrySignalsStore((s) => s.setNotional);
-
-  return (
-    <div className="flex flex-wrap items-end gap-3">
-      <NumberField label="EXIT ±σ" value={exitZ} step="0.1" min={0} onCommit={setExitZ} className="w-20" />
-      <NumberField label="STOP ±σ" value={stopZ} step="0.1" min={0} onCommit={setStopZ} className="w-20" />
-      <NumberField label="COST (BP)" value={costBp} step="0.01" min={0} onCommit={setCostBp} className="w-24" />
-      <NumberField label="NOTIONAL" value={notional} step="100000" min={0} onCommit={setNotional} className="w-32" />
-    </div>
-  );
-}
-
 export function BacktestPanel() {
-  const { focusedSeries } = useEntrySignalsData();
-  const focused = useEntrySignalsStore((s) => s.focused);
-  const result = useFocusedBacktest(focusedSeries);
+  const pinned = usePinnedBacktest();
+  const result = pinned?.result ?? null;
   const columnDefs = useMemo(() => createTradeColumnDefs(), []);
 
   return (
     <div className="flex h-full flex-col gap-3 p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="text-label font-bold uppercase text-fg-muted">Backtest · Trades &amp; Summary</span>
+        {pinned && <span className="text-micro text-fg-muted">{pinned.label}</span>}
       </div>
 
-      <BacktestParams />
-
-      {!focused || !result ? (
+      {!pinned ? (
         <div className="flex flex-1 items-center justify-center text-center">
           <span className="text-micro text-fg-muted" style={{ maxWidth: 320 }}>
-            Focus an instrument in the Signals panel to run its mean-reversion backtest.
+            백테스트를 실행하면 체결 내역과 요약이 여기에 표시됩니다.
+          </span>
+        </div>
+      ) : !result ? (
+        <div className="flex flex-1 items-center justify-center text-center">
+          <span className="text-micro text-fg-muted" style={{ maxWidth: 320 }}>
+            실행 종목의 시계열을 불러오는 중입니다…
           </span>
         </div>
       ) : (
