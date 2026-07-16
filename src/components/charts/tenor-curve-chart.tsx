@@ -5,7 +5,7 @@ import * as d3 from "d3";
 import type { CurvePoint } from "@/mocks/home";
 import type { Tenor } from "@/lib/constants";
 import { resolveCssVar } from "@/lib/canvas-color";
-import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
+import { CHART_CHROME_COLORS, PNL_COLORS } from "@/lib/chart-colors";
 
 export interface TenorCurveChartProps {
   data: CurvePoint[];
@@ -46,8 +46,10 @@ function drawChart(
   ctx.scale(dpr, dpr);
 
   const colorToday = resolveCssVar("--accent");
-  const colorPositive = resolveCssVar("--sem-positive");
-  const colorNegative = resolveCssVar("--sem-negative");
+  // S12: Jade/Berry signed pair as canvas literals (component is currently
+  // unmounted; migrated so no green/red survives a resurrection).
+  const colorPositive = PNL_COLORS.pos;
+  const colorNegative = PNL_COLORS.neg;
 
   const W = cssW;
   const H = cssH;

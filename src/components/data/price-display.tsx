@@ -51,7 +51,7 @@ export function PriceDisplay({ value, precision = 4, unit = "", size = "body", s
       }}
       {...props}
     >
-      {isNegative && <span style={{ color: "var(--sem-negative)" }}>-</span>}
+      {isNegative && <span style={{ color: "var(--chart-pnl-neg)" }}>-</span>}
       <span style={{ color: "var(--fg-dim)" }}>
         {integerPart}
         {base && `.${base}`}

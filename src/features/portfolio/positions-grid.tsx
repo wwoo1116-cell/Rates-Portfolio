@@ -128,8 +128,13 @@ export function PositionsGrid() {
       field: "direction", 
       headerName: "Dir", 
       width: 70,
+      // S12: Jade/Berry direction pair. Sign convention preserved from the
+      // old green/red EXACTLY as this surface had it (Pay = Berry/red-side)
+      // — NOTE it contradicts the details-panel badge (Pay = Jade there);
+      // flagged in REPORT_s12.md for an owner ruling rather than harmonized
+      // silently.
       cellStyle: (params) => ({
-        color: params.value === "Pay" ? "var(--sem-negative)" : "var(--sem-positive)",
+        color: params.value === "Pay" ? "var(--chart-pnl-neg)" : "var(--chart-pnl-pos)",
         fontWeight: 600
       })
     },

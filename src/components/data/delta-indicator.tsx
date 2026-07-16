@@ -17,7 +17,8 @@ export function DeltaIndicator({
 }: DeltaIndicatorProps) {
   const positive = value >= 0;
   const sign = positive ? "+" : "";
-  const color = positive ? "var(--sem-positive)" : "var(--sem-negative)";
+  // S12: universal Jade/Berry signed pair (green/red sem tokens retired).
+  const color = positive ? "var(--chart-pnl-pos)" : "var(--chart-pnl-neg)";
 
   return (
     <span

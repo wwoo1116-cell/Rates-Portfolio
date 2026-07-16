@@ -48,11 +48,13 @@ function KrwCell({
   suffix?: string;
   tooltip?: string;
 }) {
+  // S12: signed P&L carries the universal Jade/Berry pair (owner lockdown) —
+  // the app-wide green/red sem tokens are retired for direction semantics.
   const color =
     value > 0
-      ? "var(--sem-positive)"
+      ? "var(--chart-pnl-pos)"
       : value < 0
-        ? "var(--sem-negative)"
+        ? "var(--chart-pnl-neg)"
         : "var(--fg-dim)";
   const cell = (
     <span
@@ -122,8 +124,8 @@ function PeriodPnlStat({ label, figure }: { label: string; figure: PeriodPnlFigu
     value === null || value === 0
       ? "var(--fg-dim)"
       : value > 0
-        ? "var(--sem-positive)"
-        : "var(--sem-negative)";
+        ? "var(--chart-pnl-pos)"
+        : "var(--chart-pnl-neg)";
   return (
     <div className="flex items-baseline gap-1.5">
       <span className="text-micro uppercase text-fg-dim">{label}</span>

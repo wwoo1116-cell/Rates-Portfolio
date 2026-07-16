@@ -176,7 +176,11 @@ export const DetailsPanel = memo(function DetailsPanel() {
     <div className="flex h-full flex-col gap-6 overflow-auto p-4">
       <div className="flex items-center justify-between">
         <span className="font-mono text-micro text-fg-muted">{position.id}</span>
-        <Badge tone={position.direction === "Pay" || position.direction === "Buy" ? "positive" : "negative"}>
+        {/* S12: Jade/Berry direction pair. Convention preserved from the old
+            green/red EXACTLY as this badge had it (Pay/Buy = Jade) — NOTE it
+            contradicts the Positions grid's Dir column (Pay = Berry there);
+            flagged in REPORT_s12.md for an owner ruling. */}
+        <Badge tone={position.direction === "Pay" || position.direction === "Buy" ? "pnl-positive" : "pnl-negative"}>
           {position.direction}
         </Badge>
       </div>

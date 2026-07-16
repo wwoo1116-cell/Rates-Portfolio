@@ -251,16 +251,18 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
         </label>
         <div className="flex flex-col gap-1 text-micro font-bold text-fg-muted">
           Direction
+          {/* S12: direction uses the universal Jade/Berry pair — PAY (was
+              red) = Berry, REC (was green) = Jade, convention preserved. */}
           <div className="flex h-7 w-24 overflow-hidden rounded border border-border-subtle">
             <button
               onClick={() => setPayFixed(true)}
-              className={`flex-1 transition-colors ${payFixed ? "bg-sem-negative text-bg-primary" : "bg-bg-elevated text-fg-muted hover:bg-bg-secondary"}`}
+              className={`flex-1 transition-colors ${payFixed ? "bg-chart-pnl-neg text-bg-primary" : "bg-bg-elevated text-fg-muted hover:bg-bg-secondary"}`}
             >
               PAY
             </button>
             <button
               onClick={() => setPayFixed(false)}
-              className={`flex-1 transition-colors ${!payFixed ? "bg-sem-positive text-bg-primary" : "bg-bg-elevated text-fg-muted hover:bg-bg-secondary"}`}
+              className={`flex-1 transition-colors ${!payFixed ? "bg-chart-pnl-pos text-bg-primary" : "bg-bg-elevated text-fg-muted hover:bg-bg-secondary"}`}
             >
               REC
             </button>

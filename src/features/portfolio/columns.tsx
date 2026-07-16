@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { HeatmapPill } from "@/components/data/heatmap-pill";
 import { PriceDisplay } from "@/components/data/price-display";
 import { NumericCell } from "@/components/ui/numeric-cell";
-import { heatRampFill } from "@/lib/chart-colors";
+import { PNL_COLORS, heatRampFill, withAlpha } from "@/lib/chart-colors";
 import { getTenorBucket, type AssetClass } from "@/lib/constants";
 import type { Position } from "@/types/portfolio";
 
@@ -90,6 +90,11 @@ export function createPositionColumnDefs(
       field: "direction",
       headerName: "DIR",
       width: 70,
+      // S12: Jade/Berry direction pair (soft fills via withAlpha, matching
+      // Badge's pnl-* tones). NOTE: this module is currently DEAD CODE —
+      // positions-grid.tsx builds its own columnDefs inline and nothing
+      // imports createPositionColumnDefs — migrated anyway so no green/red
+      // survives to be resurrected with it (REPORT_s12.md).
       cellRenderer: ({ value }: { value: string }) => {
         const isPos = value === "Pay" || value === "Buy";
         const span = document.createElement("span");
@@ -97,8 +102,8 @@ export function createPositionColumnDefs(
           display:inline-flex;align-items:center;padding:1px 6px;
           font-size:10px;font-weight:600;letter-spacing:0.06em;
           text-transform:uppercase;font-family:var(--font-ui);
-          background:${isPos ? "var(--sem-positive-soft)" : "var(--sem-negative-soft)"};
-          color:${isPos ? "var(--sem-positive)" : "var(--sem-negative)"};
+          background:${isPos ? withAlpha(PNL_COLORS.pos, 0.15) : withAlpha(PNL_COLORS.neg, 0.15)};
+          color:${isPos ? "var(--chart-pnl-pos)" : "var(--chart-pnl-neg)"};
           line-height:1.5;
         `;
         span.textContent = value;

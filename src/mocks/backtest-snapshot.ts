@@ -82,13 +82,14 @@ export const HISTORICAL_SCENARIOS: ScenarioLine[] = [
   {
     id:    "bear",
     label: "Bear (+50bp)",
-    color: "var(--sem-negative)",
+    // S12: Jade/Berry signed pair (green/red sem tokens retired).
+    color: "var(--chart-pnl-neg)",
     data:  HISTORICAL_RATE_SERIES.map((d) => ({ time: d.time, value: +(d.value + 0.50).toFixed(3) })),
   },
   {
     id:    "bull",
     label: "Bull (-30bp)",
-    color: "var(--sem-positive)",
+    color: "var(--chart-pnl-pos)",
     data:  HISTORICAL_RATE_SERIES.map((d) => ({ time: d.time, value: +(d.value - 0.30).toFixed(3) })),
   },
 ];

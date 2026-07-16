@@ -239,7 +239,7 @@ export function SpreadPositionPanel({ params }: { params: SpreadPositionPanelPar
               ) : (
                 <span
                   data-num
-                  className={`text-body text-right ${l.notional < 0 ? "text-sem-negative" : "text-fg-primary"}`}
+                  className={`text-body text-right ${l.notional < 0 ? "text-chart-pnl-neg" : "text-fg-primary"}`}
                 >
                   {formatEok(l.notional)}
                 </span>
@@ -253,9 +253,13 @@ export function SpreadPositionPanel({ params }: { params: SpreadPositionPanelPar
           {/* Residual */}
           <div className="mt-1 flex items-center justify-between border-t border-border-subtle pt-2">
             <span className="text-label font-bold text-fg-muted uppercase">Net PVBP (residual)</span>
+            {/* S12: "residual ≈ 0" is a SUCCESS state, not a signed value —
+                Jade is now locked to signed semantics, so the ok-state drops
+                to calm fg-primary; only the non-neutral warning keeps accent.
+                (Old: green = ok. Flagged in REPORT_s12.md.) */}
             <span
               data-num
-              className={`text-body ${Math.abs(result.netPvbp) < 1 ? "text-sem-positive" : "text-sem-risk"}`}
+              className={`text-body ${Math.abs(result.netPvbp) < 1 ? "text-fg-primary" : "text-sem-risk"}`}
             >
               {formatPnlKrw(result.netPvbp)} KRW/bp
             </span>
@@ -277,7 +281,7 @@ export function SpreadPositionPanel({ params }: { params: SpreadPositionPanelPar
             <span className="font-bold uppercase">Strategy P&L from {entryDate}</span>
             <span
               data-num
-              className={`font-normal ${(lastPnl?.value ?? 0) >= 0 ? "text-sem-positive" : "text-sem-negative"}`}
+              className={`font-normal ${(lastPnl?.value ?? 0) >= 0 ? "text-chart-pnl-pos" : "text-chart-pnl-neg"}`}
             >
               {lastPnl ? `${formatPnlKrw(lastPnl.value)} KRW` : "—"}
             </span>
