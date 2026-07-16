@@ -26,7 +26,7 @@ bad-input ValueErrors the other routers map.
 from __future__ import annotations
 
 from fastapi import APIRouter
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ...services import simulation_service
 from ...services.simulation_service import FrontendPosition, FrontendShockCurves
@@ -50,6 +50,10 @@ class SimulateRequest(BaseModel):
                                          # 없고 tenor(예: "3m","1y")가 있으면 resolve_curve_maturity_dates가
                                          # base_date+tenor로 실제 만기일을 직접 계산해 채워 넣음(v5 포맷 대응)
     customPath: list[dict] = []         # [{day: int, bp: float}, ...] 웨이포인트 기반 커스텀 경로
+    # s13 — 분포 팬의 σ (bp/√영업일). 생략 시 2.0 == s11의 상수와 바이트 동일.
+    # 범위 밖(≤0, >25)은 422: σ=0은 폭 0의 "팬"(분포 주장으로서 거짓)이고,
+    # 25bp/√일 초과는 어떤 KRW 금리 체계에서도 입력 실수다.
+    sigma_bp: float = Field(default=2.0, gt=0, le=25)
 
 
 class SimulationChartPoint(BaseModel):
@@ -170,4 +174,5 @@ def simulate(req: SimulateRequest) -> dict:
         base_date=req.baseDate,
         irs_curves=req.irsCurves,
         custom_path=req.customPath,
+        sigma_bp=req.sigma_bp,
     )

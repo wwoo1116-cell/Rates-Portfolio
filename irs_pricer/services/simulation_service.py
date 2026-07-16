@@ -1036,17 +1036,21 @@ def build_distribution_bands(
     irs_curves: list[dict] | None,
     irs_shock_curve: list[tuple[float, float]],
     custom_path: list[dict] | None,
+    sigma_bp: float = _DIST_SIGMA_BP_DAILY,
 ) -> dict:
     """totalPnL의 퍼센타일 팬 밴드. z=0 런은 기본 시나리오와 입력이 동일하므로
-    base_chart를 그대로 재사용한다(p50 ≡ 기존 궤적 — 중앙값 일관성 보장).
-    나머지 4개 분위수는 skip_recon=True 엔진 런이다."""
+    base_chart를 그대로 재사용한다(p50 ≡ 기존 궤적 — 중앙값 일관성 보장,
+    σ와 무관). 나머지 4개 분위수는 skip_recon=True 엔진 런이다.
+
+    sigma_bp (s13): 요청으로 조정 가능한 σ(bp/√영업일). 검증(0<σ≤25)은 라우터
+    Field가 담당하고, 여기서는 기본값이 s11 상수와 같아 생략 시 바이트 동일이다."""
     try:
         _bd = date.fromisoformat(base_date_str[:10])
     except Exception:
         _bd = date.today()
     ranks = qe.biz_day_ranks(_bd, sim_days)
     n_biz = int(ranks[-1]) if ranks[-1] > 0 else max(sim_days, 1)
-    sigma_t = _DIST_SIGMA_BP_DAILY * float(np.sqrt(n_biz))
+    sigma_t = sigma_bp * float(np.sqrt(n_biz))
 
     days = [int(row.get("day", 0)) for row in base_chart]
     runs: dict[int, dict[int, float]] = {
@@ -1090,7 +1094,7 @@ def build_distribution_bands(
         })
 
     return {
-        "sigmaBpDaily": _DIST_SIGMA_BP_DAILY,
+        "sigmaBpDaily": sigma_bp,
         "sigmaTerminalBp": round(sigma_t, 4),
         "percentiles": list(_DIST_PERCENTILES),
         "method": "quantile-scenario",
@@ -1331,6 +1335,7 @@ def run_simulation(
     base_date: str,
     irs_curves: list[dict],
     custom_path: list[dict],
+    sigma_bp: float = _DIST_SIGMA_BP_DAILY,
 ) -> dict:
     """POST /api/simulate 한 건의 전체 계산. 원본 엔드포인트 본문의 순서 그대로:
     커브 만기일 보정 → IRS 쇼크커브 명시적 빌드 → IRS 프라이싱 주입(enrich) →
@@ -1400,6 +1405,7 @@ def run_simulation(
             irs_curves=irs_curves,
             irs_shock_curve=irs_shock_curve,
             custom_path=custom_path or None,
+            sigma_bp=sigma_bp,
         )
     except Exception:
         logger.exception("[s11 T3] 분포 밴드 계산 실패 — distribution=null로 응답")

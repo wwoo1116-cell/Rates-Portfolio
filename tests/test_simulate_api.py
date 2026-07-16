@@ -321,6 +321,78 @@ def test_funding_curve(representative_response: dict) -> None:
     assert all(p["positionRate"] is not None for p in fc)
 
 
+# ── s13 T2: configurable σ ───────────────────────────────────────────────────
+
+def _bond_only_request(sigma_bp: float | None) -> dict:
+    """The analytic single-bond fixture from test_bond_only_analytic: totalPnL
+    is AFFINE in a parallel offset there (pvbp MTM + linear carry), so band
+    half-widths must scale exactly with σ up to the engine's per-day rounding."""
+    req = {
+        "positions": [{
+            "id": "b1", "name": "KTB", "book": "RP Fund", "bondType": "bond",
+            "sector": "국고채", "couponRate": 3.0, "notional": 10_000_000_000,
+            "evaluationAmount": 10_000_000_000, "mtmYield": 3.0,
+            "duration": 1.0, "pvbp": 1_000_000, "tenor": "1Y",
+            "remainingDays": 365, "krdMap": {"1Y": 1_000_000},
+        }],
+        "shockCurves": {"bondCurves": {}, "swapCurve": []},
+        "dailyShockCurves": {"bondCurves": {}, "swapCurve": []},
+        "fundingRate": 0.03,
+        "fundingEvents": [],
+        "simDays": 10,
+        "shockType": "step",
+        "shockMode": "parallel",
+        "baseShockBp": 10,
+        "baseDate": "2026-01-05",
+        "irsCurves": [],
+        "customPath": [],
+    }
+    if sigma_bp is not None:
+        req["sigma_bp"] = sigma_bp
+    return req
+
+
+def test_sigma_omitted_equals_two_exactly(client: TestClient) -> None:
+    """Backward compat: no sigma_bp == sigma_bp=2.0, byte-identical response."""
+    r_default = client.post("/api/simulate", json=_bond_only_request(None))
+    r_two = client.post("/api/simulate", json=_bond_only_request(2.0))
+    assert r_default.status_code == r_two.status_code == 200
+    assert r_default.json() == r_two.json()
+    assert r_default.json()["distribution"]["sigmaBpDaily"] == 2.0
+
+
+@pytest.mark.parametrize("bad", [0, -1.5, 25.01, 100])
+def test_sigma_out_of_bounds_is_422(client: TestClient, bad: float) -> None:
+    r = client.post("/api/simulate", json=_bond_only_request(bad))
+    assert r.status_code == 422, r.text
+    assert "sigma_bp" in r.text
+
+
+def test_sigma_scales_bands_and_never_moves_the_median(client: TestClient) -> None:
+    """For ANY σ the median is the base scenario trace (z=0 run is the base
+    run, σ-independent), and on the affine bond fixture the half-widths scale
+    linearly in σ (tolerance = the engine's per-day int rounding)."""
+    responses = {s: client.post("/api/simulate", json=_bond_only_request(s)).json()
+                 for s in (1.0, 2.0, 4.0)}
+
+    base_trace = [row["totalPnL"] for row in responses[2.0]["chartData"]]
+    for s, body in responses.items():
+        assert body["distribution"]["sigmaBpDaily"] == s
+        assert [row["totalPnL"] for row in body["chartData"]] == base_trace
+        assert [b["p50"] for b in body["distribution"]["bands"]] == pytest.approx(base_trace)
+
+    def half_widths(body: dict) -> list[tuple[float, float]]:
+        return [(b["p95"] - b["p50"], b["p50"] - b["p5"]) for b in body["distribution"]["bands"][1:]]
+
+    for hw1, hw2, hw4 in zip(half_widths(responses[1.0]), half_widths(responses[2.0]),
+                             half_widths(responses[4.0])):
+        for k in (0, 1):
+            assert hw2[k] == pytest.approx(2.0 * hw1[k], abs=3.0), (hw1, hw2)
+            assert hw4[k] == pytest.approx(2.0 * hw2[k], abs=3.0), (hw2, hw4)
+    # and the fan actually opens
+    assert half_widths(responses[2.0])[-1][0] > 0
+
+
 # ── 4. The live bridge's request shape (empty irsCurves) ─────────────────────
 
 def test_bond_only_empty_irs_curves(client: TestClient) -> None:
