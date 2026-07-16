@@ -79,7 +79,11 @@ function KrwCell({
     </span>
   );
   return tooltip ? (
-    <Tooltip content={tooltip} compact placement="top">
+    // `fill` is load-bearing (s16): without it Blueprint wraps the cell in a
+    // shrink-to-fit inline-block target, which parks the value at the td's
+    // LEFT edge and defeats the block span's right alignment — in the partial
+    // state the whole row then reads as shifted one column left.
+    <Tooltip content={tooltip} compact placement="top" fill>
       {cell}
     </Tooltip>
   ) : (
@@ -92,7 +96,8 @@ function KrwCell({
  * here" reads identically across the Home tab. */
 function UnknownCell({ tooltip }: { tooltip: string }) {
   return (
-    <Tooltip content={tooltip} compact placement="top">
+    // Same `fill` as KrwCell's tooltip branch — see the comment there (s16).
+    <Tooltip content={tooltip} compact placement="top" fill>
       <span
         style={{
           display: "block",
@@ -325,11 +330,15 @@ export function BookDailyPnlTable() {
                       : {}
                   }
                 >
+                  {/* Numeric tds carry text-right themselves (s16): alignment
+                      is the COLUMN's property, never the value's — a
+                      shrink-wrapped child (e.g. a tooltip target) must still
+                      land at the right edge of its own column. */}
                   <td className="py-1.5 text-label text-fg-muted truncate">{row.book}</td>
-                  <td className="py-1">
+                  <td className="py-1 text-right">
                     <KrwCell value={row.theta} />
                   </td>
-                  <td className="py-1">
+                  <td className="py-1 text-right">
                     {row.mtm === null ? (
                       <UnknownCell
                         tooltip={`No ${asOf} quotes from ${staleSources.join(" / ")} — MtM is unknown, not zero`}
@@ -338,7 +347,7 @@ export function BookDailyPnlTable() {
                       <KrwCell value={row.mtm} />
                     )}
                   </td>
-                  <td className="py-1">
+                  <td className="py-1 text-right">
                     {/* A partial Total is still worth showing -- theta is real
                         money and already known -- but it must not pass for a
                         finished ΔNPV. Marked with ‡ and dropped to the
@@ -354,7 +363,7 @@ export function BookDailyPnlTable() {
                       }
                     />
                   </td>
-                  <td className="py-1">
+                  <td className="py-1 text-right">
                     <KrwCell value={row.funding} />
                   </td>
                 </tr>

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 
 import type { PeriodPnlFigure, PeriodPnlResponse } from "@/lib/api-types";
 
@@ -160,5 +160,119 @@ describe("BookDailyPnlTable period ribbon", () => {
 
     expect(screen.getByText(/기간 손익을 불러오지 못했습니다/)).toBeDefined();
     expect(screen.getByText("Daily P&L by Book")).toBeDefined();
+  });
+});
+
+/**
+ * s16 column-integrity fixtures. The pre-s16 blind spot: every fixture was a
+ * COMPLETE day, but the misalignment only exists in the PARTIAL (blank-MtM)
+ * state — Blueprint Tooltip's shrink-to-fit inline target parked the blank
+ * MtM dash and the partial ‡-Total at their cells' LEFT edge, so the whole
+ * row read as shifted one column left. Assertions here map cells to columns
+ * BY HEADER (never reading order) and pin the fix's mechanism (`fill` target
+ * + td-owned right alignment), for both the per-book and the Total row.
+ */
+
+/** Daily-response builder with distinct per-column values so any cell/column
+ * shift produces a mismatch somewhere. */
+function daily(partial: boolean) {
+  const row = partial
+    ? { theta: 270_100_000, mtm: null, total: 270_100_000, funding: -10_300_000, mtm_complete: false }
+    : { theta: 1_100_000, mtm: 2_200_000, total: 3_300_000, funding: -4_400_000, mtm_complete: true };
+  return {
+    as_of: "2026-07-16",
+    quote_sources: [
+      { source: "IRS", latest: "2026-07-15", has_as_of: !partial },
+      { source: "Credit Matrix", latest: "2026-07-14", has_as_of: !partial },
+    ],
+    daily_pnl: { ...row },
+    by_book: [
+      { book: "RP Fund", ...row },
+      { book: "Total", ...row },
+    ],
+  };
+}
+
+/** The daily table, its header→index map, and a by-book row lookup. */
+function grabTable(container: HTMLElement) {
+  const table = container.querySelector("table")!;
+  expect(table).not.toBeNull();
+  const headers = [...table.tHead!.rows[0].cells].map((th) => th.textContent?.trim());
+  expect(headers).toEqual(["Book", "Theta", "MtM", "Total", "Funding"]);
+  const col = (name: string) => headers.indexOf(name);
+  const bodyRows = [...table.tBodies].flatMap((tb) => [...tb.rows]);
+  const rowFor = (book: string) => {
+    const r = bodyRows.find((row) => row.cells[col("Book")].textContent?.trim() === book);
+    expect(r, `row for book ${book}`).toBeDefined();
+    return r!;
+  };
+  return { table, col, rowFor };
+}
+
+const cellText = (row: HTMLTableRowElement, i: number) => row.cells[i].textContent?.trim();
+
+describe("BookDailyPnlTable daily table column integrity (s16)", () => {
+  it("complete day: every value sits under its own header, no ‡, no blanks", () => {
+    analytics({ bookDailyPnl: daily(false) });
+    period();
+    const { container } = render(<BookDailyPnlTable />);
+    const { col, rowFor } = grabTable(container);
+
+    for (const book of ["RP Fund", "Total"]) {
+      const row = rowFor(book);
+      expect(cellText(row, col("Theta"))).toBe("+1.1M");
+      expect(cellText(row, col("MtM"))).toBe("+2.2M");
+      expect(cellText(row, col("Total"))).toBe("+3.3M");
+      expect(cellText(row, col("Funding"))).toBe("-4.4M");
+    }
+    expect(screen.queryByText(/‡ Partial/)).toBeNull();
+  });
+
+  it("partial day: MtM renders — in its OWN column, Total keeps the ‡, no shift", () => {
+    analytics({ bookDailyPnl: daily(true) });
+    period();
+    const { container } = render(<BookDailyPnlTable />);
+    const { col, rowFor } = grabTable(container);
+
+    for (const book of ["RP Fund", "Total"]) {
+      const row = rowFor(book);
+      // The defect crammed the dash into Theta ("+270.1M—") and pushed the
+      // ‡-Total under MtM, leaving Total empty. Assert each cell exactly.
+      expect(cellText(row, col("Theta"))).toBe("+270.1M");
+      expect(cellText(row, col("MtM"))).toBe("—");
+      expect(cellText(row, col("Total"))).toBe("+270.1M‡");
+      expect(cellText(row, col("Funding"))).toBe("-10.3M");
+    }
+    // Footnote referent: ‡ belongs to Total and names the stale sources.
+    expect(screen.getByText(/‡ Partial — excludes MtM from IRS \/ Credit Matrix/)).toBeDefined();
+  });
+
+  it("pins the mechanism: tooltip targets fill their cell and tds own right alignment", () => {
+    analytics({ bookDailyPnl: daily(true) });
+    period();
+    const { container } = render(<BookDailyPnlTable />);
+    const { col, rowFor } = grabTable(container);
+
+    const row = rowFor("RP Fund");
+    for (const name of ["MtM", "Total"] as const) {
+      const wrapper = row.cells[col(name)].firstElementChild!;
+      // Blueprint's default target is a shrink-to-fit inline SPAN — that's
+      // what shifted the row. `fill` renders the target as a block-level DIV
+      // (fills the td) and stamps bp5-fill on the cloned child.
+      expect(wrapper.classList.contains("bp5-popover-target"), `${name} tooltip target`).toBe(true);
+      expect(wrapper.tagName, `${name} target must be the block-level fill div`).toBe("DIV");
+      expect(
+        wrapper.firstElementChild?.classList.contains("bp5-fill"),
+        `${name} cell content must carry bp5-fill`,
+      ).toBe(true);
+    }
+    // ...and the td itself owns the alignment, so a future shrink-wrapped
+    // child still lands at the right edge of its own column.
+    for (const name of ["Theta", "MtM", "Total", "Funding"] as const) {
+      expect(row.cells[col(name)].className, `${name} td alignment`).toContain("text-right");
+    }
+    // The tooltips still exist (honesty rules): blank-MtM and partial-Total
+    // both explain themselves on hover.
+    expect(within(row.cells[col("MtM")]).getByText("—")).toBeDefined();
   });
 });
