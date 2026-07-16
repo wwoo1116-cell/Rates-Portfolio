@@ -65,6 +65,32 @@ export function unregisterSyncChart(id: string) {
   rangeHandlers.delete(id);
 }
 
+/**
+ * Apply one logical range to EVERY registered chart in the same tick (s20).
+ * A per-chart full-domain fit livelocks on multi-chart stages: lightweight-
+ * charts applies range sets through its async invalidation queue, so after a
+ * single chart is fitted, the lockstep handler mirrors the SIBLING's stale
+ * tail range back over it in the next cycle — each chart keeps re-infecting
+ * the other (observed live on the Results 2×2 grid, docs/session-s20).
+ * Setting the whole group at once leaves no stale range anywhere to echo:
+ * every chart's next range event carries the same fitted range, and
+ * re-mirroring an identical range is a no-op, so the group settles.
+ */
+export function syncSetLogicalRange(range: { from: number; to: number }) {
+  applying = true;
+  try {
+    for (const chart of charts.values()) {
+      try {
+        chart.timeScale().setVisibleLogicalRange(range);
+      } catch {
+        // chart disposed mid-iteration (panel unmounting) — skip it
+      }
+    }
+  } finally {
+    applying = false;
+  }
+}
+
 /** Broadcast the currently-hovered date ("YYYY-MM-DD") to the sibling charts. */
 export function setSharedHoverTime(time: string | null) {
   if (hoverTime === time) return;

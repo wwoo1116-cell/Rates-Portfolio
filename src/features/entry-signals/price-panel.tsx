@@ -24,11 +24,13 @@ import { instrumentLabel } from "@/lib/rv-instruments";
 import { useEntrySignalsStore } from "@/stores/entry-signals-store";
 import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
 import { CHART_COLORS } from "./chart-theme";
+import { ensureFullDomainFit } from "./full-domain-fit";
 import { useEntrySignalsData } from "./use-entry-signals-data";
 import { PanelEmptyState, SyncedTimeGuide } from "./panel-shell";
 import {
   registerSyncChart,
   setSharedHoverTime,
+  syncSetLogicalRange,
   unregisterSyncChart,
 } from "./use-synced-time-scales";
 
@@ -67,6 +69,7 @@ export function PricePanel() {
   const upperRef = useRef<ISeriesApi<"Line"> | null>(null);
   const lowerRef = useRef<ISeriesApi<"Line"> | null>(null);
   const prevIdRef = useRef<string>("");
+  const fitRef = useRef<(() => void) | null>(null);
   const [reticle, setReticle] = useState<(CrosshairReticlePoint & { date?: string; paneWidth: number }) | null>(null);
 
   const onChartReady = useCallback((api: IChartApi) => {
@@ -186,9 +189,16 @@ export function PricePanel() {
 
     if (idChanged) {
       prevIdRef.current = focusedSeries.id;
-      chart.timeScale().fitContent();
+      // s20 (s19 R2a): convergent full-domain fit instead of a one-shot
+      // fitContent, which the mount race silently drops on the cache-hit
+      // path. Group applier: a lone-chart fit is echoed away by the synced
+      // siblings' stale ranges.
+      fitRef.current?.();
+      fitRef.current = ensureFullDomainFit(chart, dates.length, syncSetLogicalRange);
     }
   }, [chart, focusedSeries, lookback, entryZ, showBands]);
+
+  useEffect(() => () => fitRef.current?.(), []);
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">

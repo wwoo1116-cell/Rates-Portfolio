@@ -55,6 +55,16 @@ export const BASE_CHART_OPTIONS: DeepPartial<ChartOptions> = {
     secondsVisible: false,
     fixLeftEdge: false,
     fixRightEdge: false,
+    // s20 (s19 R2b): the library's 0.5px floor caps fitContent at
+    // paneWidth/0.5 bars, so a 4,040-bar daily history could never fit a
+    // ~640px workspace pane — charts silently rendered only the tail while
+    // KPIs aggregated the full domain. 0.05px keeps ~12,800 bars fittable at
+    // 640px (3× today's longest series) while still bounding zoom-out.
+    // Shared default rather than per-host: every LwChartBase host plots
+    // full-history daily series through fitContent and none overrides
+    // timeScale, so the floor must not silently reappear on any of them.
+    // Pinned by chart-defaults.test.ts (s20) + backtest-defect-s19.test.ts.
+    minBarSpacing: 0.05,
   },
   rightPriceScale: {
     borderColor: "rgba(255,255,255,0.11)",
