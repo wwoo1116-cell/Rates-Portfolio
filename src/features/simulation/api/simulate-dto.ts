@@ -58,6 +58,38 @@ export interface SimulationChartPoint {
   [key: string]: unknown;
 }
 
+/** s11 T4 — funding rate along the simulation time axis. Rates are decimals
+ * (0.042 = 4.2%); positionRate/carryBp are null (unknown, not zero) when no
+ * live bonds remain at that step. */
+export interface FundingCurvePoint {
+  day: number;
+  date: string;
+  fundingRate: number;
+  positionRate: number | null;
+  carryBp: number | null;
+}
+
+export interface DistributionBand {
+  day: number;
+  p5: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p95: number;
+}
+
+/** s11 T3 — totalPnL percentile fan. p50 equals the base scenario's totalPnL
+ * trace; each band is a real engine run of the scenario plus a parallel shock
+ * ramping to its terminal quantile offset (see backend
+ * simulation_service.build_distribution_bands for the documented assumptions). */
+export interface SimulationDistribution {
+  sigmaBpDaily: number;
+  sigmaTerminalBp: number;
+  percentiles: number[];
+  method: string;
+  bands: DistributionBand[];
+}
+
 /** Response body of POST /api/simulate. */
 export interface SimulateResponse {
   chartData: SimulationChartPoint[];
@@ -66,4 +98,7 @@ export interface SimulateResponse {
   irsDailyReconciliation?: unknown[];
   pvbpSensitivity?: PVBPSensitivity[];
   bookDailyPnLs?: BookDailyPnL[];
+  // s11 additive fields — optional so cached/older responses stay valid.
+  fundingCurve?: FundingCurvePoint[];
+  distribution?: SimulationDistribution | null;
 }
