@@ -5,7 +5,7 @@ import type { IChartApi, MouseEventParams } from "lightweight-charts";
 import { LineSeries } from "lightweight-charts";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, formatCrosshairDate } from "@/components/charts/crosshair-reticle";
-import { PNL_COLORS, withAlpha } from "@/lib/chart-colors";
+import { CHART_CHROME_COLORS, PNL_COLORS, withAlpha } from "@/lib/chart-colors";
 import { getSimulationChartTheme } from "./lib/chart-theme";
 import { NumericCell } from "@/components/ui/numeric-cell";
 import { PriceDisplay } from "@/components/data/price-display";
@@ -48,16 +48,20 @@ export function PricerPage() {
   const onChartReady = useCallback((chart: IChartApi) => {
     chartApiRef.current = chart;
 
-    // Mid line (accent)
+    // Mid line (accent). iv3: lightweight-charts renders to canvas, which
+    // CANNOT resolve var(--...) — the old "var(--accent)" literals fell back
+    // to the library default color (same defect class as s10's MtM chart).
+    // Canvas-bound options take resolved values only (chart-colors mirrors /
+    // resolveCssVar); guarded by scripts/check_canvas_var_colors.test.ts.
     const midSeries = chart.addSeries(LineSeries, {
-      color: "var(--accent)",
+      color: CHART_CHROME_COLORS.accentLine,
       lineWidth: 2,
       lineStyle: 0,
       priceLineVisible: true,
       lastValueVisible: true,
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
-      crosshairMarkerBorderColor: "var(--accent)",
+      crosshairMarkerBorderColor: CHART_CHROME_COLORS.accentLine,
       crosshairMarkerBackgroundColor: getSimulationChartTheme().background, // --bg-surface
       title: "IRS 5Y Mid",
     });
