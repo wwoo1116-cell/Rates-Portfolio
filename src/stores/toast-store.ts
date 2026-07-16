@@ -21,7 +21,11 @@ export function toast(item: ToastItem) {
   if (!AppToaster) return;
 
   let intent: Intent = Intent.NONE;
-  if (item.variant === "success") intent = Intent.SUCCESS;
+  // S12: Intent.SUCCESS renders Blueprint's own vendor GREEN (compiled CSS,
+  // out of our token layer's reach) — success is a confirmation, not a
+  // signed value, so it maps to PRIMARY (accent). Errors keep DANGER red
+  // (error semantic, --sem-danger side — never directional Berry).
+  if (item.variant === "success") intent = Intent.PRIMARY;
   if (item.variant === "error") intent = Intent.DANGER;
 
   AppToaster.show({

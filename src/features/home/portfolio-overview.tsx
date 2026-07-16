@@ -191,7 +191,7 @@ export function PortfolioOverview() {
       ) : isLoading && !allocation ? (
         <OverviewSkeleton />
       ) : isError ? (
-        <div className="flex flex-1 items-center justify-center text-body text-sem-negative">
+        <div className="flex flex-1 items-center justify-center text-body text-sem-danger">
           Failed to load portfolio overview.
         </div>
       ) : (

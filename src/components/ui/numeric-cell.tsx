@@ -1,5 +1,7 @@
 // Shared directional numeric cell renderer.
-// Positive → --sem-positive (green), Negative → --sem-negative (red), Zero → --fg-secondary.
+// S12: Positive → --chart-pnl-pos (Jade), Negative → --chart-pnl-neg (Berry),
+// Zero → --fg-secondary. Jade/Berry is the universal signed pair (owner
+// lockdown); the old green/red sem tokens are retired.
 // All values rendered in Inter with tabular-nums.
 
 interface NumericCellProps {
@@ -28,9 +30,9 @@ export function NumericCell({
   const color = neutral
     ? "var(--fg-secondary)"
     : value > 0
-      ? "var(--sem-positive)"
+      ? "var(--chart-pnl-pos)"
       : value < 0
-        ? "var(--sem-negative)"
+        ? "var(--chart-pnl-neg)"
         : "var(--fg-secondary)";
 
   return (
@@ -63,9 +65,9 @@ export function NumericInline({
   const sign = signed && value > 0 ? "+" : "";
   const color =
     value > 0
-      ? "var(--sem-positive)"
+      ? "var(--chart-pnl-pos)"
       : value < 0
-        ? "var(--sem-negative)"
+        ? "var(--chart-pnl-neg)"
         : "var(--fg-secondary)";
   return (
     <span

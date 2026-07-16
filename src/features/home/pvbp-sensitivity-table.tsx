@@ -103,7 +103,7 @@ export function PvbpSensitivityTable() {
           <Spinner size={16} /> Computing…
         </div>
       ) : isError ? (
-        <div className="flex flex-1 items-center justify-center text-body text-sem-negative">
+        <div className="flex flex-1 items-center justify-center text-body text-sem-danger">
           Failed to load sensitivity data.
         </div>
       ) : (

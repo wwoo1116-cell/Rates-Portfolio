@@ -14,12 +14,14 @@ const STATUS_DOT: Record<FileSlotState["status"], StatusDotVariant> = {
   error: "offline",
 };
 
+// S12: READY is a success/status state, not a signed value — Jade is locked
+// to signed semantics, so it drops to accent; ERROR carries the danger tone.
 const STATUS_BADGE: Record<FileSlotState["status"], { label: string; tone: BadgeTone } | null> = {
   empty: null,
   selected: { label: "SELECTED", tone: "accent" },
   uploading: { label: "PROCESSING", tone: "accent" },
-  ready: { label: "READY", tone: "positive" },
-  error: { label: "ERROR", tone: "negative" },
+  ready: { label: "READY", tone: "accent" },
+  error: { label: "ERROR", tone: "danger" },
 };
 
 export interface FileUploadRowProps {
@@ -76,7 +78,7 @@ export function FileUploadRow({ label, description, slot, disabled, onFileSelect
         </p>
       )}
       {slot.status === "error" && (
-        <p className="text-xs" style={{ color: "var(--sem-negative)" }}>
+        <p className="text-xs" style={{ color: "var(--sem-danger)" }}>
           {slot.fileName ? `${slot.fileName}: ` : ""}
           {slot.errorMessage ?? "Could not process this file."}
         </p>

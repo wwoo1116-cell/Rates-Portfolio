@@ -28,6 +28,15 @@ const config: Config = {
           dim: "var(--border-dim)",
         },
         sem: {
+          // S12: error/destructive semantic (NOT directional). Signed values
+          // use the chart pnl-* utilities below.
+          danger: "var(--sem-danger)",
+          "danger-soft": "var(--sem-danger-soft)",
+          // DEPRECATED (S12): kept ONLY so the live s11 Simulation slice's
+          // text-sem-positive/negative classes keep generating CSS; the vars
+          // now alias Jade/Berry (tokens.css). The lockdown guard bans these
+          // class names outside features/simulation.
+          // TODO(integration): migrate simulation, then delete.
           positive: "var(--sem-positive)",
           negative: "var(--sem-negative)",
           risk: "var(--sem-risk)",
@@ -50,7 +59,8 @@ const config: Config = {
           aqua: "var(--chart-aqua)",
           purple: "var(--chart-purple)",
           tangerine: "var(--chart-tangerine)",
-          berry: "var(--chart-berry)",
+          // S12: renamed from berry (legacy red accent ≠ locked Berry family)
+          scarlet: "var(--chart-scarlet)",
           // S7 MS-palette semantic chart tokens (tokens.css) — chart surfaces
           // only. DOM text/swatches on charts use these; canvas series colors
           // go through src/lib/chart-colors.ts mirrors instead.

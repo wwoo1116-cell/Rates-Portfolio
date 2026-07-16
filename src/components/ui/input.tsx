@@ -24,7 +24,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             className={cn(
               "h-8 w-full rounded border border-transparent bg-bg-tertiary px-3 text-body text-fg-primary outline-none placeholder:text-fg-dim focus:border-sem-info",
               suffix && "pr-12",
-              error && "border-sem-negative",
+              error && "border-sem-danger",
               className,
             )}
             {...props}
@@ -35,7 +35,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             </span>
           )}
         </div>
-        {error && <span className="text-micro text-sem-negative">{error}</span>}
+        {error && <span className="text-micro text-sem-danger">{error}</span>}
       </div>
     );
   },

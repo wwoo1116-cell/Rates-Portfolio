@@ -48,11 +48,13 @@ function KrwCell({
   suffix?: string;
   tooltip?: string;
 }) {
+  // S12: signed P&L carries the universal Jade/Berry pair (owner lockdown) —
+  // the app-wide green/red sem tokens are retired for direction semantics.
   const color =
     value > 0
-      ? "var(--sem-positive)"
+      ? "var(--chart-pnl-pos)"
       : value < 0
-        ? "var(--sem-negative)"
+        ? "var(--chart-pnl-neg)"
         : "var(--fg-dim)";
   const cell = (
     <span
@@ -122,8 +124,8 @@ function PeriodPnlStat({ label, figure }: { label: string; figure: PeriodPnlFigu
     value === null || value === 0
       ? "var(--fg-dim)"
       : value > 0
-        ? "var(--sem-positive)"
-        : "var(--sem-negative)";
+        ? "var(--chart-pnl-pos)"
+        : "var(--chart-pnl-neg)";
   return (
     <div className="flex items-baseline gap-1.5">
       <span className="text-micro uppercase text-fg-dim">{label}</span>
@@ -251,7 +253,7 @@ export function BookDailyPnlTable() {
               ))}
             </div>
           ) : (
-            <span className="text-label text-sem-negative">
+            <span className="text-label text-sem-danger">
               기간 손익을 불러오지 못했습니다.
             </span>
           )}
@@ -277,7 +279,7 @@ export function BookDailyPnlTable() {
           <Spinner size={16} /> Computing…
         </div>
       ) : isError ? (
-        <div className="flex flex-1 items-center justify-center text-body text-sem-negative">
+        <div className="flex flex-1 items-center justify-center text-body text-sem-danger">
           Failed to load P&amp;L data.
         </div>
       ) : (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { PNL_COLORS, ZERO_LINE_COLOR } from "@/lib/chart-colors";
 
 export interface SparklineProps {
   data: number[];
@@ -9,15 +10,19 @@ export interface SparklineProps {
   height?: number;
 }
 
+// S12: canvas strokeStyle can't resolve var(--...) — the old
+// "var(--sem-positive)" strings were silently invalid and this sparkline has
+// been stroking the canvas default (black) all along. Literal mirrors from
+// chart-colors fix that AND land the Jade/Berry signed pair in one move.
 const COLORS = {
-  positive: "var(--sem-positive)",
-  negative: "var(--sem-negative)",
-  neutral:  "#4a5568",
+  positive: PNL_COLORS.pos,
+  negative: PNL_COLORS.neg,
+  neutral: ZERO_LINE_COLOR,
 } as const;
 
 /**
  * Canvas 2D sparkline — no SVG, no Recharts, no D3.
- * Positive → --sem-positive green, Negative → --sem-negative red.
+ * Positive → Jade, Negative → Berry (chart P&L pair, S12 lockdown).
  */
 export function Sparkline({
   data,

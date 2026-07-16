@@ -48,7 +48,7 @@ export const DockviewActions = memo(function DockviewActions(props: IDockviewHea
       <button
         type="button"
         aria-label="Close panel"
-        className="flex h-6 w-6 items-center justify-center rounded hover:bg-sem-negative hover:text-fg-primary transition-colors"
+        className="flex h-6 w-6 items-center justify-center rounded hover:bg-sem-danger hover:text-fg-primary transition-colors"
         onClick={() => {
           if (props.group.activePanel) {
             props.group.activePanel.api.close();
