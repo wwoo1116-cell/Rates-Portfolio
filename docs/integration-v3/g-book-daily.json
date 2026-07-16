@@ -1,0 +1,52 @@
+{
+  "as_of": "2026-07-16",
+  "quote_sources": [
+    {
+      "source": "IRS",
+      "latest": "2026-07-15",
+      "has_as_of": false
+    },
+    {
+      "source": "Credit Matrix",
+      "latest": "2026-07-14",
+      "has_as_of": false
+    }
+  ],
+  "fixing_warnings": [],
+  "daily_pnl": {
+    "total": 3016281.956262231,
+    "mtm": null,
+    "theta": 3016281.956262231,
+    "realized_cash": 0,
+    "mtm_complete": false
+  },
+  "by_book": [
+    {
+      "book": "Prop",
+      "theta": -295845.78129196167,
+      "mtm": null,
+      "total": -295845.78129196167,
+      "funding": 0,
+      "realized_cash": 0,
+      "mtm_complete": false
+    },
+    {
+      "book": "RP Fund",
+      "theta": 3312127.7375541925,
+      "mtm": null,
+      "total": 3312127.7375541925,
+      "funding": -81917.80821917808,
+      "realized_cash": 0,
+      "mtm_complete": false
+    },
+    {
+      "book": "Total",
+      "theta": 3016281.956262231,
+      "mtm": null,
+      "total": 3016281.956262231,
+      "funding": -81917.80821917808,
+      "realized_cash": 0,
+      "mtm_complete": false
+    }
+  ]
+}

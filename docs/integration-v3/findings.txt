@@ -1,0 +1,3 @@
+home allocation maximize+detach: OK
+trace last point 2026-07-15: daily_pnl=1984626.564647019
+sigma half-widths: see f-simulate-resp-*.json (shape differed from guess)

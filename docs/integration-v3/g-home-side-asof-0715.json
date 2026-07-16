@@ -1,0 +1,46 @@
+{
+  "request_pair": "2026-07-14 -> 2026-07-15",
+  "response": {
+    "as_of": "2026-07-15",
+    "quote_sources": [
+      {
+        "source": "IRS",
+        "latest": "2026-07-15",
+        "has_as_of": true
+      },
+      {
+        "source": "Credit Matrix",
+        "latest": "2026-07-14",
+        "has_as_of": false
+      }
+    ],
+    "fixing_warnings": [],
+    "daily_pnl": {
+      "total": 1984626.564647019,
+      "mtm": 1703025.0406466722,
+      "theta": 281601.52400034666,
+      "realized_cash": 0.0,
+      "mtm_complete": true
+    },
+    "by_book": [
+      {
+        "book": "RP Fund",
+        "theta": 281601.52400034666,
+        "mtm": 1703025.0406466722,
+        "total": 1984626.564647019,
+        "funding": 0.0,
+        "realized_cash": 0.0,
+        "mtm_complete": true
+      },
+      {
+        "book": "Total",
+        "theta": 281601.52400034666,
+        "mtm": 1703025.0406466722,
+        "total": 1984626.564647019,
+        "funding": 0.0,
+        "realized_cash": 0.0,
+        "mtm_complete": true
+      }
+    ]
+  }
+}
