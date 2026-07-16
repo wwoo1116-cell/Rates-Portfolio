@@ -8,6 +8,7 @@ import { PriceDisplay } from "@/components/data/price-display";
 import { ChartFrame } from "@/components/chart/ChartFrame";
 import { SeriesChart, type SeriesChartSeriesDef } from "@/components/charts/series-chart";
 import { CHART_SERIES_COLORS } from "@/lib/chart-colors";
+import { directionPnlTone } from "@/lib/direction-color";
 import { formatKrwAxisSigned } from "@/lib/format";
 import { usePortfolioFiltersStore } from "@/stores/portfolio-filters-store";
 import { usePortfolioPositions } from "./use-portfolio-positions";
@@ -176,11 +177,11 @@ export const DetailsPanel = memo(function DetailsPanel() {
     <div className="flex h-full flex-col gap-6 overflow-auto p-4">
       <div className="flex items-center justify-between">
         <span className="font-mono text-micro text-fg-muted">{position.id}</span>
-        {/* S12: Jade/Berry direction pair. Convention preserved from the old
-            green/red EXACTLY as this badge had it (Pay/Buy = Jade) — NOTE it
-            contradicts the Positions grid's Dir column (Pay = Berry there);
-            flagged in REPORT_s12.md for an owner ruling. */}
-        <Badge tone={position.direction === "Pay" || position.direction === "Buy" ? "pnl-positive" : "pnl-negative"}>
+        {/* Direction rule single-sourced in lib/direction-color (owner
+            ruling, iv3: Pay = Berry everywhere — this badge's legacy
+            Pay=green/Jade was the pre-existing bug the s12 sign-preservation
+            rule had to keep). Pinned by direction-color.test.ts. */}
+        <Badge tone={directionPnlTone(position.direction)}>
           {position.direction}
         </Badge>
       </div>

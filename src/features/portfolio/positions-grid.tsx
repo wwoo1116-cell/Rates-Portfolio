@@ -10,6 +10,7 @@ import { useBondPositionsStore } from "@/stores/bond-positions-store";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/stores/toast-store";
 import type { Position } from "@/types/portfolio";
+import { directionPnlColor } from "@/lib/direction-color";
 import { usePortfolioPositions } from "./use-portfolio-positions";
 import { parseBlotterFile } from "./blotter-parser";
 import "ag-grid-community/styles/ag-grid.css";
@@ -128,13 +129,11 @@ export function PositionsGrid() {
       field: "direction", 
       headerName: "Dir", 
       width: 70,
-      // S12: Jade/Berry direction pair. Sign convention preserved from the
-      // old green/red EXACTLY as this surface had it (Pay = Berry/red-side)
-      // — NOTE it contradicts the details-panel badge (Pay = Jade there);
-      // flagged in REPORT_s12.md for an owner ruling rather than harmonized
-      // silently.
+      // Direction rule single-sourced in lib/direction-color (owner ruling,
+      // iv3: Pay = Berry everywhere) — pinned against divergence by
+      // direction-color.test.ts.
       cellStyle: (params) => ({
-        color: params.value === "Pay" ? "var(--chart-pnl-neg)" : "var(--chart-pnl-pos)",
+        color: directionPnlColor(String(params.value)),
         fontWeight: 600
       })
     },
