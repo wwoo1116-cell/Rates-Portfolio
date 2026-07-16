@@ -1,0 +1,5 @@
+HOME  (7/14->7/15): 1984626.564647019 theta: 281601.52400034666 mtm: 1703025.0406466722 complete: True
+TRACE (7/14->7/15): 1984626.564647019
+|diff|            : 0.0
+iv3 legs          : theta 281601.52400034666 mtm 1703025.0406466722
+theta byte-eq     : True  mtm byte-eq: True

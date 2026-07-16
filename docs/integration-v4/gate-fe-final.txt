@@ -1,0 +1,12 @@
+== vitest (final head) ==
+      Tests  205 passed | 3 expected fail (208)
+   Start at  13:54:19
+   Duration  7.29s (transform 5.23s, setup 0ms, import 24.71s, tests 4.57s, environment 23.34s)
+
+
+== tsc --noEmit ==
+clean (exit 0)
+
+== eslint repo-wide ==
+✖ 47 problems (21 errors, 26 warnings)
+
