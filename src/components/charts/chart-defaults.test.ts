@@ -35,6 +35,19 @@ describe("BASE_CHART_OPTIONS grid defaults (s14 T1 pin)", () => {
   });
 });
 
+describe("BASE_CHART_OPTIONS time scale (s20 R2b pin)", () => {
+  // s19 live geometry: 4,040-bar IRS daily history, ~640px workspace pane.
+  // The library's 0.5px default floor caps any fit at paneWidth/0.5 bars, so
+  // the full domain could never fit — the shared floor must stay at or below
+  // 640/4040 ≈ 0.158px (and above 0: a zero floor degenerates the zoom math).
+  it("minBarSpacing lets a 4,040-bar history fit a 640px pane", () => {
+    const floor = BASE_CHART_OPTIONS.timeScale?.minBarSpacing;
+    expect(floor).toBeDefined();
+    expect(floor!).toBeGreaterThan(0);
+    expect(floor! * 4040).toBeLessThanOrEqual(640);
+  });
+});
+
 describe("slice-local chart hosts keep vertical gridlines off (iv4 T2.1 pin)", () => {
   // The Simulation slice hosts build their createChart options inline and do
   // not consume BASE_CHART_OPTIONS, so the s14 default can never reach them —

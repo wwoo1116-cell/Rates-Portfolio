@@ -18,9 +18,10 @@ import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/chart
 import { paneOffsetX } from "@/components/charts/snap-reticle";
 import { formatKrwAxisSigned } from "@/lib/format";
 import { CHART_COLORS } from "./chart-theme";
+import { ensureFullDomainFit } from "./full-domain-fit";
 import { usePinnedBacktest } from "./use-pinned-backtest";
 import { PanelEmptyState, SyncedTimeGuide } from "./panel-shell";
-import { registerSyncChart, setSharedHoverTime, unregisterSyncChart } from "./use-synced-time-scales";
+import { registerSyncChart, setSharedHoverTime, syncSetLogicalRange, unregisterSyncChart } from "./use-synced-time-scales";
 
 const PANEL_ID = "es-equity";
 
@@ -32,6 +33,7 @@ export function EquityCurvePanel() {
   const [chart, setChart] = useState<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const fitRef = useRef<(() => void) | null>(null);
   const [reticle, setReticle] = useState<(CrosshairReticlePoint & { date?: string; paneWidth: number }) | null>(null);
 
   const onChartReady = useCallback((api: IChartApi) => {
@@ -119,8 +121,15 @@ export function EquityCurvePanel() {
     markers.sort((a, b) => String(a.time).localeCompare(String(b.time)));
     markersRef.current?.setMarkers(markers);
 
-    chart.timeScale().fitContent();
+    // s20 (s19 R2a): convergent full-domain fit instead of a one-shot
+    // fitContent, which the mount race silently drops on the cache-hit path
+    // (the "cumulative starts at 64.5M" tail window). Group applier: a
+    // lone-chart fit is echoed away by the synced siblings' stale ranges.
+    fitRef.current?.();
+    fitRef.current = ensureFullDomainFit(chart, result.points.length, syncSetLogicalRange);
   }, [chart, result]);
+
+  useEffect(() => () => fitRef.current?.(), []);
 
   return (
     <div className="flex h-full flex-col gap-2 p-4">

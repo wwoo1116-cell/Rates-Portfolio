@@ -55,7 +55,18 @@ vi.mock("lightweight-charts", () => {
       addSeries: (_type: unknown, options: Record<string, unknown>) => new FakeSeries(options),
       removeSeries: () => {},
       priceScale: () => ({ applyOptions: () => {} }),
-      timeScale: () => ({ fitContent: () => {}, width: () => 400 }),
+      // s20: hosts fit via ensureFullDomainFit, which also subscribes to
+      // range/size events — the stub carries inert versions of those.
+      timeScale: () => ({
+        fitContent: () => {},
+        setVisibleLogicalRange: () => {},
+        width: () => 400,
+        getVisibleLogicalRange: () => null,
+        subscribeVisibleLogicalRangeChange: () => {},
+        unsubscribeVisibleLogicalRangeChange: () => {},
+        subscribeSizeChange: () => {},
+        unsubscribeSizeChange: () => {},
+      }),
       subscribeClick: () => {},
       subscribeCrosshairMove: (cb: (p: unknown) => void) => {
         rec.crosshairHandlers.push(cb);
@@ -132,6 +143,7 @@ vi.mock("@/features/entry-signals/use-synced-time-scales", () => ({
   registerSyncChart: () => {},
   unregisterSyncChart: () => {},
   setSharedHoverTime: () => {},
+  syncSetLogicalRange: () => {}, // s20: the group-fit applier the panels pass
 }));
 
 import { SeriesChart, type SeriesChartSeriesDef } from "./series-chart";

@@ -1,0 +1,18 @@
+== vitest (s20 head) ==
+      Tests  221 passed (221)
+   Start at  16:32:06
+   Duration  8.37s (transform 4.87s, setup 0ms, import 27.25s, tests 3.45s, environment 33.08s)
+
+
+== tsc --noEmit ==
+$ tsc --noEmit
+clean (exit 0)
+
+== eslint repo-wide ==
+✖ 48 problems (21 errors, 27 warnings)
+(21 errors = v4 baseline; 27 warnings reproduced on pristine base 68f7553 in this env — see REPORT_s20.md T4)
+
+== next build ==
+✓ Compiled successfully in 5.3s
+  Generating static pages using 15 workers (0/13) ...
+  Generating static pages using 15 workers (3/13) 

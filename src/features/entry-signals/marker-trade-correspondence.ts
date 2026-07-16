@@ -1,21 +1,20 @@
 /**
- * s19 diagnosis helper — marker/trade correspondence as SET EQUALITY over
- * tuples (bijection), not cardinality. This is the acceptance criterion for
- * the eventual fix pass (REPORT_s19.md): after the fix, the oscillator's
- * entry markers must pass checkCorrespondence against the backtest's trade
- * entries, and every marker time must exist in the bar array it attaches to
- * (lightweight-charts silently drops markers whose time matches no bar).
+ * Marker/trade correspondence as SET EQUALITY over tuples (bijection), not
+ * cardinality. Written by s19 as the fix pass's acceptance criterion; since
+ * s20 it is also the SINGLE SOURCE for the oscillator's trade markers:
+ * zscore-oscillator-panel.tsx renders pinnedOscillatorMarkers (the pinned
+ * run's trade entries) — the parallel first-|z|-crossing derivation s19
+ * diagnosed (R1: not injective, not surjective against the trade list) was
+ * deleted, not repaired. Every marker time must exist in the bar array it
+ * attaches to (lightweight-charts silently drops markers whose time matches
+ * no bar).
  *
- * The two builders MIRROR the panels' inline constructions (equity:
- * equity-curve-panel.tsx markers loop; oscillator: zscore-oscillator-panel.tsx
- * first-crossing loop) so tests can measure the SHIPPED derivations without
- * refactoring the components mid-diagnosis. If a panel's construction
- * changes, update the mirror — the s19 tests exist to scream when the two
- * derivations disagree.
+ * equityMarkersFromTrades still MIRRORS equity-curve-panel.tsx's inline
+ * markers loop (correct since s17 — kept as a regression pin). If that
+ * panel's construction changes, update the mirror.
  */
 
-import { rollingZScore } from "@/lib/math/rolling-stats";
-import type { BtTrade } from "@/lib/math/backtest";
+import type { BtResult, BtTrade } from "@/lib/math/backtest";
 
 export interface MarkerTuple {
   time: string;
@@ -37,33 +36,8 @@ export function equityMarkersFromTrades(trades: BtTrade[]): MarkerTuple[] {
   return out;
 }
 
-/** SHORT/LONG markers exactly as zscore-oscillator-panel.tsx derives them:
- * first z-crossing into the entry zone — an INDEPENDENT derivation from the
- * trade list (no position state, no exit/stop rules). */
-export function oscillatorCrossingMarkers(
-  dates: string[],
-  values: number[],
-  lookback: number,
-  entryZ: number,
-): MarkerTuple[] {
-  const z = rollingZScore(values, lookback);
-  const out: MarkerTuple[] = [];
-  let wasBreaching = false;
-  for (let i = 0; i < z.length; i++) {
-    const zi = z[i];
-    if (zi == null) continue;
-    const breaching = Math.abs(zi) >= entryZ;
-    if (breaching && !wasBreaching) {
-      const rich = zi > 0;
-      out.push({ time: dates[i], position: rich ? "aboveBar" : "belowBar", shape: "circle", text: rich ? "SHORT" : "LONG" });
-    }
-    wasBreaching = breaching;
-  }
-  return out;
-}
-
-/** What the oscillator's entry markers SHOULD be: one marker per backtest
- * trade entry, on the entry bar, sided by direction. */
+/** One marker per backtest trade entry, on the entry bar, sided by direction
+ * — since s20 this IS the oscillator's shipped marker construction. */
 export function tradeEntryMarkers(trades: BtTrade[]): MarkerTuple[] {
   return trades.map((t) => ({
     time: t.entryDate,
@@ -71,6 +45,23 @@ export function tradeEntryMarkers(trades: BtTrade[]): MarkerTuple[] {
     shape: "circle",
     text: t.direction > 0 ? "LONG" : "SHORT",
   }));
+}
+
+/**
+ * The oscillator panel's marker source (s20). Markers belong to the PINNED
+ * run: when the live oscillator has drifted from the run's config (`stale` —
+ * useRunIsStale covers instrument + every parameter), trade markers are
+ * SUPPRESSED and the existing stale banner explains why. Pinned-run markers
+ * are never rendered over a mismatched live series — same policy spirit as
+ * the "no silent +0" rule (honest UI over decorative continuity).
+ * Implemented per the s20 prompt; semantic pending owner sign-off.
+ */
+export function pinnedOscillatorMarkers(
+  result: Pick<BtResult, "trades"> | null,
+  stale: boolean,
+): MarkerTuple[] {
+  if (!result || stale) return [];
+  return tradeEntryMarkers(result.trades);
 }
 
 export interface CorrespondenceResult {

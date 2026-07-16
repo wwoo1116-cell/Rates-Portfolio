@@ -2,9 +2,13 @@
 
 /**
  * Middle panel: the focused instrument's rolling z-score oscillator. Horizontal
- * threshold lines mark ±entryZ / ±warnZ / 0, and markers flag the dates where
- * the z-score crosses into an entry zone. Time-axis synced with the Price and
- * Equity panels (same master date array -> logical-range lockstep).
+ * threshold lines mark ±entryZ / ±warnZ / 0. Since s20 the SHORT/LONG markers
+ * are the PINNED run's trade entries (pinnedOscillatorMarkers — the same
+ * backtest result object that feeds the KPI block, trades table and equity
+ * curve), not raw z-crossings; when the live config drifts from the pinned
+ * run they are suppressed and the Results stale banner explains why.
+ * Time-axis synced with the Price and Equity panels (same master date
+ * array -> logical-range lockstep).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,9 +21,12 @@ import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/sna
 import { alignToDates, rollingZScore } from "@/lib/math/rolling-stats";
 import { useEntrySignalsStore } from "@/stores/entry-signals-store";
 import { CHART_COLORS } from "./chart-theme";
+import { ensureFullDomainFit } from "./full-domain-fit";
+import { pinnedOscillatorMarkers } from "./marker-trade-correspondence";
 import { useEntrySignalsData } from "./use-entry-signals-data";
+import { usePinnedBacktest, useRunIsStale } from "./use-pinned-backtest";
 import { PanelEmptyState, SyncedTimeGuide } from "./panel-shell";
-import { registerSyncChart, setSharedHoverTime, unregisterSyncChart } from "./use-synced-time-scales";
+import { registerSyncChart, setSharedHoverTime, syncSetLogicalRange, unregisterSyncChart } from "./use-synced-time-scales";
 
 const PANEL_ID = "es-zscore";
 const zFormatter = (v: number) => `${v.toFixed(2)}σ`;
@@ -30,6 +37,11 @@ export function ZScoreOscillatorPanel() {
   const lookback = useEntrySignalsStore((s) => s.lookback);
   const entryZ = useEntrySignalsStore((s) => s.entryZ);
   const warnZ = useEntrySignalsStore((s) => s.warnZ);
+  // s20: trade markers come from the pinned run (single source with the KPI
+  // block); stale live params suppress them rather than mixing sources.
+  const pinned = usePinnedBacktest();
+  const stale = useRunIsStale();
+  const pinnedResult = pinned?.result ?? null;
 
   const chartRef = useRef<IChartApi | null>(null);
   const [chart, setChart] = useState<IChartApi | null>(null);
@@ -37,6 +49,7 @@ export function ZScoreOscillatorPanel() {
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const prevIdRef = useRef<string>("");
+  const fitRef = useRef<(() => void) | null>(null);
   const [reticle, setReticle] = useState<(CrosshairReticlePoint & { date?: string; paneWidth: number }) | null>(null);
 
   const onChartReady = useCallback((api: IChartApi) => {
@@ -119,32 +132,34 @@ export function ZScoreOscillatorPanel() {
       series.createPriceLine({ price: 0, color: CHART_COLORS.accent, lineWidth: 1, lineStyle: LineStyle.Solid, axisLabelVisible: false, title: "" }),
     ];
 
-    // Entry markers: dates where |z| first crosses into an entry zone.
-    const markers: SeriesMarker<Time>[] = [];
-    let wasBreaching = false;
-    for (let i = 0; i < z.length; i++) {
-      const zi = z[i];
-      if (zi == null) continue;
-      const breaching = Math.abs(zi) >= entryZ;
-      if (breaching && !wasBreaching) {
-        const rich = zi > 0;
-        markers.push({
-          time: dates[i] as unknown as Time,
-          position: rich ? "aboveBar" : "belowBar",
-          color: rich ? CHART_COLORS.negative : CHART_COLORS.positive,
-          shape: "circle",
-          text: rich ? "SHORT" : "LONG",
-        });
-      }
-      wasBreaching = breaching;
-    }
+    // Trade markers (s20): the pinned run's trade entries — the same backtest
+    // result object as the KPI block / trades table / cumulative P&L. When
+    // the live config drifts from the pinned run, pinnedOscillatorMarkers
+    // returns [] (suppression; the Results stale banner explains) — pinned
+    // markers are never drawn over a mismatched live series. While not
+    // stale, the live series IS the pinned run's series, so every entry date
+    // is a member of this chart's bar array (on-bar by construction).
+    const markers: SeriesMarker<Time>[] = pinnedOscillatorMarkers(pinnedResult, stale).map((m) => ({
+      time: m.time as unknown as Time,
+      position: m.position,
+      color: m.text === "LONG" ? CHART_COLORS.positive : CHART_COLORS.negative,
+      shape: m.shape,
+      text: m.text,
+    }));
     markersRef.current?.setMarkers(markers);
 
     if (idChanged) {
       prevIdRef.current = focusedSeries.id;
-      chart.timeScale().fitContent();
+      // s20 (s19 R2a): convergent full-domain fit instead of a one-shot
+      // fitContent, which the mount race silently drops on the cache-hit
+      // path. Group applier: a lone-chart fit is echoed away by the synced
+      // siblings' stale ranges.
+      fitRef.current?.();
+      fitRef.current = ensureFullDomainFit(chart, dates.length, syncSetLogicalRange);
     }
-  }, [chart, focusedSeries, lookback, entryZ, warnZ]);
+  }, [chart, focusedSeries, lookback, entryZ, warnZ, pinnedResult, stale]);
+
+  useEffect(() => () => fitRef.current?.(), []);
 
   return (
     <div className="flex h-full flex-col gap-2 p-4">
@@ -152,6 +167,12 @@ export function ZScoreOscillatorPanel() {
         <span className="text-label font-bold uppercase text-fg-muted">Z-Score Oscillator</span>
         <span className="text-micro text-fg-muted">
           lookback {lookback}D · entry ±{entryZ}σ · watch ±{warnZ}σ
+          {pinned && stale && (
+            /* s20: markers belong to the pinned run; on live drift they are
+               suppressed, and (unlike the Results stage) the detached /chart
+               window has no stale banner — this is its honesty marker. */
+            <span className="text-sem-risk"> · 체결 마커 숨김(설정 변경)</span>
+          )}
         </span>
       </div>
 
