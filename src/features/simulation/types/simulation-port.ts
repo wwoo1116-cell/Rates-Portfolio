@@ -22,7 +22,11 @@ export type RunStatus = "idle" | "running" | "success" | "error";
 export interface SimulationInputs {
   positions: Position[];
   baseDate: string;
-  fundingRate: number;
+  /** s15 — optional and normally ABSENT: the live bridge no longer supplies a
+   * funding rate, so the payload omits fundingRate and the backend derives it
+   * from its 기준금리+10bp constant (the single source). Set only to reproduce
+   * legacy explicit-funding payloads. */
+  fundingRate?: number;
   dailyShockCurves: ShockCurves;
   irsParRates: IrsParRate[];
 }
@@ -75,6 +79,12 @@ export interface SimulationDataPort {
    * only sets params and calls this — it never builds the wire payload (§1.3).
    */
   runCurrent: () => Promise<SimulateResponse | null>;
+
+  /**
+   * s15 — abort the in-flight run (Running interstitial's cancel). Status returns
+   * to idle; the previous result is kept (replace-on-arrival, no history).
+   */
+  cancelRun: () => void;
 }
 
 export const DEFAULT_SCENARIO_PARAMS: ScenarioParams = {
@@ -96,7 +106,7 @@ export const DEFAULT_SCENARIO_PARAMS: ScenarioParams = {
 export const EMPTY_SIMULATION_INPUTS: SimulationInputs = {
   positions: [],
   baseDate: "",
-  fundingRate: 0,
+  // fundingRate deliberately absent (s15): omitted → backend constant.
   dailyShockCurves: { bondCurves: {}, swapCurve: [] },
   irsParRates: [],
 };

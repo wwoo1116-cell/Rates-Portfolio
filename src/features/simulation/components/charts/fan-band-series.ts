@@ -35,6 +35,12 @@ export interface FanBandSeriesOptions extends CustomSeriesOptions {
   innerColor: string;
   outerAlpha: number;
   innerAlpha: number;
+  /** s15 T4 — stroke width (CSS px) for the percentile edge lines drawn by
+   * this series. The edges used to be four separate SeriesChart line series,
+   * each minting a price-scale badge; drawing them here keeps the visual and
+   * leaves the last-value badge to the center (base-run) line only. 0 = off. */
+  edgeWidth: number;
+  edgeAlpha: number;
 }
 
 type DrawTarget = Parameters<ICustomSeriesPaneRenderer["draw"]>[0];
@@ -71,6 +77,9 @@ class FanBandRenderer implements ICustomSeriesPaneRenderer {
         ctx.beginPath();
         let started = false;
         for (const bar of bars) {
+          // Whitespace rows (calendar-gap slots, s15 T4) carry no percentile
+          // values — skip them; the polygon spans the gap between real points.
+          if (bar.originalData[highKey] === undefined) continue;
           const y = priceConverter(bar.originalData[highKey]);
           if (y == null) continue;
           const px = bar.x * hpr;
@@ -82,6 +91,7 @@ class FanBandRenderer implements ICustomSeriesPaneRenderer {
           }
         }
         for (let i = bars.length - 1; i >= 0; i--) {
+          if (bars[i].originalData[lowKey] === undefined) continue;
           const y = priceConverter(bars[i].originalData[lowKey]);
           if (y == null) continue;
           ctx.lineTo(bars[i].x * hpr, y * vpr);
@@ -96,6 +106,37 @@ class FanBandRenderer implements ICustomSeriesPaneRenderer {
       // Outer first so the inner band reads as a second, denser layer.
       fillBand("p5", "p95", options.outerColor, options.outerAlpha);
       fillBand("p25", "p75", options.innerColor, options.innerAlpha);
+
+      // s15 T4 — percentile edge strokes (see FanBandSeriesOptions.edgeWidth).
+      const strokeEdge = (key: "p5" | "p25" | "p75" | "p95", color: string) => {
+        ctx.save();
+        ctx.beginPath();
+        let started = false;
+        for (const bar of bars) {
+          if (bar.originalData[key] === undefined) continue;
+          const y = priceConverter(bar.originalData[key]);
+          if (y == null) continue;
+          const px = bar.x * hpr;
+          if (!started) {
+            ctx.moveTo(px, y * vpr);
+            started = true;
+          } else {
+            ctx.lineTo(px, y * vpr);
+          }
+        }
+        ctx.globalAlpha = options.edgeAlpha;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = options.edgeWidth * vpr;
+        ctx.lineJoin = "round";
+        ctx.stroke();
+        ctx.restore();
+      };
+      if (options.edgeWidth > 0) {
+        strokeEdge("p5", options.outerColor);
+        strokeEdge("p95", options.outerColor);
+        strokeEdge("p25", options.innerColor);
+        strokeEdge("p75", options.innerColor);
+      }
     });
   }
 }
@@ -131,6 +172,8 @@ export class FanBandSeries implements ICustomSeriesPaneView<Time, FanBandData, F
       innerColor: "",
       outerAlpha: 0,
       innerAlpha: 0,
+      edgeWidth: 0,
+      edgeAlpha: 1,
     };
   }
 }

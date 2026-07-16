@@ -123,7 +123,9 @@ export function buildSimulateRequest(inputs: SimulationInputs, params: ScenarioP
     positions: inputs.positions,
     shockCurves,
     dailyShockCurves: inputs.dailyShockCurves ?? { bondCurves: {}, swapCurve: [] },
-    fundingRate: inputs.fundingRate,
+    // s15: omitted unless explicitly configured — the backend then derives
+    // funding from its 기준금리+10bp constant (single source; no stepping).
+    ...(inputs.fundingRate !== undefined ? { fundingRate: inputs.fundingRate } : {}),
     fundingEvents: params.shortEndEvents
       .filter((ev) => ev.date)
       .map((ev) => ({ date: ev.date, shiftBp: toNum(ev.shiftBp) })),

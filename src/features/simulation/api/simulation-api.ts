@@ -32,16 +32,21 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 
 export const simulationApi = {
-  /** Run one scenario. Single request/response — no streaming. */
-  simulate: async (req: SimulateRequest): Promise<SimulateResponse> => {
+  /** Run one scenario. Single request/response — no streaming. `signal` (s15)
+   * lets the Running interstitial's cancel button abort the in-flight request;
+   * an abort is re-thrown as the original AbortError (NOT wrapped in ApiError)
+   * so the caller can tell a user cancel from a network failure. */
+  simulate: async (req: SimulateRequest, signal?: AbortSignal): Promise<SimulateResponse> => {
     let res: Response;
     try {
       res = await fetch(`${SIMULATION_API_BASE}/api/simulate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(req),
+        signal,
       });
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") throw err;
       throw new ApiError(NETWORK_ERROR_MESSAGE, 0);
     }
     return handleResponse<SimulateResponse>(res);

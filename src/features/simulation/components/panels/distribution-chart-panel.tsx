@@ -1,22 +1,30 @@
 "use client";
 
 /**
- * Distribution / Total-Return panel — s11 redesign (T3+T4).
+ * Distribution / Total-Return panel — s11 redesign (T3+T4), s15 fan semantics.
  *
- * T3 (Marquee-style fan): the path display is distribution-based. The backend's
- * additive `distribution` field (deterministic quantile-scenario runs, see
- * simulation_service.build_distribution_bands) renders as a percentile fan:
- * bold median (aggregate emphasis token) + thin percentile edge lines through
- * the canonical SeriesChart (crosshair tooltip therefore reads percentile
- * values at the hovered time), with the 5–95 / 25–75 fills painted by the
- * slice-local FanBandSeries custom series, added through SeriesChart's public
- * onChartReady seam. Individual sample paths do not exist in the engine
- * (deterministic scenario runs), so there is no spaghetti layer.
+ * s15 T4 (scenario identity): each percentile band is the actual engine run of
+ * its generating RATE-quantile scenario (z-shock path) — the backend no longer
+ * re-sorts per day, so bands may cross on non-monotone books, and on a book
+ * that loses when rates rise the p95 (rates-up) band sits BELOW the median.
+ * That is information and is rendered honestly. The center line is pinned to
+ * the BASE run (p50 == chartData.totalPnL byte-equal, σ-independent).
  *
- * T4 (carry visibility): the additive `fundingCurve` field renders as a slim
- * second pane along the time axis (step line + last-value badge — visible
- * without hovering), and the header readout shows funding rate, position rate
- * and carry bp at the hovered time (last step when idle).
+ * s15 T4 (rendering): the percentile edges are drawn by the slice-local
+ * FanBandSeries (fills + 1px edge strokes) instead of four SeriesChart line
+ * series — so the price scale carries exactly ONE last-value badge, on the
+ * center line (s14 is making center-only badges the shared default; the panel
+ * simply no longer creates badge-bearing edge series to fight it). Percentile
+ * values remain readable via the header readout (hover) since the edges are
+ * no longer crosshair-snappable series. The TradingView attribution logo that
+ * rendered as a broken glyph at the funding strip's lower-left is disabled via
+ * chart options, matching the slice's LwLineChart.
+ *
+ * T4 (carry visibility, s11): the additive `fundingCurve` field renders as a
+ * slim second pane along the time axis (step line + last-value badge), and the
+ * header readout shows funding rate, position rate and carry bp at the hovered
+ * time (last step when idle). With s15's funding spec the strip is the
+ * 기준금리+10bp constant on every row.
  *
  * Responses without the new fields (older cached runs) fall back to the S5/S7
  * five-series Total-Return view unchanged.
@@ -25,7 +33,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import { LineSeries, LineType } from "lightweight-charts";
 
-import { formatKrwAxis } from "@/lib/format";
+import { formatKrwAxis, formatKrwAxisSigned } from "@/lib/format";
 import {
   SeriesChart,
   type SeriesChartMarker,
@@ -35,7 +43,7 @@ import { getSimulationChartTheme } from "../../lib/chart-theme";
 import { useSimulationPort } from "../../hooks/use-simulation";
 import { dayToTime } from "../charts/lw-line-chart";
 import { FanBandSeries, type FanBandData, type FanBandSeriesOptions } from "../charts/fan-band-series";
-import type { FundingCurvePoint } from "../../api/simulate-dto";
+import type { DistributionBand, FundingCurvePoint } from "../../api/simulate-dto";
 
 const asNum = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
@@ -62,6 +70,26 @@ function FundingReadout({ point, hovered }: { point: FundingCurvePoint; hovered:
           {point.carryBp === null ? "—" : formatBp(point.carryBp)}
         </span>
       </span>
+    </span>
+  );
+}
+
+/** Percentile readout: band values at the hovered day (edges are custom-series
+ * strokes now, not crosshair-snappable series, so this is where they read). */
+function FanReadout({ band }: { band: DistributionBand }) {
+  const cells: { label: string; value: number }[] = [
+    { label: "P95", value: band.p95 },
+    { label: "P75", value: band.p75 },
+    { label: "P25", value: band.p25 },
+    { label: "P5", value: band.p5 },
+  ];
+  return (
+    <span className="flex items-baseline gap-2 whitespace-nowrap text-micro text-fg-muted" data-num>
+      {cells.map((c) => (
+        <span key={c.label}>
+          {c.label} <span className="text-fg-primary">{formatKrwAxisSigned(c.value)}</span>
+        </span>
+      ))}
     </span>
   );
 }
@@ -97,26 +125,19 @@ export function DistributionChartPanel() {
       data,
     });
 
-    if (hasFan && distribution) {
-      const at = (key: "p5" | "p25" | "p50" | "p75" | "p95") =>
-        distribution.bands.map((b) => ({ time: dayToTime(inputs.baseDate, b.day), value: b[key] }));
-      // Median carries the aggregate emphasis; percentile edges stay subdued
-      // component hues (outer envelope = swapTheta gray, inner = carry ocean).
-      // First series = median so BEP markers + zero line anchor to it.
-      return [
-        line("p50", "중앙값", t.series.total, at("p50"), 3),
-        line("p95", "P95", t.series.carry, at("p95"), 1),
-        line("p75", "P75", t.series.carry, at("p75"), 1),
-        line("p25", "P25", t.series.carry, at("p25"), 1),
-        line("p5", "P5", t.series.swapTheta, at("p5"), 1),
-      ];
+    const rows = lastRun.chartData;
+    const fromRows = (key: string) =>
+      rows.map((r) => ({ time: dayToTime(inputs.baseDate, asNum(r.day)), value: asNum(r[key]) }));
+
+    if (hasFan) {
+      // s15 T4: ONE line series — the center line, pinned to the BASE run
+      // (p50 is byte-equal by backend invariant). Percentile edges render
+      // inside FanBandSeries, so no per-band price-scale badges exist.
+      return [line("base", "기본 시나리오", t.series.total, fromRows("totalPnL"), 3)];
     }
 
     // Fallback: the S5/S7 five-series Total-Return view for responses without
     // the s11 distribution field.
-    const rows = lastRun.chartData;
-    const fromRows = (key: string) =>
-      rows.map((r) => ({ time: dayToTime(inputs.baseDate, asNum(r.day)), value: asNum(r[key]) }));
     return [
       line("mtmPnL", "MTM", t.series.mtm, fromRows("mtmPnL")),
       line("cumulativeCarry", "캐리", t.series.carry, fromRows("cumulativeCarry")),
@@ -124,7 +145,7 @@ export function DistributionChartPanel() {
       line("swapValuationPnL", "스왑평가", t.series.swapValuation, fromRows("swapValuationPnL")),
       line("totalPnL", "합계", t.series.total, fromRows("totalPnL"), 3),
     ];
-  }, [lastRun, inputs.baseDate, hasFan, distribution]);
+  }, [lastRun, inputs.baseDate, hasFan]);
 
   const markers = useMemo<SeriesChartMarker[]>(() => {
     const bep = lastRun?.summary.breakEvenDay ?? -1;
@@ -133,7 +154,15 @@ export function DistributionChartPanel() {
   }, [lastRun, inputs.baseDate]);
 
   const chartOptions = useMemo(
-    () => ({ layout: { background: { color: getSimulationChartTheme().background } } }),
+    () => ({
+      layout: {
+        background: { color: getSimulationChartTheme().background },
+        // s15 T4(b): the library's attribution logo painted at the chart's
+        // bottom-left — the funding pane's lower-left in this two-pane layout —
+        // was the "broken glyph" artifact. Off, like the slice's LwLineChart.
+        attributionLogo: false,
+      },
+    }),
     [],
   );
 
@@ -153,9 +182,9 @@ export function DistributionChartPanel() {
     if (!chart) return;
     const t = getSimulationChartTheme();
 
-    // Band fills (T3). Created lazily, kept across runs, cleared when the run
-    // has no distribution. setSeriesOrder pushes the fills behind SeriesChart's
-    // line series (which are created before this effect runs).
+    // Band fills + edge strokes (s11 T3 / s15 T4). Created lazily, kept across
+    // runs, cleared when the run has no distribution. setSeriesOrder pushes the
+    // fills behind SeriesChart's line series.
     if (hasFan && distribution) {
       if (!bandSeriesRef.current) {
         const s = chart.addCustomSeries(new FanBandSeries(), {
@@ -166,18 +195,52 @@ export function DistributionChartPanel() {
           innerColor: t.series.carry,
           outerAlpha: 0.12,
           innerAlpha: 0.18,
+          edgeWidth: 1,
+          edgeAlpha: 0.85,
         } as Partial<FanBandSeriesOptions>);
         if (typeof s.setSeriesOrder === "function") s.setSeriesOrder(-1);
         bandSeriesRef.current = s;
       }
-      const data: FanBandData[] = distribution.bands.map((b) => ({
-        time: dayToTime(inputs.baseDate, b.day),
-        p5: b.p5,
-        p25: b.p25,
-        p75: b.p75,
-        p95: b.p95,
-      }));
+      // s15 T4(a) — staircase fix. The engine's rows are BUSINESS days with
+      // calendar-day accrual, so a Monday row carries ~3 days of P&L movement;
+      // lightweight-charts places points equidistantly, which compressed that
+      // 3-day move into a 1-day-wide slot — a sharp riser every five points
+      // (the live "staircase"). Injecting WHITESPACE time slots for the
+      // calendar days between rows lets each move span its true width. No data
+      // point is fabricated: whitespace rows carry no values, band fills and
+      // the center line simply span the gap.
+      const byDay = new Map(distribution.bands.map((b) => [b.day, b]));
+      const lastDay = distribution.bands[distribution.bands.length - 1].day;
+      const data: FanBandData[] = [];
+      for (let d = 0; d <= lastDay; d++) {
+        const b = byDay.get(d);
+        if (b) {
+          data.push({
+            time: dayToTime(inputs.baseDate, d),
+            p5: b.p5,
+            p25: b.p25,
+            p75: b.p75,
+            p95: b.p95,
+          });
+        } else {
+          data.push({ time: dayToTime(inputs.baseDate, d) } as FanBandData);
+        }
+      }
       bandSeriesRef.current.setData(data as never);
+      // New run replaces the previous one outright — refit so the horizon
+      // fills the hero. Deferred two frames: the stage has just swapped in and
+      // the chart's ResizeObserver must apply the hero's final width first
+      // (an immediate fit keeps the pre-layout width and strands the data on
+      // the right half — observed live).
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          try {
+            chart.timeScale().fitContent();
+          } catch {
+            /* chart disposed mid-transition */
+          }
+        }),
+      );
     } else if (bandSeriesRef.current) {
       bandSeriesRef.current.setData([]);
     }
@@ -227,17 +290,30 @@ export function DistributionChartPanel() {
     };
   }, [chart]);
 
-  // ── funding readout: hovered step, else the latest one ─────────────────────
+  // ── hover → D+day resolution shared by both readouts ──────────────────────
+  const hoveredDayIndex = useMemo<number | null>(() => {
+    if (hoverDay === null || !inputs.baseDate) return null;
+    const base = dayToTime(inputs.baseDate, 0);
+    return Math.round((hoverDay - base) / 86400);
+  }, [hoverDay, inputs.baseDate]);
+
   const readoutPoint = useMemo<FundingCurvePoint | null>(() => {
     if (!fundingCurve || fundingCurve.length === 0) return null;
-    if (hoverDay !== null) {
-      const base = dayToTime(inputs.baseDate, 0);
-      const day = Math.round((hoverDay - base) / 86400);
-      const hit = fundingCurve.filter((p) => p.day <= day).at(-1);
+    if (hoveredDayIndex !== null) {
+      const hit = fundingCurve.filter((p) => p.day <= hoveredDayIndex).at(-1);
       if (hit) return hit;
     }
     return fundingCurve[fundingCurve.length - 1];
-  }, [fundingCurve, hoverDay, inputs.baseDate]);
+  }, [fundingCurve, hoveredDayIndex]);
+
+  const readoutBand = useMemo<DistributionBand | null>(() => {
+    if (!distribution || distribution.bands.length === 0) return null;
+    if (hoveredDayIndex !== null) {
+      const hit = distribution.bands.filter((b) => b.day <= hoveredDayIndex).at(-1);
+      if (hit) return hit;
+    }
+    return distribution.bands[distribution.bands.length - 1];
+  }, [distribution, hoveredDayIndex]);
 
   if (!lastRun) {
     return (
@@ -255,12 +331,13 @@ export function DistributionChartPanel() {
         <h3 className="text-body-strong text-fg-primary">
           {hasFan ? "Total Return 분포 (Percentile Fan)" : "Total Return 누적 궤적"}
         </h3>
-        <div className="flex items-baseline gap-3">
+        <div className="flex flex-wrap items-baseline gap-3">
           {hasFan && distribution && (
             <span className="text-micro text-fg-dim" data-num>
               σ {distribution.sigmaBpDaily.toFixed(1)}bp/일 · 만기 ±{distribution.sigmaTerminalBp.toFixed(1)}bp
             </span>
           )}
+          {readoutBand && <FanReadout band={readoutBand} />}
           {readoutPoint && <FundingReadout point={readoutPoint} hovered={hoverDay !== null} />}
         </div>
       </div>
@@ -276,6 +353,11 @@ export function DistributionChartPanel() {
           onChartReady={handleChartReady}
         />
       </div>
+      {hasFan && (
+        <p className="mt-1 text-micro text-fg-dim">
+          밴드 = 금리 분위수 시나리오의 실제 엔진 런 (P95 = 금리 +1.645σ 경로) · 중앙선 = 기본 시나리오 · 비단조 북에서는 밴드가 교차할 수 있음
+        </p>
+      )}
     </div>
   );
 }

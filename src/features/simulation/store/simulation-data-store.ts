@@ -40,6 +40,9 @@ interface SimulationDataState {
   markRunning: () => void;
   ingestResult: (request: SimulateRequest, result: SimulateResponse) => void;
   markError: (message: string) => void;
+  /** s15 — user-cancelled run: back to idle, previous result untouched
+   * (re-run REPLACES outright only when a new result actually arrives). */
+  markCancelled: () => void;
 }
 
 export const useSimulationDataStore = create<SimulationDataState>((set) => ({
@@ -58,6 +61,7 @@ export const useSimulationDataStore = create<SimulationDataState>((set) => ({
   ingestResult: (request, result) =>
     set({ status: "success", error: null, lastRun: result, lastRunRequest: request }),
   markError: (message) => set({ status: "error", error: message }),
+  markCancelled: () => set({ status: "idle", error: null }),
 }));
 
 // ---------------------------------------------------------------------------

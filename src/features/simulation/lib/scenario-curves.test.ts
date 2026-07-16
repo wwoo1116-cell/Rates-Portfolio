@@ -67,7 +67,7 @@ describe("deriveFundingSteps / shortEndBpFromSteps", () => {
 
 describe("buildSimulateRequest", () => {
   it("assembles a valid /api/simulate payload from inputs + params", () => {
-    const inputs = { ...EMPTY_SIMULATION_INPUTS, baseDate: "2026-01-01", fundingRate: 0.042 };
+    const inputs = { ...EMPTY_SIMULATION_INPUTS, baseDate: "2026-01-01" };
     const req = buildSimulateRequest(inputs, DEFAULT_SCENARIO_PARAMS);
 
     expect(req.shockType).toBe("ramp");
@@ -75,11 +75,28 @@ describe("buildSimulateRequest", () => {
     expect(req.simDays).toBe(180);
     expect(req.baseShockBp).toBe(30); // string "30" -> number
     expect(req.baseDate).toBe("2026-01-01");
-    expect(req.fundingRate).toBe(0.042);
     expect(req.customPath).toBe(DEFAULT_SCENARIO_PARAMS.waypoints);
     expect(req.fundingEvents).toEqual([]); // no dated events
     expect(req.shockCurves.bondCurves.국채).toHaveLength(11);
     expect(req.sigma_bp).toBe(2.0); // s13 default — backend-identical to omitting it
+  });
+
+  it("OMITS fundingRate by default (s15 T1: backend derives 기준금리+10bp)", () => {
+    const req = buildSimulateRequest(
+      { ...EMPTY_SIMULATION_INPUTS, baseDate: "2026-01-01" },
+      DEFAULT_SCENARIO_PARAMS,
+    );
+    // The key must be genuinely absent, not undefined/null — the wire payload
+    // decides which funding semantics the backend applies.
+    expect("fundingRate" in req).toBe(false);
+  });
+
+  it("still passes an explicit fundingRate through (legacy payloads)", () => {
+    const req = buildSimulateRequest(
+      { ...EMPTY_SIMULATION_INPUTS, baseDate: "2026-01-01", fundingRate: 0.042 },
+      DEFAULT_SCENARIO_PARAMS,
+    );
+    expect(req.fundingRate).toBe(0.042);
   });
 
   it("converts dated 금통위 events into fundingEvents", () => {
