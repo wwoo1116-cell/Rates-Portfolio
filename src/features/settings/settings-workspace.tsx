@@ -17,7 +17,7 @@ import { RotateCcw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useSettingsStore, DEFAULT_FUNDING_SPREAD_BP } from "@/stores/settings-store";
-import { useMarketDataRange, useRateHistory } from "@/hooks/use-api";
+import { useFundingRate } from "@/hooks/use-api";
 
 /** decimal rate (e.g. 0.025) -> "2.50%" */
 function fmtPct(rate: number): string {
@@ -48,22 +48,19 @@ function FundingRateSection() {
     else setDraft(String(fundingSpreadBp)); // reject non-numeric, restore
   };
 
-  // Latest BOK base rate, read from the most recent rate-history point so the
-  // effective funding rate can be shown. Purely informational here — the
-  // backend loads the same base rate itself when computing funding cost.
-  const range = useMarketDataRange();
-  const maxDate = range.data?.max_date;
-  const rateHistory = useRateHistory(maxDate ?? "", maxDate ?? "");
-  const baseRate = useMemo<number | null>(() => {
-    const points = rateHistory.data?.points ?? [];
-    for (let i = points.length - 1; i >= 0; i--) {
-      if (points[i].base_rate != null) return points[i].base_rate as number;
-    }
-    return null;
-  }, [rateHistory.data]);
+  // Funding base rate — the backend's manually-maintained policy constant
+  // (single source shared with the Simulation tab, iv4 T5). Deliberately NOT
+  // read from the rate-history BOK series any more: that series lags MPC
+  // decisions (2.50% on the 2026-07-16 decision day vs the 2.75% constant),
+  // and this hero rendering 2.60% while Simulation showed 2.85% was a live
+  // on-screen contradiction.
+  const fundingRateQuery = useFundingRate();
+  const baseRate = fundingRateQuery.data?.policy_base_rate ?? null;
 
-  const effectiveRate =
-    baseRate != null ? baseRate + fundingSpreadBp / 10000 : null;
+  const effectiveRate = useMemo(
+    () => (baseRate != null ? baseRate + fundingSpreadBp / 10000 : null),
+    [baseRate, fundingSpreadBp],
+  );
   const isDefault = fundingSpreadBp === DEFAULT_FUNDING_SPREAD_BP;
 
   return (
@@ -105,7 +102,7 @@ function FundingRateSection() {
           <span className="text-micro tabular-nums text-fg-dim">
             {baseRate != null
               ? `BOK 기준금리 ${fmtPct(baseRate)} + ${fundingSpreadBp} bp`
-              : rateHistory.isLoading
+              : fundingRateQuery.isLoading
                 ? "기준금리 불러오는 중…"
                 : `기준금리 데이터 없음 · 스프레드 ${fundingSpreadBp} bp`}
           </span>

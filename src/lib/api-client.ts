@@ -231,6 +231,14 @@ export const portfolioAnalyticsApi = {
   // week/month/year-end closes.
   periodPnl: (req: AllocationHistoryRequest) =>
     apiPost<PeriodPnlResponse>("/api/portfolio/period-pnl", req),
+  // Single source for the funding base rate (iv4 T5): the manually-maintained
+  // policy constant, NOT the repo's BOK series (which lags MPC decisions).
+  // Settings' effective-rate hero reads this; Simulation resolves the same
+  // constant backend-side.
+  fundingRate: () =>
+    apiGet<{ policy_base_rate: number; spread_bp_default: number; funding_rate_default: number }>(
+      "/api/portfolio/funding-rate",
+    ),
 };
 
 // ---------------------------------------------------------------------------

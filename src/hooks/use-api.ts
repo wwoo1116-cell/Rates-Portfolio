@@ -12,6 +12,7 @@ import {
   creditCurveApi,
   marketDataApi,
   mtmApi,
+  portfolioAnalyticsApi,
   portfolioApi,
   rateHistoryApi,
   spreadBacktestApi,
@@ -94,6 +95,18 @@ export function useMarketDataRange() {
   return useQuery({
     queryKey: queryKeys.marketDataRange(),
     queryFn: () => marketDataApi.dateRange(),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Funding base rate — the manually-maintained policy constant, served by the
+ * backend as the single source (iv4 T5). NOT the repo's BOK series: that
+ * series lags MPC decisions, and deriving funding from it put Home 25bp off
+ * the Simulation tab on decision day. */
+export function useFundingRate() {
+  return useQuery({
+    queryKey: ["portfolio", "funding-rate"] as const,
+    queryFn: () => portfolioAnalyticsApi.fundingRate(),
     staleTime: 5 * 60_000,
   });
 }
