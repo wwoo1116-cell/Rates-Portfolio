@@ -67,6 +67,49 @@ class MTMResult:
     fixing_resolutions: list[FixingResolution] = field(default_factory=list)
 
 
+def settled_cash_between(
+    swap: VanillaSwap,
+    fixings: Mapping[date, float] | None,
+    window_start: date,
+    window_end: date,
+) -> float:
+    """Net cash `swap` actually settles with payment dates in (window_start,
+    window_end] — the amount a dirty-basis P&L series must fold back so the
+    line stays continuous across coupon/reset dates (the flow leaves the
+    valuation schedule at the cutoff `pd > val_date`, but the desk receives it).
+
+    Deterministic WITHOUT a curve: any flow paying by window_end has its reset
+    strictly before the payment date, so F(reset) has passed and the float rate
+    comes from the fixing store via engine/fixings.select_fixing (reset-date
+    semantics, no look-ahead vs window_end). A store with no print at or below
+    F(R) values that float side at 0.0 — the same "data missing" degradation
+    the valuation surfaces as a fixing warning, never an exception here.
+
+    Sign convention matches dirty_npv: direction * (fixed - float), i.e.
+    receive-fixed positive when the fixed leg pays more. s13 (dirty+cash basis
+    for historical series); the leg formulas mirror value_booked_trade exactly.
+    """
+    if window_end <= window_start:
+        return 0.0
+    irs_trade = swap.to_irs_trade(window_end)
+    fixed_rate = irs_trade.fixed_rate_pct / 100.0
+
+    net = 0.0
+    for i, pay_date in enumerate(irs_trade.pay_dates):
+        if not (window_start < pay_date <= window_end):
+            continue
+        a_start = irs_trade.pay_dates[i - 1] if i > 0 else irs_trade.start_date
+        accrual = irs_trade.accruals[i]
+        cf_fixed = irs_trade.notional * fixed_rate * accrual
+
+        resolution = select_fixing(fixings, a_start, window_end) if fixings else None
+        float_rate = resolution.rate if resolution is not None and resolution.rate is not None else 0.0
+        cf_float = irs_trade.notional * float_rate * accrual
+
+        net += irs_trade.direction * (cf_fixed - cf_float)
+    return net
+
+
 def value_booked_trade(
     swap: VanillaSwap,
     curve: CurveBundle,
