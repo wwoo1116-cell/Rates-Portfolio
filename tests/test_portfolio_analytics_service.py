@@ -354,7 +354,12 @@ def test_identity_is_exact_when_every_source_has_quotes(monkeypatch):
 def test_swap_total_matches_an_independent_revaluation(monkeypatch):
     """Pins the claim that the decomposition only re-splits the total, never
     moves it: mtm + theta must equal V(T, c_T) - V(close, c_close) computed
-    straight from price_portfolio, with no reference to the split at all."""
+    straight from price_portfolio, with no reference to the split at all.
+
+    V is DIRTY NPV (s11 T1): the clean basis dropped the daily accrued roll
+    from both legs of the split while _bond_pnl decomposed dirty, so the
+    aggregate mixed two bases and no reported NPV series reconciled with
+    mtm + theta."""
     close = _snapshot()
     today = _snapshot(cd_rate=0.0340)
     _pin_sources(monkeypatch, irs=True, credit=True, today_snapshot=today)
@@ -367,8 +372,10 @@ def test_swap_total_matches_an_independent_revaluation(monkeypatch):
         valuation_date=_AS_OF, cd_rate=today.cd_rate,
         on_rate=today.on_rate, swap_quotes=today.swap_quotes,
     )
-    v_close = portfolio_service.price_portfolio(close, swaps, {}).net_npv
-    v_today = portfolio_service.price_portfolio(rolled_today, swaps, {}).net_npv
+    v_close = sum(r.dirty_npv for r in
+                  portfolio_service.price_portfolio(close, swaps, {}).position_results)
+    v_today = sum(r.dirty_npv for r in
+                  portfolio_service.price_portfolio(rolled_today, swaps, {}).position_results)
 
     assert res["daily_pnl"]["total"] == pytest.approx(v_today - v_close, rel=1e-12)
 
@@ -467,12 +474,14 @@ def test_swap_theta_survives_a_coupon_crossing(monkeypatch):
     theta = res["daily_pnl"]["theta"]
 
     # Independent reconstruction of the pieces, straight from the engine.
+    # Dirty basis, same as the decomposition itself (s11 T1).
     swaps = [pas._to_swap(pos)]
     r_close = portfolio_service.price_portfolio(close, swaps, {})
-    v_close = r_close.net_npv
+    v_close = sum(r.dirty_npv for r in r_close.position_results)
     rolled = MarketSnapshot(valuation_date=_AS_OF, cd_rate=close.cd_rate,
                             on_rate=close.on_rate, swap_quotes=close.swap_quotes)
-    v_rolled = portfolio_service.price_portfolio(rolled, swaps, {}).net_npv
+    v_rolled = sum(r.dirty_npv for r in
+                   portfolio_service.price_portfolio(rolled, swaps, {}).position_results)
 
     window = [pcf.detail for pcf in r_close.cashflows
               if _VALUATION_DATE < pcf.detail.payment_date <= _AS_OF]
