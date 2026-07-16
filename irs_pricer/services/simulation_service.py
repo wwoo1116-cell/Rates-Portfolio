@@ -29,7 +29,10 @@ from datetime import date, timedelta
 import numpy as np
 from pydantic import BaseModel
 
+from ..core.errors import NonBusinessDayError
 from ..engine import quant_engine as qe
+from ..engine.fixings import select_fixing
+from . import market_data_service
 
 try:
     import holidays as _hols_lib
@@ -38,6 +41,24 @@ except ImportError:
     _KR_HOLIDAYS = set()
 
 logger = logging.getLogger(__name__)
+
+
+# ── s15 T1: 조달금리 스펙 — 기준금리 + 10bp, 전 기간 고정 ─────────────────────
+# 소유자 결정(2026-07-16): 조달금리는 "정책 기준금리(기준금리) + 10bp"의 단일
+# 상수이고 시뮬레이션 전 기간에 걸쳐 고정이다 — 데이터 조회도, 금통위 이벤트
+# 경로 스테핑도 없다(금통위 연동 조달 경로는 명시적으로 범위 밖). 이 상수 쌍이
+# 조달 스트립(fundingCurve), 헤더 캐리 칩, Total Return 캐리 계산이 소비하는
+# 유일한 원천이다.
+#
+# 값의 출처: Data/BOK Base Rate.xlsx 최신 행(2026-07-08 == 2.50%)과 일치.
+# 정책금리 변경 시 이 상수를 갱신한다.
+#
+# 하위 호환: 요청이 fundingRate를 명시하면(소스 골든 캡처 등 구형 페이로드)
+# 원본 의미론 — 그 값 + fundingEvents 계단 스테핑 — 을 그대로 유지한다.
+# 라이브 프론트 브리지는 s15부터 fundingRate를 싣지 않는다.
+POLICY_BASE_RATE_KRW = 0.025     # BOK 기준금리 (소수, 2.50%)
+FUNDING_SPREAD_BP = 10           # 기준금리 대비 조달 스프레드 (bp)
+FUNDING_RATE_KRW = POLICY_BASE_RATE_KRW + FUNDING_SPREAD_BP / 10000.0  # 0.026
 
 
 # ── 프론트엔드 시뮬레이션 요청 모델 ──────────────────────────────────────────
@@ -260,6 +281,33 @@ def calculate_daily_carry(
     return total
 
 
+def calculate_daily_funding_cost(
+    positions: list[FrontendPosition],
+    active_funding_rate: float,
+    t: int,
+    current_date: date | None = None,
+    dt_cal: int = 1,
+) -> float:
+    """s15 T2 — calculate_daily_carry의 조달 비용 성분만 따로 합산(양수 값).
+
+    calculate_daily_carry와 동일한 만기 판정·동일한 항을 사용한다: 생존 채권은
+    평가액 기준, 만기 채권은 Notional 기준(조달의 연속성). 기존 carry 누적기는
+    바이트 단위로 그대로 두고(골든 패리티), Total Return 분해(bondCarry 총액 =
+    net + funding, fundingCost = -funding)를 위한 병렬 누적만 추가한다 —
+    같은 항의 인수분해이지 새 수식이 아니다."""
+    total = 0.0
+    for p in positions:
+        if p.bondType == "swap":
+            continue
+        initial_remaining = max(float(p.remainingDays or 0), 0.0)
+        matured = (current_date and _is_matured(p, current_date)) or (initial_remaining > 0 and t >= initial_remaining)
+        if matured:
+            total += (p.notional or 0.0) * active_funding_rate * dt_cal / 365.0
+        else:
+            total += (p.evaluationAmount or 0.0) * active_funding_rate * dt_cal / 365.0
+    return total
+
+
 def calc_dynamic_funding_rate(base_rate: float, funding_events: list[dict], current_date: date) -> float:
     total = base_rate or 0.0
     for ev in funding_events:
@@ -424,8 +472,10 @@ def build_chart_data(
     irs_shock_curve_prebuilt: list[tuple[float, float]] | None = None,
     custom_path: list[dict] | None = None,
     skip_recon: bool = False,
-) -> tuple[list[dict], dict, list[dict], list[dict], list[dict]]:
-    """5-튜플 (chart_data, summary, settlement_events, daily_recon, funding_curve).
+    funding_rate_fixed: bool = False,
+) -> tuple[list[dict], dict, list[dict], list[dict], list[dict], dict]:
+    """6-튜플 (chart_data, summary, settlement_events, daily_recon, funding_curve,
+    decomposition).
 
     funding_curve (s11 T4): 시뮬레이션 타임스텝별 조달금리/포지션 운용수익률/캐리 bp.
     chartData와 같은 영업일 스케줄(+day 0 앵커)로 정렬된다.
@@ -433,6 +483,17 @@ def build_chart_data(
     skip_recon (s11 T3): 분포 밴드용 퍼센타일 런은 IRS 일별 대사표가 필요 없어
     그 루프(영업일당 커브 부트스트랩+12 범프)를 건너뛴다. 기본 False — 원본
     경로의 산출물은 변하지 않는다.
+
+    funding_rate_fixed (s15 T1): True면 조달금리 쪽 계산(_funding_row·캐리의
+    active_rate)이 funding_events 계단 스테핑을 받지 않고 funding_rate 상수를
+    전 기간 그대로 쓴다. 금리 경로(쇼크) 쪽의 funding_events 사용(BOK 계단,
+    FM 엔진 경로)은 영향받지 않는다 — 소유자 스펙: 조달은 상수, 시나리오
+    금리 경로는 그대로.
+
+    decomposition (s15 T2): 만기 시점 Total Return의 성분 분해(라운딩 전 float).
+    bondMtm + bondCarry + fundingCost + swapMtm + swapCarry == totalPnL(비라운딩)
+    이 부동소수점 항등으로 성립한다 — 모두 같은 루프의 같은 누적기에서 나온
+    같은 float들이다(bondCarry는 총 이자수익+재투자수익, fundingCost는 음수).
     """
     try:
         base_date = date.fromisoformat(base_date_str)
@@ -442,8 +503,13 @@ def build_chart_data(
     chart_data: list[dict] = []
     cumulative_bond_carry = 0.0   # 채권 캐리 + 만기 재투자 수익
     cumulative_irs_carry  = 0.0   # IRS 일별 캐리 누적
+    cumulative_funding    = 0.0   # s15 T2: 조달 비용 병렬 누적 (양수; 분해 전용)
     break_even_day = -1
     is_broken_even = False
+
+    # s15 T1: 조달 비용 쪽이 보는 이벤트 목록 — 고정 조달 모드에서는 비운다.
+    # 금리 경로(쇼크) 쪽 funding_events 사용은 아래에서 원본 그대로다.
+    _cost_events = [] if funding_rate_fixed else (funding_events or [])
 
     # 만기 채권을 재투자 Cash Pool로 추적
     bond_positions = [p for p in positions if p.bondType != "swap"]
@@ -777,7 +843,7 @@ def build_chart_data(
         return (acc / tot_eval) / 100.0 if tot_eval > 0 else None
 
     def _funding_row(t: int, cur_date: date, multiplier: float) -> dict:
-        rate = calc_dynamic_funding_rate(funding_rate, funding_events, cur_date)
+        rate = calc_dynamic_funding_rate(funding_rate, _cost_events, cur_date)
         pos_rate = _weighted_position_rate(t, multiplier, cur_date)
         return {
             "day": t,
@@ -796,11 +862,13 @@ def build_chart_data(
 
     prev_cal        = 0
     prev_short_mult = _short_factor(0)
+    bond_mtm  = 0.0   # 루프가 비어도(영업일 0일) 분해가 정의되도록 초기화
+    irs_mtm_t = 0.0
     for current_date, cal_day, dt_cal in _bizday_schedule:
         t = cal_day
         multiplier = _factor(t)
         short_mult  = _short_factor(t)
-        active_rate = calc_dynamic_funding_rate(funding_rate, funding_events, current_date)
+        active_rate = calc_dynamic_funding_rate(funding_rate, _cost_events, current_date)
 
         # 채권: 기존 선형 MTM / IRS: FM 결과 직접 사용 (내부에서 이미 ramp/step 적용)
         bond_mtm  = calculate_daily_mtm(bond_positions, shock_mode, shock_type, base_shock_bp, shock_curves, multiplier, t, current_date, short_mult)
@@ -922,6 +990,8 @@ def build_chart_data(
             bok_breakdown = bd
         # 일별 캐리: 채권만 calculate_daily_carry, IRS는 FM 엔진 리턴 값 사용 (리픽싱 비선형 반영)
         bond_carry  = calculate_daily_carry(bond_positions, shock_mode, shock_type, base_shock_bp, shock_curves, active_rate, multiplier, t, current_date, dt_cal=dt_cal)
+        # s15 T2: 같은 인자의 조달 비용 성분만 병렬 누적 (분해 전용 — 기존 수치 불변)
+        cumulative_funding += calculate_daily_funding_cost(bond_positions, active_rate, t, current_date, dt_cal=dt_cal)
         irs_carry_t = float(np.sum(irs_fm_carry[prev_cal + 1:t + 1]))
         # 만기 채권의 재투자 수익: Notional 기준으로 Funding Cost와 정확히 상쇄
         reinvested_cash = sum(
@@ -975,7 +1045,20 @@ def build_chart_data(
         "breakEvenDay": break_even_day,
     }
 
-    return chart_data, summary, irs_settlement_events, irs_daily_recon, funding_curve
+    # s15 T2 — 만기 시점 Total Return 분해 (비라운딩 float; 문서화된 항등:
+    # bondMtm + bondCarry + fundingCost + swapMtm + swapCarry == 최종 totalPnL).
+    # bondCarry = 총 이자수익 + 만기 재투자 수익 (= net 누적 + 조달 누적),
+    # fundingCost = -조달 누적. 모두 위 루프의 같은 float 누적기에서 나온다.
+    decomposition = {
+        "bondMtm":     bond_mtm,
+        "bondCarry":   cumulative_bond_carry + cumulative_funding,
+        "fundingCost": -cumulative_funding,
+        "swapMtm":     irs_mtm_t,
+        "swapCarry":   cumulative_irs_carry,
+        "total":       bond_mtm + cumulative_bond_carry + irs_mtm_t + cumulative_irs_carry,
+    }
+
+    return chart_data, summary, irs_settlement_events, irs_daily_recon, funding_curve, decomposition
 
 
 # ── s11 T3: 분포(퍼센타일 팬) 밴드 ────────────────────────────────────────────
@@ -986,8 +1069,12 @@ def build_chart_data(
 #   - 각 밴드는 "사용자 시나리오 + 만기 Δp까지 선형 램프되는 평행 충격"의 실제
 #     엔진 런이다. 만기 시점 분위수는 정확하고, 중간 시점은 만기 불확실성의
 #     선형 보간이다 (√t 브리지가 아님 — 엔진의 자체 램프 의미론에 맞춤).
-#   - 분위수 매핑은 코모노톤 근사: P&L 분위수 ≈ 금리 분위수 경로의 P&L.
-#     비단조 북 대비 일자별 정렬로 밴드 순서(p5≤…≤p95)를 강제한다.
+#   - 밴드 정체성(s15 T4): 각 밴드는 "그 밴드를 생성한 금리 분위수 시나리오"
+#     (z_p 평행 오프셋 경로)에 고정된다 — p95는 금리 +1.645σ 경로의 실제 엔진
+#     런이다. 일자별 재정렬은 하지 않는다: 비단조 북에서 런을 순위 간에
+#     이주시켜 기본 런이 p25로, 충격 런이 화면상 중앙값으로 둔갑하는 왜곡을
+#     만들었다(iv3 관측 결함). 밴드 교차는 정보다 — 금리가 오르면 손해 보는
+#     북에서는 p95(금리 상방) 밴드가 p50 아래에 놓이는 것이 정직한 렌더링이다.
 #   - 난수 없음 — 같은 요청은 항상 같은 밴드 (골든 테스트 안정).
 _DIST_SIGMA_BP_DAILY = 2.0
 _DIST_PERCENTILES = (5, 25, 50, 75, 95)
@@ -1037,10 +1124,12 @@ def build_distribution_bands(
     irs_shock_curve: list[tuple[float, float]],
     custom_path: list[dict] | None,
     sigma_bp: float = _DIST_SIGMA_BP_DAILY,
+    funding_rate_fixed: bool = False,
 ) -> dict:
     """totalPnL의 퍼센타일 팬 밴드. z=0 런은 기본 시나리오와 입력이 동일하므로
-    base_chart를 그대로 재사용한다(p50 ≡ 기존 궤적 — 중앙값 일관성 보장,
-    σ와 무관). 나머지 4개 분위수는 skip_recon=True 엔진 런이다.
+    base_chart를 그대로 재사용한다(p50 ≡ 기본 런 바이트 동일 — 중앙선 고정,
+    σ와 무관). 나머지 4개 분위수는 skip_recon=True 엔진 런이고, 각 밴드는 그
+    생성 시나리오에 고정된다(위 확률 가정 블록의 s15 T4 항목).
 
     sigma_bp (s13): 요청으로 조정 가능한 σ(bp/√영업일). 검증(0<σ≤25)은 라우터
     Field가 담당하고, 여기서는 기본값이 s11 상수와 같아 생략 시 바이트 동일이다."""
@@ -1080,17 +1169,17 @@ def build_distribution_bands(
             irs_shock_curve_prebuilt=[(t_, v_ + off) for t_, v_ in irs_shock_curve],
             custom_path=_offset_custom_path(custom_path, off, sim_days),
             skip_recon=True,
+            funding_rate_fixed=funding_rate_fixed,
         )
         runs[pct] = {int(r.get("day", 0)): float(r.get("totalPnL", 0)) for r in chart_p}
 
     bands: list[dict] = []
     for d in days:
-        # 일자별 정렬 배정: 코모노톤(단조) 북에서는 항등이고, 비단조 북에서도
-        # p5≤p25≤p50≤p75≤p95 순서가 깨지지 않게 한다.
-        vals = sorted(runs[p].get(d, 0.0) for p in _DIST_PERCENTILES)
+        # s15 T4 — 시나리오 정체성: 밴드 p는 항상 z_p 오프셋 런의 그날 값이다.
+        # (일자별 정렬 배정 제거 — 비단조 북에서 런이 순위 간 이주하던 결함.)
         bands.append({
             "day": d,
-            "p5": vals[0], "p25": vals[1], "p50": vals[2], "p75": vals[3], "p95": vals[4],
+            **{f"p{p}": runs[p].get(d, 0.0) for p in _DIST_PERCENTILES},
         })
 
     return {
@@ -1320,13 +1409,146 @@ def enrich_irs_pvbp(
     return enriched
 
 
+# ── s15 T2: 스왑 시장 데이터 결정 (IRS par 커브 + 픽싱) ───────────────────────
+
+_MONTHS_TO_TENOR = {m: lbl for lbl, m in _TENOR_MONTHS.items()}
+
+# 명시적 제외 사유 — FE Results 표면이 그대로 렌더링하는 문자열.
+SWAP_EXCLUSION_REASON_NO_QUOTES = "당일 IRS 호가 없음"
+
+
+def _resolve_swap_inputs(
+    positions: list[FrontendPosition],
+    irs_curves: list[dict],
+    base_date_str: str,
+) -> tuple[list[FrontendPosition], list[dict], list[dict]]:
+    """스왑이 포함된 요청의 시장 데이터 결정. (positions, irs_curves, exclusions) 반환.
+
+    브리지(S6)는 irsCurves를 싣지 않는다 — 스왑 포지션이 있고 irsCurves가 비어
+    있으면 백엔드의 IRS 스냅샷 저장소(market_data_service.load_snapshot)에서
+    base_date **당일** par 호가를 가져온다. 소유자 결정: 당일 호가가 없으면
+    폴백 스냅샷도, 침묵의 0도 없다 — 스왑을 명시적으로 제외하고(exclusions
+    항목 + 포지션 제거) 나머지 채권 산출은 정상 진행한다. 요청이 irsCurves를
+    직접 실으면(구형/테스트 페이로드) 그대로 존중한다.
+
+    유지되는 제약: par 커브가 비어도 500이 나지 않는다 — build_chart_data의
+    문서화된 의도적 분기(빈 대사표)는 이제 "스왑 없는 북 + 커브 없음"의
+    순수 부재 케이스에서만 도달한다.
+    """
+    has_swaps = any(p.bondType == "swap" for p in positions)
+    if not has_swaps or irs_curves:
+        return positions, irs_curves, []
+
+    try:
+        base_date = date.fromisoformat(str(base_date_str)[:10])
+    except Exception:
+        base_date = date.today()
+
+    snapshot = None
+    try:
+        snapshot = market_data_service.load_snapshot(base_date)
+    except (NonBusinessDayError, ValueError) as e:
+        logger.warning("[s15 T2] base_date=%s IRS 호가 없음 → 스왑 제외: %s", base_date, e)
+
+    resolved: list[dict] = []
+    if snapshot is not None:
+        for q in snapshot.swap_quotes:
+            months = q.tenor_months if q.tenor_months is not None else int(q.tenor_years) * 12
+            entry: dict = {"t": months / 12.0, "rate": q.rate}
+            lbl = _MONTHS_TO_TENOR.get(months)
+            if lbl:
+                # 테너 라벨을 실어 resolve_curve_maturity_dates가 실제 만기일
+                # (Modified Following)을 계산하게 한다 — 라벨 T보다 정확.
+                entry["tenor"] = lbl
+            resolved.append(entry)
+
+    # 스냅샷 자체가 없거나(예외) 있어도 IRS 호가가 0건이면 동일하게 "당일 호가
+    # 없음" — 빈 par 커브로 FM 경로에 들어가 500이 나는 대신 명시적 제외.
+    if not resolved:
+        exclusions = [{
+            "assetClass": "swap",
+            "reason": SWAP_EXCLUSION_REASON_NO_QUOTES,
+            "asOf": base_date.isoformat(),
+        }]
+        return [p for p in positions if p.bondType != "swap"], irs_curves, exclusions
+    return positions, resolved, []
+
+
+def _resolve_swap_float_fields(
+    positions: list[FrontendPosition],
+    base_date_str: str,
+) -> list[FrontendPosition]:
+    """스왑 포지션의 미충전 시장 필드(currentFloatRate, nextFixingDate,
+    remainingDays)를 백엔드에서 채운다. 브리지의 ManualPosition은 계약 조건
+    (시작/만기/고정금리/방향)만 알고 현재 구간 변동금리는 모른다.
+
+    같은 원천 사용: 스케줄은 qe.IRS_Trade(FM 경로가 쓰는 그 ISDA 스케줄),
+    픽싱은 engine/fixings.select_fixing(실북 MtM 경로 value_booked_trade와
+    동일한 리셋일 기준 F(R)=R−1 서울영업일 규칙) + market_data_service.load_fixings.
+    이미 값이 채워져 온 포지션(구형 페이로드·테스트)은 건드리지 않는다.
+    """
+    swaps = [p for p in positions if p.bondType == "swap"]
+    if not swaps:
+        return positions
+    try:
+        base_date = date.fromisoformat(str(base_date_str)[:10])
+    except Exception:
+        base_date = date.today()
+
+    # 픽싱 이력은 실제로 해결할 변동금리가 있을 때만 로드 — 모든 필드가 이미
+    # 채워진 페이로드(구형/골든/프리즈드 픽스처)는 데이터 저장소를 건드리지 않는다.
+    fixings: dict = {}
+    if any(not p.currentFloatRate for p in swaps):
+        try:
+            fixings = market_data_service.load_fixings()
+        except Exception:
+            logger.warning("[s15 T2] CD 픽싱 이력 로드 실패 — currentFloatRate 미해결", exc_info=True)
+
+    out: list[FrontendPosition] = []
+    for p in positions:
+        if p.bondType != "swap":
+            out.append(p)
+            continue
+        updates: dict = {}
+        try:
+            mat = date.fromisoformat(str(p.maturityDate)[:10]) if p.maturityDate else None
+            if mat is not None and not p.remainingDays:
+                updates["remainingDays"] = float(max((mat - base_date).days, 0))
+            start = date.fromisoformat(str(p.startDate)[:10]) if p.startDate else None
+            if start is not None and mat is not None and mat > start:
+                trade = qe.IRS_Trade(
+                    start, mat, p.couponRate or 0.0,
+                    int(p.direction or 1), p.notional or 0.0, sector=p.sector or "IRS",
+                )
+                future = [d for d in trade.pay_dates if d > base_date]
+                if future:
+                    nfd = future[0]
+                    if not p.nextFixingDate:
+                        updates["nextFixingDate"] = nfd.isoformat()
+                    if not p.currentFloatRate and fixings:
+                        idx = trade.pay_dates.index(nfd)
+                        reset = trade.pay_dates[idx - 1] if idx > 0 else trade.start_date
+                        res = select_fixing(fixings, reset, base_date)
+                        if res is not None and res.rate is not None:
+                            updates["currentFloatRate"] = res.rate * 100.0
+                            if res.is_data_quality_event:
+                                logger.warning(
+                                    "[s15 T2] 픽싱 데이터 품질 이벤트 (pos=%s): %s",
+                                    p.id or p.name, res.to_payload(),
+                                )
+        except Exception:
+            logger.warning("[s15 T2] 스왑 시장 필드 해결 실패 (pos=%s)", p.id or p.name, exc_info=True)
+        out.append(p.model_copy(update=updates) if updates else p)
+    return out
+
+
 # ── 엔드포인트 본문 (source main.py의 simulate()) ────────────────────────────
 
 def run_simulation(
     positions: list[FrontendPosition],
     shock_curves: FrontendShockCurves | None,
     daily_shock_curves: FrontendShockCurves | None,
-    funding_rate: float,
+    funding_rate: float | None,
     funding_events: list[dict],
     sim_days: int,
     shock_type: str,
@@ -1339,7 +1561,22 @@ def run_simulation(
 ) -> dict:
     """POST /api/simulate 한 건의 전체 계산. 원본 엔드포인트 본문의 순서 그대로:
     커브 만기일 보정 → IRS 쇼크커브 명시적 빌드 → IRS 프라이싱 주입(enrich) →
-    chartData/summary/정산이벤트/일별대사 → pvbpSensitivity → bookDailyPnLs."""
+    chartData/summary/정산이벤트/일별대사 → pvbpSensitivity → bookDailyPnLs.
+
+    s15: funding_rate=None(라이브 브리지)이면 조달금리는 기준금리+10bp 상수로
+    전 기간 고정(모듈 상단 상수 블록); 명시 값이면 원본 의미론(값+이벤트 스테핑)
+    유지. 스왑 포지션이 있고 irs_curves가 비면 스냅샷 저장소에서 당일 par
+    호가를 해결하고, 없으면 스왑을 명시적으로 제외한다(exclusions)."""
+    # ── s15 T1: 조달금리 결정 ────────────────────────────────────────────────
+    funding_rate_fixed = funding_rate is None
+    if funding_rate is None:
+        funding_rate = FUNDING_RATE_KRW
+
+    # ── s15 T2: 스왑 시장 데이터 결정 (par 커브 + 픽싱 필드) ────────────────
+    positions, irs_curves, exclusions = _resolve_swap_inputs(positions, irs_curves, base_date)
+    swaps_excluded = any(x["assetClass"] == "swap" for x in exclusions)
+    positions = _resolve_swap_float_fields(positions, base_date)
+
     # maturityDate 없는 커브 항목(테너 라벨만 있는 경우)에 실제 만기일을 채워
     # 넣는다 — 이후 enrich_irs_pvbp/build_chart_data 양쪽에서 공통으로 사용.
     try:
@@ -1369,7 +1606,7 @@ def run_simulation(
 
     funding_events = funding_events or (shock_curves.fundingEvents if shock_curves else [])
 
-    chart_data, summary, irs_settlement_events, irs_daily_recon, funding_curve = build_chart_data(
+    chart_data, summary, irs_settlement_events, irs_daily_recon, funding_curve, decomposition = build_chart_data(
         positions=positions,
         shock_curves=shock_curves,
         funding_rate=funding_rate,
@@ -1382,7 +1619,18 @@ def run_simulation(
         irs_curves=irs_curves,
         irs_shock_curve_prebuilt=irs_shock_curve,
         custom_path=custom_path or None,
+        funding_rate_fixed=funding_rate_fixed,
     )
+
+    # 스왑이 제외된 경우(당일 호가 없음): 스왑 성분은 0이 아니라 "미정의"다 —
+    # FE는 이 null을 —(공란)으로 렌더링한다(blank-MtM 정책). 스왑이 아예 없는
+    # 북(제외 아님)은 정직한 0 기여로 남는다.
+    if swaps_excluded:
+        decomposition["swapMtm"] = None
+        decomposition["swapCarry"] = None
+        decomposition["total"] = (
+            decomposition["bondMtm"] + decomposition["bondCarry"] + decomposition["fundingCost"]
+        )
     pvbp_sensitivity = build_pvbp_sensitivity(positions)
     # bookDailyPnL: 당일 실제 금리변동만 반영. dailyShockCurves 없으면 shockCurves로 fallback
     daily_curves = daily_shock_curves if daily_shock_curves is not None else shock_curves
@@ -1406,6 +1654,7 @@ def run_simulation(
             irs_shock_curve=irs_shock_curve,
             custom_path=custom_path or None,
             sigma_bp=sigma_bp,
+            funding_rate_fixed=funding_rate_fixed,
         )
     except Exception:
         logger.exception("[s11 T3] 분포 밴드 계산 실패 — distribution=null로 응답")
@@ -1421,4 +1670,7 @@ def run_simulation(
         # s11 추가 필드 (기존 계약 불변·확장 전용): T4 조달금리 스트립 + T3 분포 팬.
         "fundingCurve": funding_curve,
         "distribution": distribution,
+        # s15 추가 필드 (확장 전용): T2 명시적 자산군 제외 + Total Return 분해.
+        "exclusions": exclusions,
+        "totalReturnDecomposition": decomposition,
     }

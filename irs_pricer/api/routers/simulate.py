@@ -38,7 +38,12 @@ class SimulateRequest(BaseModel):
     positions: list[FrontendPosition]
     shockCurves: FrontendShockCurves | None = None         # 시나리오 충격 (chartData 전용)
     dailyShockCurves: FrontendShockCurves | None = None    # 당일 실제 금리변동 (bookDailyPnL 전용)
-    fundingRate: float = 0.042
+    # s15 T1: 생략(None)이면 조달금리 = 기준금리 + 10bp 상수, 전 기간 고정 —
+    # 이벤트 스테핑 없음 (simulation_service.POLICY_BASE_RATE_KRW /
+    # FUNDING_SPREAD_BP가 유일한 원천; 라이브 브리지는 이 필드를 싣지 않는다).
+    # 명시하면 원본 소스 의미론(그 값 + fundingEvents 계단 스테핑) 유지 —
+    # 소스 골든 캡처(0.042 명시)의 패리티가 그 경로로 계속 검증된다.
+    fundingRate: float | None = None
     fundingEvents: list[dict] = []
     simDays: int = 90
     shockType: str = "step"             # 'step' | 'ramp'
@@ -146,6 +151,30 @@ class SimulationDistribution(BaseModel):
     bands: list[DistributionBand]
 
 
+class SimulationExclusion(BaseModel):
+    """s15 T2 — 명시적 자산군 제외. 제외된 자산군은 0이 아니라 '표시 없음'으로
+    렌더링돼야 한다(blank-MtM 정책): FE Results가 reason을 그대로 공지로 띄우고
+    해당 손익 라인을 공란 처리한다."""
+    assetClass: str   # 현재 "swap"만 발생
+    reason: str       # 예: "당일 IRS 호가 없음"
+    asOf: str         # 기준일 (ISO)
+
+
+class TotalReturnDecomposition(BaseModel):
+    """s15 T2 — 만기 시점 Total Return 성분 분해(비라운딩 float, 원화).
+    문서화된 라인 셋(최소·명확): bondMtm(채권 평가) + bondCarry(채권 이자수익
+    + 만기 재투자 수익, 조달 차감 전 총액) + fundingCost(조달 비용, 음수) +
+    swapMtm(IRS 평가) + swapCarry(IRS 캐리). 합 == chartData 최종 totalPnL
+    (±₩1, 라운딩 차이만 — test_simulate_api가 고정). 스왑이 제외된 요청에서는
+    swapMtm/swapCarry가 null(미정의)이고 total은 채권 성분 합이다."""
+    bondMtm: float
+    bondCarry: float
+    fundingCost: float
+    swapMtm: float | None
+    swapCarry: float | None
+    total: float
+
+
 class SimulateResponse(BaseModel):
     status: str
     chartData: list[SimulationChartPoint]
@@ -157,6 +186,9 @@ class SimulateResponse(BaseModel):
     # s11 확장 필드 — 기존 골든 계약에 대한 추가 전용(extend, don't mutate).
     fundingCurve: list[FundingCurvePoint]
     distribution: SimulationDistribution | None
+    # s15 확장 필드 — 역시 추가 전용.
+    exclusions: list[SimulationExclusion]
+    totalReturnDecomposition: TotalReturnDecomposition
 
 
 @router.post("/simulate", response_model=SimulateResponse)
