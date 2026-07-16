@@ -103,15 +103,22 @@ vi.mock("@/features/entry-signals/use-entry-signals-data", () => ({
     isError: false,
   }),
 }));
-vi.mock("@/features/entry-signals/use-backtest", () => ({
-  useFocusedBacktest: () => ({
-    points: [
-      { date: "2026-07-01", value: 0, z: 0, position: 0, dailyPnl: 0, cumulativePnl: 1_234_567.89 },
-      { date: "2026-07-02", value: 0, z: 0, position: 0, dailyPnl: 0, cumulativePnl: 3_456_789.12 },
-    ],
-    trades: [{ entryDate: "2026-07-01", exitDate: "2026-07-02", direction: 1, pnl: 3_456_789.12 }],
-    summary: { totalPnl: 3_456_789.12, maxDrawdown: 0, winRate: 1, sharpe: null, numTrades: 1 },
+// s17: the equity curve is pinned to the run snapshot — same fixture result,
+// now delivered through the pinned seam instead of the live-params hook.
+vi.mock("@/features/entry-signals/use-pinned-backtest", () => ({
+  usePinnedBacktest: () => ({
+    run: { instrument: { id: "irs-3y" }, ranAt: "2026-07-16T00:00:00Z" },
+    label: "IRS 3Y",
+    result: {
+      points: [
+        { date: "2026-07-01", value: 0, z: 0, position: 0, dailyPnl: 0, cumulativePnl: 1_234_567.89 },
+        { date: "2026-07-02", value: 0, z: 0, position: 0, dailyPnl: 0, cumulativePnl: 3_456_789.12 },
+      ],
+      trades: [{ entryDate: "2026-07-01", exitDate: "2026-07-02", direction: 1, pnl: 3_456_789.12 }],
+      summary: { totalPnl: 3_456_789.12, maxDrawdown: 0, winRate: 1, sharpe: null, numTrades: 1 },
+    },
   }),
+  useRunIsStale: () => false,
 }));
 vi.mock("@/stores/entry-signals-store", () => ({
   useEntrySignalsStore: (sel: (s: { focused: unknown }) => unknown) => sel({ focused: { id: "irs-3y" } }),

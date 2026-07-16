@@ -33,7 +33,15 @@ const DEFAULT_COL_DEF: ColDef<SignalRow> = {
   cellStyle: { fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", display: "flex", alignItems: "center" },
 };
 
-export function SignalGridPanel() {
+export function SignalGridPanel({
+  /** s17: the Results stage hides the add/remove selector — watchlist
+   * management lives on the Configure stage; the grid itself stays LIVE
+   * (row click refocuses the z-score panel; the pinned backtest then shows
+   * its stale marker instead of silently recomputing). */
+  showSelector = true,
+}: {
+  showSelector?: boolean;
+}) {
   const { taxonomy, seriesById } = useEntrySignalsData();
   const watchlist = useEntrySignalsStore((s) => s.watchlist);
   const focused = useEntrySignalsStore((s) => s.focused);
@@ -102,18 +110,22 @@ export function SignalGridPanel() {
         />
       </div>
 
-      <InstrumentSelector
-        taxonomy={taxonomy}
-        selected={watchlist}
-        onAdd={addToWatchlist}
-        onRemove={removeFromWatchlist}
-      />
+      {showSelector && (
+        <InstrumentSelector
+          taxonomy={taxonomy}
+          selected={watchlist}
+          onAdd={addToWatchlist}
+          onRemove={removeFromWatchlist}
+        />
+      )}
 
       <div className="relative min-h-0 flex-1">
         {watchlist.length === 0 ? (
           <div className="flex h-full items-center justify-center text-center">
             <span className="text-micro text-fg-muted" style={{ maxWidth: 320 }}>
-              Add instruments above to scan them for entry signals.
+              {showSelector
+                ? "Add instruments above to scan them for entry signals."
+                : "설정 단계에서 관심 종목을 추가하면 여기에서 신호를 스캔합니다."}
             </span>
           </div>
         ) : (

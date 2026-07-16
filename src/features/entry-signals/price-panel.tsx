@@ -1,11 +1,13 @@
 "use client";
 
 /**
- * Top panel of the Entry Signals tab: the focused instrument's price/spread
- * line with a rolling SMA overlay and optional ±entryZ·σ Bollinger bands.
- * Also hosts the global analysis control bar (lookback / thresholds / bands),
- * since those params drive every other panel. Time-axis is synced with the
- * Z-Score and Equity panels via use-synced-time-scales.
+ * The focused instrument's price/spread line with a rolling SMA overlay and
+ * optional ±entryZ·σ Bollinger bands. Since s17 the analysis params
+ * (lookback / thresholds) are set on the Configure stage — this panel is the
+ * live PREVIEW beside those controls (and the detached /chart/es-price
+ * window); only the bands toggle stays here, because it configures nothing
+ * but this chart's own display. Time-axis stays synced with the Z-Score and
+ * Equity panels via use-synced-time-scales.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,11 +21,11 @@ import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/sna
 import { formatBp } from "@/lib/format";
 import { alignToDates, rollingSeries } from "@/lib/math/rolling-stats";
 import { instrumentLabel } from "@/lib/rv-instruments";
-import { LOOKBACK_PRESETS, useEntrySignalsStore } from "@/stores/entry-signals-store";
+import { useEntrySignalsStore } from "@/stores/entry-signals-store";
 import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
 import { CHART_COLORS } from "./chart-theme";
 import { useEntrySignalsData } from "./use-entry-signals-data";
-import { NumberField, PanelEmptyState, SyncedTimeGuide } from "./panel-shell";
+import { PanelEmptyState, SyncedTimeGuide } from "./panel-shell";
 import {
   registerSyncChart,
   setSharedHoverTime,
@@ -32,56 +34,22 @@ import {
 
 const PANEL_ID = "es-price";
 
-function ControlBar() {
-  const lookback = useEntrySignalsStore((s) => s.lookback);
-  const entryZ = useEntrySignalsStore((s) => s.entryZ);
-  const warnZ = useEntrySignalsStore((s) => s.warnZ);
+/** Display-only toggle for THIS chart's ±σ envelope. */
+function BandsToggle() {
   const showBands = useEntrySignalsStore((s) => s.showBands);
-  const setLookback = useEntrySignalsStore((s) => s.setLookback);
-  const setEntryZ = useEntrySignalsStore((s) => s.setEntryZ);
-  const setWarnZ = useEntrySignalsStore((s) => s.setWarnZ);
   const toggleBands = useEntrySignalsStore((s) => s.toggleBands);
-
-  const presetValue = LOOKBACK_PRESETS.includes(lookback as (typeof LOOKBACK_PRESETS)[number])
-    ? String(lookback)
-    : "";
-
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <div className="flex flex-col gap-2">
-        <span className="text-label text-fg-muted">LOOKBACK</span>
-        <SegmentedControl
-          small
-          options={LOOKBACK_PRESETS.map((p) => ({ label: `${p}D`, value: String(p) }))}
-          value={presetValue}
-          onValueChange={(v) => setLookback(Number(v))}
-        />
-      </div>
-      <NumberField
-        label="CUSTOM (D)"
-        value={lookback}
-        step="1"
-        min={2}
-        onCommit={setLookback}
-        className="w-24"
-      />
-      <NumberField label="ENTRY ±σ" value={entryZ} step="0.1" min={0} onCommit={setEntryZ} className="w-24" />
-      <NumberField label="WATCH ±σ" value={warnZ} step="0.1" min={0} onCommit={setWarnZ} className="w-24" />
-      <div className="flex flex-col gap-2">
-        <span className="text-label text-fg-muted">± BANDS</span>
-        <SegmentedControl
-          small
-          options={[
-            { label: "On", value: "on" },
-            { label: "Off", value: "off" },
-          ]}
-          value={showBands ? "on" : "off"}
-          onValueChange={(v) => {
-            if ((v === "on") !== showBands) toggleBands();
-          }}
-        />
-      </div>
-    </div>
+    <SegmentedControl
+      small
+      options={[
+        { label: "± Bands", value: "on" },
+        { label: "Off", value: "off" },
+      ]}
+      value={showBands ? "on" : "off"}
+      onValueChange={(v) => {
+        if ((v === "on") !== showBands) toggleBands();
+      }}
+    />
   );
 }
 
@@ -228,16 +196,17 @@ export function PricePanel() {
         <span className="text-h2 text-fg-primary">
           {focused ? instrumentLabel(focused) : "Price / Spread"}
         </span>
-        <span className="text-micro text-fg-muted">
-          {focused
-            ? focused.kind === "spread"
-              ? "Spread (bp) · SMA overlay"
-              : "Outright yield (%) · SMA overlay"
-            : "Select an instrument in the Signals panel"}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-micro text-fg-muted">
+            {focused
+              ? focused.kind === "spread"
+                ? "Spread (bp) · SMA overlay"
+                : "Outright yield (%) · SMA overlay"
+              : "백테스트 대상을 선택하면 미리보기가 표시됩니다"}
+          </span>
+          <BandsToggle />
+        </div>
       </div>
-
-      <ControlBar />
 
       <ChartFrame chartId="es-price" title="Price / Spread" className="min-h-0 flex-1">
         <LwChartBase onChartReady={onChartReady} />
@@ -247,7 +216,7 @@ export function PricePanel() {
         {!focused && !isLoading && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <PanelEmptyState>
-              No instrument focused — add one to the watchlist and click its row in the Signals panel.
+              관심 종목을 추가하고 백테스트 대상을 선택하면 가격/스프레드 미리보기가 표시됩니다.
             </PanelEmptyState>
           </div>
         )}

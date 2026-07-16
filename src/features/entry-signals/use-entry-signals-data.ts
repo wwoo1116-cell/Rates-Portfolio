@@ -9,7 +9,7 @@
  * No z-score endpoint is called here: rolling stats are computed on the client
  * (lib/math/rolling-stats.ts) from this already-in-cache data, so sweeping
  * lookback/thresholds never triggers a network request. The mean-reversion
- * backtest is likewise client-side (lib/math/backtest.ts via useFocusedBacktest).
+ * backtest is likewise client-side (lib/math/backtest.ts via usePinnedBacktest).
  */
 
 import { useMemo } from "react";
@@ -43,6 +43,10 @@ export interface EntrySignalsData {
 export function useEntrySignalsData(): EntrySignalsData {
   const focused = useEntrySignalsStore((s) => s.focused);
   const watchlist = useEntrySignalsStore((s) => s.watchlist);
+  // s17: the pinned run's instrument stays resolvable even after the user
+  // unfocuses it or drops it from the watchlist — the Results stage's
+  // backtest block computes from the pin, not the live selection.
+  const pinnedInstrument = useEntrySignalsStore((s) => s.lastRun?.instrument ?? null);
 
   const rangeQuery = useMarketDataRange();
   const minDate = rangeQuery.data?.min_date ?? "";
@@ -53,13 +57,14 @@ export function useEntrySignalsData(): EntrySignalsData {
 
   const taxonomyQuery = useCreditCurveTaxonomy();
 
-  // Union of focused + watchlist instruments (dedup by id).
+  // Union of focused + watchlist + pinned-run instruments (dedup by id).
   const instruments = useMemo<SelectedInstrument[]>(() => {
     const map = new Map<string, SelectedInstrument>();
     for (const w of watchlist) map.set(w.id, w);
     if (focused) map.set(focused.id, focused);
+    if (pinnedInstrument) map.set(pinnedInstrument.id, pinnedInstrument);
     return [...map.values()];
-  }, [focused, watchlist]);
+  }, [focused, watchlist, pinnedInstrument]);
 
   // Only credit (non-IRS) legs need a backend fetch; IRS legs resolve from the
   // rate-history payload already loaded above.
