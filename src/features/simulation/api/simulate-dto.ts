@@ -66,7 +66,7 @@ export interface SimulationChartPoint {
 }
 
 /** s11 T4 — funding rate along the simulation time axis. Rates are decimals
- * (0.026 = 2.6%); positionRate/carryBp are null (unknown, not zero) when no
+ * (0.0285 = 2.85%); positionRate/carryBp are null (unknown, not zero) when no
  * live bonds remain at that step. s15: with fundingRate omitted from the
  * request, fundingRate here is the backend's 기준금리+10bp constant on every
  * row, and carryBp === (positionRate − fundingRate) × 1e4. */
@@ -90,13 +90,22 @@ export interface DistributionBand {
 /** s11 T3 — totalPnL percentile fan. p50 equals the base scenario's totalPnL
  * trace; each band is a real engine run of the scenario plus a parallel shock
  * ramping to its terminal quantile offset (see backend
- * simulation_service.build_distribution_bands for the documented assumptions). */
+ * simulation_service.build_distribution_bands for the documented assumptions).
+ *
+ * s18 T3 (dual-axis separation): the p-keys of `bands` are RETURN trajectories
+ * keyed to their generating RATE-quantile scenario — they are NOT outcome
+ * ranks and may cross on non-monotone books; render them as per-scenario
+ * LINES labeled by scenario (금리 P95 시나리오), never as rank bands.
+ * `ratePaths` carries each scenario's 국채 3Y cumulative-bp path — rates are
+ * monotone in the quantile by construction, so THOSE bands never cross and
+ * P5..P95 labels are truthful there. Optional: older cached responses lack it. */
 export interface SimulationDistribution {
   sigmaBpDaily: number;
   sigmaTerminalBp: number;
   percentiles: number[];
   method: string;
   bands: DistributionBand[];
+  ratePaths?: DistributionBand[];
 }
 
 /** s15 T2 — explicit asset-class exclusion. An excluded class renders as a

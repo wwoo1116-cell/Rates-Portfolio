@@ -89,7 +89,11 @@ export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS 
         fontFamily: "Inter, system-ui, sans-serif",
         attributionLogo: false,
       },
-      grid: { vertLines: { color: t.grid }, horzLines: { color: t.grid } },
+      // s18 T6 — vertical gridlines off (owner feedback ①, app-wide). This is
+      // a slice-local chart HOST (not the canonical SeriesChart), so s14's
+      // shared BASE_CHART_OPTIONS default will never reach it at integration;
+      // the local vertical grid it used to draw is removed here instead.
+      grid: { vertLines: { visible: false }, horzLines: { color: t.grid } },
       timeScale: { borderColor: t.grid, timeVisible: false, secondsVisible: false },
       rightPriceScale: { borderColor: t.grid },
       crosshair: { mode: CrosshairMode.Normal },
