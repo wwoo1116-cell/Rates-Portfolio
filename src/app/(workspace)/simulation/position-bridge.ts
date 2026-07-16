@@ -94,12 +94,44 @@ export function swapToSimPosition(m: ManualPosition, baseDate: string): Position
   };
 }
 
+/**
+ * s18 T4 — "today" as the SEOUL calendar date, never UTC.
+ *
+ * The previous `toISOString().slice(0,10)` derived the UTC date, so any run
+ * before 09:00 KST resolved to the PREVIOUS day. Under s13 that was ~4.9k KRW
+ * of median drift; s15 escalated it: baseDate is now the par-quote lookup key,
+ * so a Monday-morning pre-09:00 run resolved to Sunday → NonBusinessDayError →
+ * the whole swap book silently dropped to 스왑 제외 behind a policy-compliant
+ * blank.
+ *
+ * DATE-AUTHORITY NOTE (reported in REPORT_s18): the repo's Seoul BUSINESS-DAY
+ * authority (holiday calendar, CD fixing T−1 rule) lives backend-side in
+ * irs_pricer/engine/fixings.py + quant_engine's KR calendar — the FE cannot
+ * call it, and before s18 the FE had no Seoul date derivation at all (only the
+ * top bar's display-only KST clock). This helper is deliberately TIMEZONE
+ * CONVERSION ONLY (no business-day snapping — a weekend run still resolves to
+ * the weekend date and the backend answers with the honest 스왑 제외 notice).
+ * If the FE ever needs Seoul business-day arithmetic, resolve it via the
+ * backend rather than porting the holiday calendar — do not create a second
+ * business-day authority.
+ *
+ * en-CA gives ISO YYYY-MM-DD directly from Intl.
+ */
+export function todayInSeoul(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
 /** Assemble the full ambient inputs the simulation port consumes. */
 export function buildSimulationInputs(
   bonds: BondPosition[],
   swaps: ManualPosition[] = [],
 ): SimulationInputs {
-  const baseDate = new Date().toISOString().slice(0, 10);
+  const baseDate = todayInSeoul();
   return {
     positions: [
       ...bonds.map(bondToSimPosition),

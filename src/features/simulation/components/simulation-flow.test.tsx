@@ -36,8 +36,8 @@ const RESULT: SimulateResponse = {
   ],
   summary: { finalMTM: -100, finalCarry: 200, finalSwap: 0, finalTotal: 100, breakEvenDay: -1 },
   fundingCurve: [
-    { day: 0, date: "2026-07-16", fundingRate: 0.026, positionRate: 0.0326, carryBp: 66.0 },
-    { day: 180, date: "2027-01-12", fundingRate: 0.026, positionRate: 0.0326, carryBp: 66.0 },
+    { day: 0, date: "2026-07-16", fundingRate: 0.0285, positionRate: 0.0326, carryBp: 41.0 },
+    { day: 180, date: "2027-01-12", fundingRate: 0.0285, positionRate: 0.0326, carryBp: 41.0 },
   ],
   distribution: null,
   exclusions: [{ assetClass: "swap", reason: "당일 IRS 호가 없음", asOf: "2026-07-16" }],
@@ -106,8 +106,8 @@ describe("SimulationFlow (s15 staged flow)", () => {
     expect(screen.getByTestId("fan-hero")).toBeTruthy();
     expect(screen.getByText("D+180")).toBeTruthy();       // 기간 chip
     expect(screen.getByText("+30bp")).toBeTruthy();       // 목표 변동 chip
-    expect(screen.getByText("2.60%")).toBeTruthy();       // Funding chip (constant)
-    expect(screen.getByText("+66.0bp")).toBeTruthy();     // Carry chip == 운용 − funding
+    expect(screen.getByText("2.85%")).toBeTruthy();       // Funding chip (constant)
+    expect(screen.getByText("+41.0bp")).toBeTruthy();     // Carry chip == 운용 − funding
     expect(screen.getByRole("button", { name: "조건 수정" })).toBeTruthy();
   });
 

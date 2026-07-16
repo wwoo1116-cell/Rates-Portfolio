@@ -36,7 +36,9 @@ FUNDING_RATE_KRW = POLICY_BASE_RATE_KRW + FUNDING_SPREAD_BP / 10000.0  # 0.026
 
 **Regression (pinned in `tests/test_simulate_s15.py`).** With `fundingRate` omitted and a −25bp 금통위 event configured: every `fundingCurve` row == 0.026 exactly; `carryBp == (positionRate − fundingRate) × 1e4` to 0.1bp; cumulative carry accrues at the constant (analytic pin). Explicit-value stepping pinned separately.
 
-**Live.** Header now reads **Funding 2.60% · 운용 3.42% · Carry +82.1bp** (`after2-3-results.png`). The owner's −93.8bp carry was an artifact of the fake 4.20% — at the spec'd funding this book carries positive.
+**Live.** Header now reads **Funding 2.60% · 운용 3.42% · Carry +82.1bp** (`after2-3-results.png`).
+
+> **[CORRECTED, s18 T2]** This report originally claimed the owner's −93.8bp carry "was purely an artifact of the fake 4.20%." That claim was **unverified**: the two observations do not share a base date **or a book** (owner screenshot: full uploaded book, pre-s15 session date with the then-UTC baseDate derivation, 운용 3.26%; s15 capture: 24-bond seed subset, baseDate 2026-07-16, 운용 3.42%). Funding explains exactly 160.0bp of the 175.9bp move; the residual 15.9bp is the 운용 difference between two different books/dates and says nothing about funding. The same-book/same-date A/B is pinned in s18 (`tests/test_simulate_s18.py::test_carry_ab_only_funding_moves`): at a fixed base date the carry delta equals the funding delta exactly and 운용 is byte-identical — residual 0. See REPORT_s18 §T2.
 
 ## T2 (BE+FE) — Swaps into the simulation; honest exclusion; decomposition
 
