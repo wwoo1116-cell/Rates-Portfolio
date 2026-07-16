@@ -121,6 +121,26 @@ def test_funding_constants_spec() -> None:
     assert simulation_service.FUNDING_RATE_KRW == pytest.approx(0.0285, abs=1e-15)
 
 
+def test_home_funding_rate_uses_policy_constant(client: TestClient) -> None:
+    """iv4 T5 — Home(Daily P&L by Book)과 시뮬레이션은 같은 상수에서 조달금리를
+    유도한다. Home이 다시 BOK 시리즈(또는 제2의 하드코딩 값)로 표류하면 여기서
+    깨진다: 두 패널이 화면에서 25bp 어긋나던 것이 이 재배선의 이유였다."""
+    from irs_pricer.services import portfolio_analytics_service as pas
+
+    assert pas.home_funding_rate(10.0) == pytest.approx(
+        simulation_service.FUNDING_RATE_KRW, abs=1e-15
+    )
+    assert pas.home_funding_rate(0.0) == simulation_service.POLICY_BASE_RATE_KRW
+    assert pas.home_funding_rate(None) == simulation_service.POLICY_BASE_RATE_KRW
+
+    # The FE-facing single source: /api/portfolio/funding-rate mirrors the pair.
+    r = client.get("/api/portfolio/funding-rate")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["policy_base_rate"] == simulation_service.POLICY_BASE_RATE_KRW
+    assert body["funding_rate_default"] == pytest.approx(0.0285, abs=1e-15)
+
+
 def test_funding_omitted_is_constant_everywhere_despite_events(client: TestClient) -> None:
     """fundingRate omitted + a 금통위 cut configured: the funding strip must be
     the constant on EVERY row (no event stepping), and the carry chip identity

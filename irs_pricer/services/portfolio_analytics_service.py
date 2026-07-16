@@ -15,7 +15,7 @@ from . import allocation_history_service
 from . import credit_curve_service
 from . import market_data_service
 from . import portfolio_service
-from ..loaders import base_rate
+from .simulation_service import POLICY_BASE_RATE_KRW
 from ..loaders import credit_matrix
 
 logger = logging.getLogger(__name__)
@@ -520,6 +520,19 @@ def _bond_pnl(
     return out
 
 
+def home_funding_rate(funding_spread_bp: float | None) -> float:
+    """Home(Daily P&L by Book)의 조달금리 — 시뮬레이션과 같은 단일 원천.
+
+    오너 룰링(s18 T1, 전역 적용): 조달 기준금리는 수동 관리 상수
+    ``POLICY_BASE_RATE_KRW``이며, 레포의 BOK Base Rate 시리즈에서 유도하지
+    않는다(시리즈는 금통위 결정에 뒤처진다 — 2026-07-16 결정일에 최신 행이
+    2.50%였고 상수는 2.75%). iv4 T5에서 Home이 시리즈를 읽던 것을 이 함수로
+    재배선했다. 드리프트 가드: tests/test_simulate_s15.py
+    ::test_home_funding_rate_uses_policy_constant.
+    """
+    return POLICY_BASE_RATE_KRW + (funding_spread_bp or 0.0) / 10000.0
+
+
 def build_book_daily_pnl(
     positions: list[PositionData],
     close_snapshot: MarketSnapshot,
@@ -557,9 +570,9 @@ def build_book_daily_pnl(
     하나라도 호가가 없으면 그 행의 MtM/Total은 **부분합**이며, 완성된 총액인 척
     표시해서는 안 된다.
     """
-    # 아래 base_rate 로드는 `except Exception: pass`로 감싸여 있고 load_base_rate는
-    # 파일이 없으면 None을 반환한다 -- 즉 데이터 폴더를 잘못 잡아도 조달금리가 조용히
-    # 0이 될 뿐 아무도 알아채지 못한다. 폴더 자체는 그 try 바깥에서 확인해야 한다.
+    # (iv4 T5 전까지는 여기서 BOK 시리즈를 읽었고, 그 로드가 조용히 0으로
+    # 떨어질 수 있어 폴더 확인이 필요했다. 조달금리는 이제 상수에서 오지만,
+    # 이 함수의 나머지(스냅샷/Credit Matrix)는 여전히 데이터 폴더가 필요하다.)
     require_data_dir()
 
     close_date = close_snapshot.valuation_date
@@ -575,18 +588,13 @@ def build_book_daily_pnl(
     has_credit = next(s["has_as_of"] for s in sources if s["source"] == _SOURCE_CREDIT)
     today_snapshot = _snapshot_or_none(as_of) if has_irs else None
 
-    # Funding rate = BOK 기준금리 + spread(bp). 실무 관행상 기준금리 위에 스프레드를
-    # 얹어 조달비용을 잡으며, 기본값은 +10bp (대시보드 Settings에서 조정 가능).
-    # load_base_rate는 파일/해당일 데이터가 없으면 None을 반환하므로 `or 0.0`로 방어.
-    base = 0.0
-    try:
-        base = ttl_cache.get_or_compute(
-            ("bok-base-rate", close_date),
-            lambda: base_rate.load_base_rate(DATA_DIR, close_date),
-        ) or 0.0
-    except Exception:
-        pass
-    funding_rate = base + (funding_spread_bp or 0.0) / 10000.0
+    # Funding rate = 정책 기준금리 상수 + spread(bp). iv4 T5: 오너 룰링(s18 T1,
+    # 전역)에 따라 수동 관리 상수 POLICY_BASE_RATE_KRW를 쓴다 — 예전처럼
+    # Data/BOK Base Rate.xlsx에서 읽으면 시리즈가 금통위 결정에 뒤처져(결정일에
+    # 2.50%) 시뮬레이션 탭(2.85%)과 25bp 화면 모순이 생긴다. 스프레드 기본값은
+    # +10bp (대시보드 Settings에서 조정 가능). BOK 시리즈 자체는 Rates History
+    # 차트 표시용으로만 남는다.
+    funding_rate = home_funding_rate(funding_spread_bp)
 
     irs_positions = [p for p in positions if p.instrument_type == "irs"]
     bond_positions = [p for p in positions if p.instrument_type == "bond"]

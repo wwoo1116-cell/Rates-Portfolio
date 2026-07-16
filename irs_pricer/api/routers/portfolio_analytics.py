@@ -97,6 +97,22 @@ def get_pvbp_sensitivity(request: PortfolioAnalyticsRequest) -> list[dict]:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+@router.get("/funding-rate")
+def get_funding_rate() -> dict:
+    """조달금리의 단일 원천 노출 (iv4 T5).
+
+    Settings의 Effective-funding-rate 히어로가 예전처럼 rate-history의 BOK
+    시리즈를 스캔하면 금통위 결정일에 상수(2.75%)와 25bp 어긋난다 — 오너
+    룰링상 기준금리는 수동 관리 상수이므로, FE는 이 엔드포인트에서 읽는다.
+    스프레드 적용은 소비자 몫(Settings의 사용자 조정 스프레드)이다.
+    """
+    return {
+        "policy_base_rate": portfolio_analytics_service.POLICY_BASE_RATE_KRW,
+        "spread_bp_default": 10,
+        "funding_rate_default": portfolio_analytics_service.home_funding_rate(10.0),
+    }
+
+
 @router.post("/book-daily-pnl")
 def get_book_daily_pnl(request: BookDailyPnlRequest) -> dict:
     """ΔNPV = MtM + 세타로 분해한 일간 손익.
