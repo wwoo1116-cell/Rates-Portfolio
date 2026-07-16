@@ -153,3 +153,85 @@ def test_distinct_par_rates_do_not_collide(uninstalled):
         swap_quotes=base.swap_quotes,
     )
     assert not np.array_equal(build_curve(base).yield_curve, build_curve(bumped).yield_curve)
+
+
+# ── iv4 perf pass: the /api/simulate path ────────────────────────────────────
+
+
+def _fan_fixture_request():
+    """The committed frozen-market fan fixture (1 bond + 1 swap, simDays 60) —
+    market inputs live inside the request, so this is data-folder-independent
+    and deterministic."""
+    import copy
+    import json
+    from pathlib import Path
+
+    p = Path(__file__).parent / "data" / "fan_non_monotone_request.json"
+    return copy.deepcopy(json.loads(p.read_text(encoding="utf-8")))
+
+
+def _run_simulate(payload) -> None:
+    from irs_pricer.api.routers.simulate import SimulateRequest, simulate
+
+    simulate(SimulateRequest(**payload))
+
+
+def test_simulate_bootstrap_keys_are_swap_independent(uninstalled):
+    """iv4 perf finding, pinned: a simulate run's bootstrap inputs are a
+    function of (scenario, day) ONLY — measured 1,010 distinct keys for one
+    swap and exactly 1,010 for eight distinct-maturity swaps. If this ever
+    regresses to per-swap keys, no cache size can save the full book (658k
+    single-use keys), so fail loudly here."""
+    import copy
+
+    curve_cache.install()
+
+    base = _fan_fixture_request()
+    _run_simulate(base)
+    misses_one_swap = curve_cache.stats()["misses"]
+    assert misses_one_swap > 0
+
+    curve_cache.clear()
+    many = _fan_fixture_request()
+    swap = next(p for p in many["positions"] if str(p.get("bondType")).lower() == "swap")
+    for i in range(7):
+        c = copy.deepcopy(swap)
+        c["id"] = f"{c['id']}-v{i}"
+        c["name"] = f"{c['name']}-v{i}"
+        c["maturityDate"] = f"{2028 + i}-{c['maturityDate'][5:]}"
+        many["positions"].append(c)
+    _run_simulate(many)
+    stats = curve_cache.stats()
+
+    assert stats["misses"] == misses_one_swap, (
+        f"distinct bootstrap keys grew with swap count: {misses_one_swap} -> {stats['misses']} — "
+        "the sim path's curves are no longer swap-independent"
+    )
+    assert stats["hits"] > stats["misses"], "the extra swaps should be pure cache hits"
+
+
+def test_simulate_key_set_fits_cache_with_headroom(uninstalled):
+    """The 24-minute full-book run was NOT missing memoisation — the run's
+    ~2.5k distinct (scenario, day) curves marginally exceeded the old 2048-entry
+    LRU, and the per-swap sweep over the day axis is the cyclic access pattern
+    that collapses an over-capacity LRU to a ~0% hit rate (658,505 real
+    bootstraps, 93% of wall — s18 profile). Pin BOTH sides: a run's key set is
+    small, and the configured capacity dwarfs it."""
+    curve_cache.install()
+    _run_simulate(_fan_fixture_request())
+    stats = curve_cache.stats()
+
+    # A run's distinct-curve count stays in the low thousands…
+    assert stats["misses"] < 4096, f"distinct curves per run exploded: {stats}"
+    # …and capacity must dwarf a full-book run's key set (~2.5k at simDays 180),
+    # or the LRU cyclic-eviction pathology returns silently.
+    assert curve_cache._MAX_ENTRIES >= 16384, (
+        f"_MAX_ENTRIES={curve_cache._MAX_ENTRIES}: sized back into the thrash zone "
+        "(see the iv4 note above the constant)"
+    )
+
+    # A repeat of the same run must be all hits — zero new bootstraps.
+    misses_before = stats["misses"]
+    _run_simulate(_fan_fixture_request())
+    stats2 = curve_cache.stats()
+    assert stats2["misses"] == misses_before, f"repeat run re-bootstrapped: {stats2}"

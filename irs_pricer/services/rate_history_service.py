@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from ..config import DATA_DIR, require_data_dir
+from ..core import ttl_cache
 from ..engine.curve import _quote_label
 from ..loaders.base_rate import load_base_rate
 from . import market_data_service
@@ -38,10 +39,27 @@ def get_rate_history(start_date: date, end_date: date) -> list[RateHistoryPoint]
     non-business day, or that no data source covers, are silently skipped --
     a chart is fine with gaps; the frontend isn't expected to reconcile them.
 
-    Iterates market_data_service.load_snapshot() per date -- its own DB-first/
-    Excel-fallback logic short-circuits to Excel-only after the first DB
-    failure (see market_data_service._db_market_data_unavailable), so a bulk
-    multi-thousand-date request here doesn't pay a per-date DB round-trip."""
+    iv4 perf (P4): the assembly is memoised in ttl_cache keyed by the range.
+    The full 2010->2026 sweep costs ~4.7s of per-date assembly and every NEW
+    browser session re-requested it (long-lived tabs had hidden the cost in
+    the client cache). ttl_cache inherits the standing invalidation contract
+    -- upload.py clears it on any data upload, and the TTL bounds by-hand
+    workbook swaps -- so a cached range is never staler than the dashboard's
+    other derived values. Callers treat the returned list as read-only (both
+    consumers only iterate it).
+    """
+    return ttl_cache.get_or_compute(
+        ("rate-history", start_date, end_date),
+        lambda: _compute_rate_history(start_date, end_date),
+    )
+
+
+def _compute_rate_history(start_date: date, end_date: date) -> list[RateHistoryPoint]:
+    """Uncached assembly. Iterates market_data_service.load_snapshot() per
+    date -- its own DB-first/Excel-fallback logic short-circuits to Excel-only
+    after the first DB failure (see market_data_service
+    ._db_market_data_unavailable), so a bulk multi-thousand-date request here
+    doesn't pay a per-date DB round-trip."""
     # load_base_rate() below returns None for a missing workbook by design, so
     # a wrong data dir would render as base_rate=None on every point rather
     # than an error. Check the directory itself to tell the two apart.

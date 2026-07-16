@@ -56,11 +56,18 @@ from . import quant_engine
 
 logger = logging.getLogger(__name__)
 
-# Distinct curves per snapshot measure ~16-20; the ceiling only binds when a
-# user sweeps many valuation dates (backtests, the Status panel's 12-date
-# trend). Each entry is a ~20x2 float64 array (~350B), so 2048 entries is
-# well under a megabyte.
-_MAX_ENTRIES = 2048
+# Distinct curves per DASHBOARD snapshot measure ~16-20. A full /api/simulate
+# run is the binding case (iv4 perf finding): its bootstrap inputs are
+# swap-INDEPENDENT — measured 1,010 distinct keys for 1 swap and exactly
+# 1,010 for 8 distinct-maturity swaps (1.00x growth) — but a 180-day,
+# 5-scenario run produces ~2.5k distinct (scenario, day) curves, just over
+# the old 2048 ceiling. The sim's access order (per-swap sweeps over the
+# whole day axis) is the pathological cyclic pattern for LRU: keys exceeding
+# capacity by even a few percent collapse the hit rate to ~0, which is how
+# s18 measured 658,505 real bootstraps (93% of a 24-minute full-book wall)
+# on a server with this cache installed. 32k entries x ~350B ≈ 11MB per
+# worker: cheap insurance that a whole run's key set always fits.
+_MAX_ENTRIES = 32768
 
 ParRates = Sequence[tuple[float, float]]
 
