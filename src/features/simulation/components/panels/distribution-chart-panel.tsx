@@ -24,26 +24,25 @@
  * .totalPnL byte-equal, σ-independent — backend invariant, unchanged). No
  * per-day sorting anywhere — that was the original defect.
  *
- * s18 T6 — no local chart-formatting overrides: the series defs deliberately
- * pass NO `formatter` (and this panel draws no grid of its own). At
- * integration s14's shared defaults take over; the exact wiring required is:
- *   INTEGRATION TODO (s14 6b3d091 → this file, helper `line()` below):
- *     add `valueKind: "krw"` to every def the helper returns, and
- *     `primary: true` on the center ("base") def — series-defaults.ts then
- *     resolves the SIGNED 억/만 formatter (owner feedback ④) and the badge
- *     collision policy keeps exactly the primary badge. Do NOT re-add a
- *     `formatter:` key: an explicit formatter overrides the valueKind default
- *     and would suppress the signed variant.
- *   INTEGRATION RULE (root cause of the s15 raw floats, proven from the LWC
+ * s18 T6 → APPLIED at integration v4: every def the `line()` helper returns
+ * declares `valueKind: "krw"` (series-defaults resolves the SIGNED 억/만
+ * formatter — losses read negative on a return panel, confirmed live) and the
+ * center def carries `primary: true` (the badge-collision policy keeps
+ * exactly that badge). No `formatter:` key anywhere — an explicit formatter
+ * would override the valueKind default and suppress the signed variant.
+ * Pinned by distribution-chart-panel.test.tsx.
+ *   STANDING RULE (root cause of the s15 raw floats, proven from the LWC
  *     5.2 source — PriceScale._updateFormatter picks the formatter from the
  *     LOWEST-Z-ORDER series on the scale): s15's FanBandSeries was pushed to
  *     z-order −1 via setSeriesOrder(-1) WITHOUT a priceFormat, so the whole
  *     right scale (ticks + every badge) reverted to raw default formatting no
  *     matter what the line defs declared. This panel no longer has a band
- *     series, so valueKind wiring alone fixes this scale — but any future
- *     series sent below the lines via setSeriesOrder MUST carry the same
- *     priceFormat as the lines (see rate-fan-chart.tsx). minMove/creation
- *     order were red herrings. See REPORT_s18 T6.
+ *     series — but any series sent below the lines via setSeriesOrder MUST
+ *     carry the same priceFormat as the lines (see rate-fan-chart.tsx).
+ *     minMove/creation order were red herrings. See REPORT_s18 T6. Guarded
+ *     repo-wide by scripts/check_zorder_priceformat.test.ts (the 4th member
+ *     of the lightweight-charts defect family: canvas-var colors ×3,
+ *     index-vs-calendar axes, and now z-order formatter capture).
  *
  * T4 (carry visibility, s11): the additive `fundingCurve` renders as a slim
  * bottom pane of the return chart (step line + badge); the header readout
@@ -149,20 +148,25 @@ export function DistributionChartPanel() {
   const series = useMemo<SeriesChartSeriesDef[]>(() => {
     if (!lastRun) return [];
     const t = getSimulationChartTheme();
-    // s18 T6: deliberately NO `formatter` on these defs — see the INTEGRATION
-    // TODO in the header comment (valueKind: "krw" + primary: true, s14).
+    // iv4 (s18 T6 TODO applied): valueKind resolves the signed 억/만 formatter
+    // from series-defaults; `primary` marks the one badge the collision policy
+    // keeps. Deliberately still NO `formatter:` key — it would override the
+    // valueKind default and suppress the signed variant.
     const line = (
       id: string,
       label: string,
       color: string,
       data: { time: ReturnType<typeof dayToTime>; value: number }[],
       lineWidth: 1 | 2 | 3 | 4 = 2,
+      primary = false,
     ): SeriesChartSeriesDef => ({
       id,
       label,
       color,
       lineWidth,
       axisTitle: "",
+      valueKind: "krw",
+      primary,
       data,
     });
 
@@ -172,17 +176,19 @@ export function DistributionChartPanel() {
 
     if (hasScenarios) {
       // Center pinned to the BASE run (byte-equal to the p50 rate scenario).
-      return [line("base", returnScenarioLabel(50), t.series.total, fromRows("totalPnL"), 3)];
+      return [line("base", returnScenarioLabel(50), t.series.total, fromRows("totalPnL"), 3, true)];
     }
 
     // Fallback: the S5/S7 five-series Total-Return view for responses without
-    // the s11 distribution field.
+    // the s11 distribution field. 합계 is the primary badge; the component
+    // lines read via crosshair (s14 collision policy — five stacked badges
+    // was the s15 before-state defect).
     return [
       line("mtmPnL", "MTM", t.series.mtm, fromRows("mtmPnL")),
       line("cumulativeCarry", "캐리", t.series.carry, fromRows("cumulativeCarry")),
       line("swapThetaPnL", "스왑세타", t.series.swapTheta, fromRows("swapThetaPnL")),
       line("swapValuationPnL", "스왑평가", t.series.swapValuation, fromRows("swapValuationPnL")),
-      line("totalPnL", "합계", t.series.total, fromRows("totalPnL"), 3),
+      line("totalPnL", "합계", t.series.total, fromRows("totalPnL"), 3, true),
     ];
   }, [lastRun, inputs.baseDate, hasScenarios]);
 

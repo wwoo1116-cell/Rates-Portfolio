@@ -13,6 +13,9 @@
  * jsdom (not node) only because BASE_CHART_OPTIONS lives beside the
  * lightweight-charts import in lw-chart-base.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BASE_CHART_OPTIONS } from "./lw-chart-base";
 import {
@@ -29,6 +32,29 @@ describe("BASE_CHART_OPTIONS grid defaults (s14 T1 pin)", () => {
   it("horizontal gridlines stay enabled (visible not overridden to false)", () => {
     expect(BASE_CHART_OPTIONS.grid?.horzLines?.visible).not.toBe(false);
     expect(BASE_CHART_OPTIONS.grid?.horzLines?.color).toBe("rgba(255,255,255,0.07)");
+  });
+});
+
+describe("slice-local chart hosts keep vertical gridlines off (iv4 T2.1 pin)", () => {
+  // The Simulation slice hosts build their createChart options inline and do
+  // not consume BASE_CHART_OPTIONS, so the s14 default can never reach them —
+  // s18 set vertLines off locally; this pin keeps any future host or edit
+  // from re-enabling a vertical grid anywhere in src/.
+  const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const SLICE_HOSTS = [
+    "features/simulation/components/charts/lw-line-chart.tsx",
+    "features/simulation/components/charts/rate-fan-chart.tsx",
+  ];
+
+  it("every vertLines config in the slice hosts resolves visible: false", () => {
+    for (const rel of SLICE_HOSTS) {
+      const code = readFileSync(join(SRC, rel), "utf8");
+      const matches = code.match(/vertLines\s*:\s*\{[^}]*\}/g) ?? [];
+      expect(matches.length, `${rel}: expected an explicit vertLines config`).toBeGreaterThan(0);
+      for (const m of matches) {
+        expect(m, `${rel}: vertical gridlines must stay off`).toMatch(/visible\s*:\s*false/);
+      }
+    }
   });
 });
 
