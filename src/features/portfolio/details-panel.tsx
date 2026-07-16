@@ -135,7 +135,7 @@ export function MtmHistoryChart({ points }: { points: NpvTracePointOut[] }) {
         color: CHART_SERIES_COLORS[0],
         data: points.map((p) => ({ time: p.valuation_date, value: p.clean_npv })),
         lineWidth: 3,
-        formatter: formatKrwAxisSigned,
+        valueKind: "krw",
         axisTitle: "",
       },
     ],

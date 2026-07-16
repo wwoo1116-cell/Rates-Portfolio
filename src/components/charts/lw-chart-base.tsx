@@ -16,10 +16,9 @@ import {
   type SeriesType,
 } from "lightweight-charts";
 
-/**
- * Global formatter for interest rates (e.g., 0.0239 -> 2.3900%).
- */
-export const rateFormatter = (v: number) => `${(v * 100).toFixed(4)}%`;
+// Owned by series-defaults.ts since s14; re-exported so pre-s14 hosts keep
+// importing it from here.
+export { rateFormatter } from "./series-defaults";
 
 export const BASE_CHART_OPTIONS: DeepPartial<ChartOptions> = {
   localization: {
@@ -32,7 +31,10 @@ export const BASE_CHART_OPTIONS: DeepPartial<ChartOptions> = {
     fontFamily: "Inter, system-ui, sans-serif",
   },
   grid: {
-    vertLines: { color: "rgba(255,255,255,0.07)", style: 0 },
+    // s14 owner directive (GS Marquee reference): vertical gridlines are
+    // background noise on every surface — OFF app-wide. Time-axis tick labels
+    // are unaffected. Pinned by chart-defaults.test.ts.
+    vertLines: { visible: false },
     horzLines: { color: "rgba(255,255,255,0.07)", style: 0 },
   },
   crosshair: {
