@@ -7,6 +7,7 @@
  * are re-priced delta by the real backend and bucketed by pillar.
  */
 import { Spinner } from "@blueprintjs/core";
+import { heatRampFill } from "@/lib/chart-colors";
 import { usePortfolioAnalytics } from "@/hooks/use-portfolio-analytics";
 
 /** ALL 16 backend tenor buckets, in the backend's own order -- mirrors
@@ -30,18 +31,14 @@ const TOTAL_COL_PX = 80;
 // squeezed-to-illegible cells.
 const TABLE_MIN_PX = SECTOR_COL_PX + TENOR_COLS.length * TENOR_COL_PX + TOTAL_COL_PX;
 
+/** Fill scale saturates at ±10M ₩/bp — same magnitude cap the old continuous
+ * alpha scale used; only the palette moved to the S10 Jade/Berry heat ramp
+ * (white text on any fill, zero keeps the muted em-dash). */
+const CELL_RANGE = 10_000_000;
+
 function Cell({ value }: { value: number }) {
-  const t = Math.min(Math.abs(value) / 10_000_000, 1);
-  const alpha = (0.07 + t * 0.45).toFixed(2);
-  let bg = "transparent";
-  let color = "var(--fg-dim)";
-  if (value > 0) {
-    bg = `rgba(15,153,96,${alpha})`;
-    color = "var(--sem-positive)";
-  } else if (value < 0) {
-    bg = `rgba(219,55,55,${alpha})`;
-    color = "var(--sem-negative)";
-  }
+  const bg = heatRampFill(value, CELL_RANGE);
+  const color = value === 0 ? "var(--fg-dim)" : "var(--chart-heat-text)";
   return (
     <span
       style={{

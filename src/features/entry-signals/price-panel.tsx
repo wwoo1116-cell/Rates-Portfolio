@@ -12,12 +12,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SegmentedControl } from "@blueprintjs/core";
 import type { IChartApi, ISeriesApi, MouseEventParams } from "lightweight-charts";
 import { LineSeries, LineStyle } from "lightweight-charts";
+import { ChartFrame } from "@/components/chart/ChartFrame";
 import { LwChartBase, rateFormatter } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
 import { alignToDates, rollingSeries } from "@/lib/math/rolling-stats";
 import { instrumentLabel } from "@/lib/rv-instruments";
 import { LOOKBACK_PRESETS, useEntrySignalsStore } from "@/stores/entry-signals-store";
+import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
 import { CHART_COLORS } from "./chart-theme";
 import { useEntrySignalsData } from "./use-entry-signals-data";
 import { NumberField, PanelEmptyState, SyncedTimeGuide } from "./panel-shell";
@@ -130,8 +132,11 @@ export function PricePanel() {
 
   useEffect(() => () => unregisterSyncChart(PANEL_ID), []);
 
+  // Keyed off the `chart` STATE (not chartRef.current): when LwChartBase
+  // remounts without this panel remounting — ChartFrame's maximize re-parents
+  // it into the overlay portal — the fresh chart must trigger a series
+  // rebuild, and only a dep can do that.
   useEffect(() => {
-    const chart = chartRef.current;
     if (!chart) return;
 
     const dropAll = () => {
@@ -215,7 +220,7 @@ export function PricePanel() {
       prevIdRef.current = focusedSeries.id;
       chart.timeScale().fitContent();
     }
-  }, [focusedSeries, lookback, entryZ, showBands]);
+  }, [chart, focusedSeries, lookback, entryZ, showBands]);
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
@@ -234,7 +239,7 @@ export function PricePanel() {
 
       <ControlBar />
 
-      <div className="relative min-h-0 flex-1">
+      <ChartFrame chartId="es-price" title="Price / Spread" className="min-h-0 flex-1">
         <LwChartBase onChartReady={onChartReady} />
         <SyncedTimeGuide chart={chart} suppressed={reticle != null} />
         <CrosshairReticle point={reticle} date={reticle?.date} paneWidth={reticle?.paneWidth} />
@@ -247,16 +252,22 @@ export function PricePanel() {
           </div>
         )}
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(22,28,38,0.75)] text-micro text-fg-muted">
+          <div
+            className="absolute inset-0 flex items-center justify-center text-micro text-fg-muted"
+            style={{ background: CHART_CHROME_COLORS.scrimLightStale }}
+          >
             Loading rate history…
           </div>
         )}
         {isError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(22,28,38,0.85)] text-micro text-fg-muted">
+          <div
+            className="absolute inset-0 flex items-center justify-center text-micro text-fg-muted"
+            style={{ background: CHART_CHROME_COLORS.scrimHeavyStale }}
+          >
             Could not load rate history — confirm the pricing server is reachable.
           </div>
         )}
-      </div>
+      </ChartFrame>
     </div>
   );
 }

@@ -18,7 +18,9 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import type { DockviewApi } from "dockview-react";
+import { ChartFrame } from "@/components/chart/ChartFrame";
 import { rateFormatter } from "@/components/charts/lw-chart-base";
+import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
 import {
   SeriesChart,
   type SeriesChartClickContext,
@@ -171,8 +173,11 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
         onRemove={removeInstrument}
       />
 
-      {/* Chart container is ALWAYS in the DOM — error/loading shown as overlay */}
-      <div className="relative min-h-0 flex-1">
+      {/* Chart container is ALWAYS in the DOM — error/loading shown as overlay.
+          ChartFrame is that relative container (S10): maximize/detach controls
+          on hover; the detached window re-mounts this same panel and refetches
+          from the shared query cache (no snapshot needed). */}
+      <ChartFrame chartId="rates-history" title="Rate History" className="min-h-0 flex-1">
         <SeriesChart series={chartSeries} onClick={handleClick} />
 
         {isLoading && !isError && (
@@ -180,7 +185,7 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
             style={{
               position: "absolute", inset: 0,
               display: "flex", alignItems: "center", justifyContent: "center",
-              background: "rgba(22,28,38,0.75)",
+              background: CHART_CHROME_COLORS.scrimLightStale,
               fontSize: 12, color: "var(--fg-muted)", fontFamily: "var(--font-ui)",
               letterSpacing: "0.05em",
             }}
@@ -194,14 +199,14 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
             style={{
               position: "absolute", inset: 0,
               display: "flex", alignItems: "center", justifyContent: "center",
-              background: "rgba(22,28,38,0.85)",
+              background: CHART_CHROME_COLORS.scrimHeavyStale,
               fontSize: 12, color: "var(--fg-muted)", fontFamily: "var(--font-ui)",
             }}
           >
             Could not load rate history — confirm the pricing server is reachable.
           </div>
         )}
-      </div>
+      </ChartFrame>
     </div>
   );
 }

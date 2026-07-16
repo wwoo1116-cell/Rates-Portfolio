@@ -30,7 +30,9 @@ const DEFAULT_COL_DEF: ColDef<BtTrade> = {
 };
 
 function StatTile({ label, value, tone }: { label: string; value: string; tone?: "positive" | "negative" }) {
-  const color = tone === "positive" ? "var(--sem-positive)" : tone === "negative" ? "var(--sem-negative)" : "var(--fg-primary)";
+  // Chart P&L pair (S10) — these tiles summarize the equity-curve chart, so
+  // they carry its Jade/Berry convention, not the app-wide sem green/red.
+  const color = tone === "positive" ? "var(--chart-pnl-pos)" : tone === "negative" ? "var(--chart-pnl-neg)" : "var(--fg-primary)";
   return (
     <div className="flex flex-col gap-1 bg-bg-raised px-3 py-2" style={{ minWidth: 96 }}>
       <span className="text-label uppercase text-fg-muted">{label}</span>

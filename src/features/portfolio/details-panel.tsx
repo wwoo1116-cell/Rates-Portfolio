@@ -1,13 +1,14 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useMemo } from "react";
 import { differenceInCalendarDays, format, parseISO, subYears } from "date-fns";
 import { Spinner } from "@blueprintjs/core";
-import type { IChartApi, ISeriesApi } from "lightweight-charts";
-import { LineSeries } from "lightweight-charts";
 import { Badge } from "@/components/ui/badge";
 import { PriceDisplay } from "@/components/data/price-display";
-import { LwChartBase } from "@/components/charts/lw-chart-base";
+import { ChartFrame } from "@/components/chart/ChartFrame";
+import { SeriesChart, type SeriesChartSeriesDef } from "@/components/charts/series-chart";
+import { CHART_SERIES_COLORS } from "@/lib/chart-colors";
+import { formatKrwAxisSigned } from "@/lib/format";
 import { usePortfolioFiltersStore } from "@/stores/portfolio-filters-store";
 import { usePortfolioPositions } from "./use-portfolio-positions";
 import { useManualPortfolioValuation } from "@/hooks/use-manual-portfolio-valuation";
@@ -111,30 +112,35 @@ function buildMtmTraceRequest(position: Position): NpvTraceRequest | null {
   };
 }
 
-function MtmHistoryChart({ points }: { points: NpvTracePointOut[] }) {
-  const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-
-  const onChartReady = useCallback((chart: IChartApi) => {
-    chartRef.current = chart;
-    seriesRef.current = chart.addSeries(LineSeries, {
-      color: "var(--accent)",
-      lineWidth: 2,
-      priceFormat: { type: "custom", formatter: (v: number) => Math.round(v).toLocaleString() },
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!seriesRef.current) return;
-    seriesRef.current.setData(points.map((p) => ({ time: p.valuation_date, value: p.clean_npv })) as never);
-    chartRef.current?.timeScale().fitContent();
-  }, [points]);
-
-  return (
-    <div className="relative h-40 w-full">
-      <LwChartBase onChartReady={onChartReady} />
-    </div>
+/**
+ * Position MtM (1Y) line on the canonical SeriesChart (S10 rework). The old
+ * hand-rolled version passed `color: "var(--accent)"` straight to
+ * lightweight-charts — canvas can't resolve CSS custom properties, so the
+ * series painted in the library's unstyled fallback and read nearly invisible
+ * on the dark surface (the T3 "too dark" complaint). Now: the canonical
+ * primary series token (ocean, 4.4:1 vs --bg-surface) at line width 3, a zero
+ * baseline, and the signed 억/만 KRW formatter on axis ticks, the last-value
+ * badge, and the crosshair tooltip alike (no sub-만원 digits anywhere).
+ *
+ * Exported for the detached-chart registry (/chart/portfolio-mtm renders the
+ * same component from a points snapshot).
+ */
+export function MtmHistoryChart({ points }: { points: NpvTracePointOut[] }) {
+  const series = useMemo<SeriesChartSeriesDef[]>(
+    () => [
+      {
+        id: "mtm",
+        label: "Clean NPV",
+        color: CHART_SERIES_COLORS[0],
+        data: points.map((p) => ({ time: p.valuation_date, value: p.clean_npv })),
+        lineWidth: 3,
+        formatter: formatKrwAxisSigned,
+        axisTitle: "",
+      },
+    ],
+    [points],
   );
+  return <SeriesChart series={series} tooltip zeroLine />;
 }
 
 export const DetailsPanel = memo(function DetailsPanel() {
@@ -228,10 +234,25 @@ export const DetailsPanel = memo(function DetailsPanel() {
           </div>
         ) : mtmHistory.data && mtmHistory.data.points.length > 0 ? (
           <div className="flex flex-col gap-1">
-            <MtmHistoryChart points={mtmHistory.data.points} />
+            <ChartFrame
+              chartId="portfolio-mtm"
+              title={`MTM (1Y) — ${position.ticker}`}
+              detachState={() => ({
+                points: mtmHistory.data!.points,
+                label: `${position.ticker} · ${position.id}`,
+              })}
+              className="h-40 w-full"
+            >
+              <MtmHistoryChart points={mtmHistory.data.points} />
+            </ChartFrame>
             <div className="flex items-center justify-between text-micro text-fg-muted">
               <span>{mtmHistory.data.points[0].valuation_date}</span>
-              <PriceDisplay value={mtmHistory.data.points.at(-1)!.clean_npv} unit="KRW" />
+              {/* Last-value badge: same signed 억/만 formatter as the chart's
+                  axis/tooltip — PriceDisplay's big-figure split is for rate
+                  quotes, and its raw digits leaked sub-만원 precision (T3). */}
+              <span className="tabular-nums text-fg-primary">
+                {formatKrwAxisSigned(mtmHistory.data.points.at(-1)!.clean_npv)} KRW
+              </span>
             </div>
           </div>
         ) : (

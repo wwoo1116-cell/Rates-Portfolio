@@ -22,8 +22,19 @@ import { formatDuration, formatKrwCompact } from "@/lib/format";
 import { usePortfolioAnalytics } from "@/hooks/use-portfolio-analytics";
 import { useAllocationHistory } from "@/hooks/use-allocation-history";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChartFrame } from "@/components/chart/ChartFrame";
 import { StackedBar100, type StackedBar100Column } from "@/components/charts/stacked-bar-100";
 import type { AllocationSeries } from "@/lib/api-types";
+
+/** Snapshot handed to the detached window (chart-registry): the series data
+ * plus a kind discriminator so the renderer can rebind the non-serializable
+ * colorFor/canonical pair on its side. */
+export interface AllocationDetachState {
+  kind: "sector" | "maturity";
+  title: string;
+  basis: string;
+  series: AllocationSeries;
+}
 
 const BOOK = "RP Fund";
 
@@ -58,13 +69,17 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Chart({
+/** Exported for the detached-chart registry (/chart/home-allocation-*), which
+ * re-renders the same chart from an AllocationDetachState snapshot. */
+export function AllocationChart({
+  kind,
   title,
   basis,
   series,
   canonical,
   colorFor,
 }: {
+  kind: "sector" | "maturity";
   title: string;
   basis: string;
   series: AllocationSeries;
@@ -83,9 +98,14 @@ function Chart({
         <span className="text-label text-fg-primary">{title}</span>
         <span className="text-micro text-fg-dim">{basis}</span>
       </div>
-      <div className="min-h-0 flex-1">
+      <ChartFrame
+        chartId={`home-allocation-${kind}`}
+        title={title}
+        detachState={() => ({ kind, title, basis, series }) satisfies AllocationDetachState}
+        className="min-h-0 flex-1"
+      >
         <StackedBar100 columns={columns} seriesKeys={orderedKeys} colorFor={colorFor} />
-      </div>
+      </ChartFrame>
     </div>
   );
 }
@@ -187,7 +207,8 @@ export function PortfolioOverview() {
           {allocation ? (
             <>
               <div className="flex min-h-0 flex-1 gap-4">
-                <Chart
+                <AllocationChart
+                  kind="sector"
                   title="섹터 배분"
                   basis="PVBP 기준"
                   series={allocation.sector}
@@ -195,7 +216,8 @@ export function PortfolioOverview() {
                   colorFor={sectorColor}
                 />
                 <div className="w-px shrink-0 bg-border-subtle" />
-                <Chart
+                <AllocationChart
+                  kind="maturity"
                   title="만기 배분"
                   basis="평가금액 기준"
                   series={allocation.maturity}
@@ -224,5 +246,6 @@ export function PortfolioOverview() {
 }
 
 /** Mirrors allocation_history_service.MATURITY_BUCKETS' order (short → long) so
- * the stack reads bottom-up by tenor rather than by size. */
-const MATURITY_ORDER = ["단기(1년 미만)", "중기(1~3년)", "장기(3년 이상)"] as const;
+ * the stack reads bottom-up by tenor rather than by size. Exported for the
+ * detached-chart registry alongside AllocationChart. */
+export const MATURITY_ORDER = ["단기(1년 미만)", "중기(1~3년)", "장기(3년 이상)"] as const;

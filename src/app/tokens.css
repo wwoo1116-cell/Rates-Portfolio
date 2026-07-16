@@ -97,6 +97,17 @@
   /* Note: solid --ms-jade / --ms-berry are permitted only for bold elements
      (thick lines, large chips); -80 steps are the default for contrast on dark. */
 
+  /* Signed-sensitivity heat ramps (S10) — DV01/PVBP/KRD heatmap CELL FILLS.
+     Berry = negative, Jade = positive (the reserved P&L hue families), applied
+     as alpha steps over the dark surface — stronger magnitude → stronger step.
+     Steps live in src/lib/chart-colors.ts (HEAT_ALPHA_STEPS × these bases);
+     cell TEXT is fixed white on every step, and the strongest step is clamped
+     so white text keeps ≥3:1 on the composited fill
+     (gate: scripts/check_heat_ramp_contrast.test.ts). */
+  --chart-heat-pos:  var(--ms-jade-80);
+  --chart-heat-neg:  var(--ms-berry-80);
+  --chart-heat-text: #FFFFFF;
+
   /* Simulation series — composite hierarchy: total emphasized, components subdued */
   --chart-series-total:     var(--ms-blue-20);       /* 합계, line width 3 */
   --chart-series-mtm:       var(--ms-blue-80);

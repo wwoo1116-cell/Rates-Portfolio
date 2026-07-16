@@ -12,6 +12,7 @@ import type { IChartApi, ISeriesApi, MouseEventParams, SeriesMarker, ISeriesMark
 import { LineSeries, createSeriesMarkers } from "lightweight-charts";
 import type { IDockviewPanelProps } from "dockview-react";
 import { Button } from "@/components/ui/button";
+import { ChartFrame } from "@/components/chart/ChartFrame";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, formatCrosshairDate } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
@@ -311,7 +312,12 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
               {lastPoint ? `${formatPnlKrw(lastPoint.cumulative_pnl)} KRW` : "—"}
             </span>
           </div>
-          <div className="relative min-h-0 flex-1">
+          <ChartFrame
+            chartId="pnl-trace"
+            title="PnL Trace"
+            detachState={() => ({ point })}
+            className="min-h-0 flex-1"
+          >
             <LwChartBase onChartReady={(chart) => { setTraceChart(chart); traceSeriesRef.current = null; }} />
             <CrosshairReticle
               point={hoverData ? { x: hoverData.x, y: hoverData.y } : null}
@@ -358,7 +364,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
                 </div>
               </div>
             )}
-          </div>
+          </ChartFrame>
         </div>
       )}
     </div>

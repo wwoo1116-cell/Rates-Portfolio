@@ -26,7 +26,8 @@ export function createTradeColumnDefs(): ColDef<BtTrade>[] {
       cellRenderer: (p: { data?: BtTrade }) => {
         if (!p.data) return null;
         const long = p.data.direction > 0;
-        return <Badge tone={long ? "positive" : "negative"}>{long ? "Long" : "Short"}</Badge>;
+        // Chart P&L pair (S10): matches the equity curve's L/S entry markers.
+        return <Badge tone={long ? "pnl-positive" : "pnl-negative"}>{long ? "Long" : "Short"}</Badge>;
       },
     },
     {
@@ -69,7 +70,7 @@ export function createTradeColumnDefs(): ColDef<BtTrade>[] {
       cellRenderer: (p: { value?: number }) => {
         const v = p.value ?? 0;
         return (
-          <span style={{ display: "block", textAlign: "right", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", color: v >= 0 ? "var(--sem-positive)" : "var(--sem-negative)" }}>
+          <span style={{ display: "block", textAlign: "right", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", color: v >= 0 ? "var(--chart-pnl-pos)" : "var(--chart-pnl-neg)" }}>
             {v > 0 ? "+" : ""}
             {Math.round(v).toLocaleString()}
           </span>

@@ -1,12 +1,16 @@
 // HeatmapPill: renders a value as a colored bar fill.
-// Uses --accent (#F58220) alpha scale for non-directional data.
-// Directional (bidirectional): negative uses --sem-negative, positive --sem-positive.
+// Uses --accent alpha scale for non-directional data.
+// Directional (bidirectional): signed-sensitivity heat ramp (S10) — Berry
+// steps for negative, Jade steps for positive, fixed white text on any fill
+// (lib/chart-colors HEAT_* — replaces the legacy green/red --sem-* fills).
+
+import { heatRampFill } from "@/lib/chart-colors";
 
 interface HeatmapPillProps {
   value: number;
   min: number;
   max: number;
-  /** bidirectional: green/red by sign. unidirectional: accent alpha scale. */
+  /** bidirectional: Jade/Berry heat ramp by sign. unidirectional: accent alpha scale. */
   direction?: "bidirectional" | "unidirectional";
 }
 
@@ -23,12 +27,9 @@ export function HeatmapPill({
   let textColor: string;
 
   if (direction === "bidirectional") {
-    if (value > 0) {
-      bgColor = `rgba(15, 153, 96,${(0.10 + t * 0.50).toFixed(2)})`;
-      textColor = "var(--sem-positive)";
-    } else if (value < 0) {
-      bgColor = `rgba(219, 55, 55,${(0.10 + t * 0.50).toFixed(2)})`;
-      textColor = "var(--sem-negative)";
+    if (value !== 0) {
+      bgColor = heatRampFill(value, range);
+      textColor = "var(--chart-heat-text)";
     } else {
       bgColor = "transparent";
       textColor = "var(--fg-muted)";
