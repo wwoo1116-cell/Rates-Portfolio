@@ -143,12 +143,19 @@ class DistributionBand(BaseModel):
 class SimulationDistribution(BaseModel):
     """s11 T3 — totalPnL 퍼센타일 팬. p50은 기본 시나리오 궤적과 동일하고,
     각 밴드는 '시나리오 + 만기 Δp 평행 충격'의 실제 엔진 런이다
-    (simulation_service.build_distribution_bands의 가정 주석 참조)."""
+    (simulation_service.build_distribution_bands의 가정 주석 참조).
+
+    s18 T3 (이중축 분리): bands의 p-키는 '생성 금리 분위수 시나리오'의 수익
+    궤적이며 순위 라벨이 아니다 — FE는 라인 + 시나리오 라벨로 렌더링한다.
+    ratePaths는 각 시나리오의 국채 3Y 누적 충격 경로(bp)로, 금리는 분위수에
+    단조라 절대 교차하지 않는다 — P5..P95 라벨이 진실인 축은 이쪽이다."""
     sigmaBpDaily: float
     sigmaTerminalBp: float
     percentiles: list[int]
     method: str
     bands: list[DistributionBand]
+    # s18 확장 필드 (추가 전용) — 금리 분위수 경로, bands와 같은 day 축.
+    ratePaths: list[DistributionBand]
 
 
 class SimulationExclusion(BaseModel):
