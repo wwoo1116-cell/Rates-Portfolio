@@ -1,0 +1,20 @@
+INFO irs_pricer.engine.curve_cache: curve_cache installed (maxsize=32768)
+INFO irs_pricer.engine.curve_cache: curve_cache installed (maxsize=32768)
+
+=== fan_non_monotone_request.json (simDays=60, positions=2) ===
+cache OFF : wall     3.55s  raw bootstraps    1267 (distinct inputs 1010)
+cache COLD: wall     3.19s  raw bootstraps    1010 (== misses 1010, hits 257)
+cache WARM: wall     0.17s  raw bootstraps       0
+sha256 OFF  37fd9ed24f6a37bc382467b0d960061a3e49fd08986f3709866dc57ba294a97b
+sha256 COLD 37fd9ed24f6a37bc382467b0d960061a3e49fd08986f3709866dc57ba294a97b
+sha256 WARM 37fd9ed24f6a37bc382467b0d960061a3e49fd08986f3709866dc57ba294a97b
+byte-identity: OK (OFF == COLD == WARM)
+
+=== simulate_request_representative.json (simDays=90, positions=5) ===
+cache OFF : wall     1.67s  raw bootstraps    2911 (distinct inputs 1445)
+cache COLD: wall     1.13s  raw bootstraps    1445 (== misses 1445, hits 1466)
+cache WARM: wall     0.49s  raw bootstraps       0
+sha256 OFF  f7de35cdf86664d60a243d7de4fb45509ec957f9116f391a094bb9b9c7daee91
+sha256 COLD f7de35cdf86664d60a243d7de4fb45509ec957f9116f391a094bb9b9c7daee91
+sha256 WARM f7de35cdf86664d60a243d7de4fb45509ec957f9116f391a094bb9b9c7daee91
+byte-identity: OK (OFF == COLD == WARM)

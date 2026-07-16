@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import logging.config
+import os
 
 logging.config.dictConfig({
     "version": 1,
@@ -57,7 +58,19 @@ async def lifespan(app: FastAPI):
     # through -- see engine/curve_cache.py for the measurements. Installed here
     # rather than at import so tests and scripts opt in explicitly and can A/B
     # against the unmemoised engine.
-    curve_cache.install()
+    #
+    # s21: IRS_PRICER_CURVE_CACHE=0 skips installation -- the operational
+    # escape hatch and the A/B mechanism for the byte-identity evidence. The
+    # env is read per startup (not at import), so a TestClient context picks
+    # up whatever the test just set. uninstall() rather than a bare skip: a
+    # previous in-process startup may have left the wrapper bound.
+    if os.environ.get(curve_cache.ENV_FLAG, "1") == "0":
+        logging.getLogger("irs_pricer").warning(
+            "curve_cache NOT installed (%s=0) -- engine runs unmemoized", curve_cache.ENV_FLAG
+        )
+        curve_cache.uninstall()
+    else:
+        curve_cache.install()
     yield
 
 

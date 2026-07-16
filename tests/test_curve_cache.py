@@ -223,11 +223,19 @@ def test_simulate_key_set_fits_cache_with_headroom(uninstalled):
 
     # A run's distinct-curve count stays in the low thousands…
     assert stats["misses"] < 4096, f"distinct curves per run exploded: {stats}"
-    # …and capacity must dwarf a full-book run's key set (~2.5k at simDays 180),
-    # or the LRU cyclic-eviction pathology returns silently.
-    assert curve_cache._MAX_ENTRIES >= 16384, (
-        f"_MAX_ENTRIES={curve_cache._MAX_ENTRIES}: sized back into the thrash zone "
-        "(see the iv4 note above the constant)"
+    # …and capacity must hold ≥4x the key set of the worst MEASURED real run,
+    # or the LRU cyclic-eviction pathology returns silently. s21 measured the
+    # full live book (650 positions / 377 swaps, ramp+matrix, simDays 180,
+    # 5 scenarios) at 11,661 distinct keys — 4.7x iv4's fixture extrapolation,
+    # because real swaps' varied next-fixing dates mint short-anchor curve
+    # variants the fixture's same-start-date clones collapsed to one
+    # (docs/session-s21/fullbook-profile-ramp.txt). If a bigger book or a
+    # longer horizon raises the measurement, raise _MAX_ENTRIES with it.
+    _MEASURED_FULLBOOK_KEYS_S21 = 11_661
+    assert curve_cache._MAX_ENTRIES >= 4 * _MEASURED_FULLBOOK_KEYS_S21, (
+        f"_MAX_ENTRIES={curve_cache._MAX_ENTRIES}: under 4x the measured "
+        f"real-book key set ({_MEASURED_FULLBOOK_KEYS_S21}) — back in the thrash zone "
+        "(see the s21 note above the constant)"
     )
 
     # A repeat of the same run must be all hits — zero new bootstraps.
@@ -235,3 +243,191 @@ def test_simulate_key_set_fits_cache_with_headroom(uninstalled):
     _run_simulate(_fan_fixture_request())
     stats2 = curve_cache.stats()
     assert stats2["misses"] == misses_before, f"repeat run re-bootstrapped: {stats2}"
+
+
+# ── s21 hardening: kill switch, key totality, raw-invocation contract ────────
+#
+# The owner-approved design ruling (s21): the module-global exact-key memo
+# stays BECAUSE the key is total — the curve is a pure function of the par-rate
+# vector and the full vector at exact float bit patterns is the key, so
+# cross-run staleness is impossible by construction. These tests make that
+# safety argument executable rather than prose. If any of them fails, the
+# ruling's premise is broken: stop and report, don't resize or patch around it.
+
+from irs_pricer.engine import quant_engine as _qe
+
+
+def _fixture_payload(name: str) -> dict:
+    import json
+    from pathlib import Path
+
+    return json.loads((Path(__file__).parent / "data" / name).read_text(encoding="utf-8"))
+
+
+def test_env_kill_switch_controls_install(uninstalled, monkeypatch):
+    """IRS_PRICER_CURVE_CACHE=0 must stop the lifespan from installing the
+    wrapper (operational escape hatch + the A/B mechanism below); unset/other
+    values must install as before. Read per startup, so each TestClient
+    context sees the env the test just set."""
+    from fastapi.testclient import TestClient
+
+    from irs_pricer.api.app import app
+
+    monkeypatch.setenv(curve_cache.ENV_FLAG, "0")
+    with TestClient(app):
+        assert curve_cache.stats()["installed"] is False, (
+            "lifespan installed the cache despite the kill switch"
+        )
+
+    monkeypatch.delenv(curve_cache.ENV_FLAG)
+    with TestClient(app):
+        assert curve_cache.stats()["installed"] is True, (
+            "default must be installed -- the switch is opt-OUT"
+        )
+
+
+def test_key_is_total_determinism_and_exact_roundtrip(uninstalled):
+    """The two mechanical premises of key totality: (1) the raw bootstrap is
+    deterministic -- same vector, bit-identical array -- so 'the first
+    caller's result' and 'this caller's result' are the same thing; (2) the
+    key round-trips the input exactly (the cached path computes from
+    list(key), the float()-coerced reconstruction, NOT the caller's object --
+    that reconstruction must be lossless for the float tuples the engine
+    passes)."""
+    par = [(0.25, 0.0251), (1.0, 0.0280), (2.0, 0.0300), (5.0, 0.0320), (10.0, 0.0325)]
+
+    a = curve_cache._original(par)
+    b = curve_cache._original(list(par))
+    assert a.shape == b.shape and a.dtype == b.dtype
+    assert a.tobytes() == b.tobytes(), "raw bootstrap is not deterministic"
+
+    key = tuple((float(t), float(r)) for t, r in par)  # what _bootstrap_memoized builds
+    assert list(key) == par, "key does not reconstruct the input exactly"
+
+    curve_cache.install()
+    c = _qe.bootstrap_zero_curve(par)
+    assert c.shape == a.shape and c.dtype == a.dtype
+    assert c.tobytes() == a.tobytes(), "cached result differs from the raw engine's"
+    assert _qe.bootstrap_zero_curve(par) is c, "identical input should be a hit"
+
+
+def test_key_totality_mutated_inputs_cannot_serve_stale_curves(uninstalled):
+    """The property run-scoping was meant to buy, delivered by the key
+    instead: a caller mutating its own par-rate structure mid-run gets a
+    freshly computed, correct curve -- never the entry its pre-mutation call
+    created. (The key is materialized per call, so 'the same list object'
+    is irrelevant; only values matter.)"""
+    curve_cache.install()
+
+    par = [[1.0, 0.0300], [5.0, 0.0320]]  # deliberately mutable
+    before = _qe.bootstrap_zero_curve(par).copy()
+
+    par[1][1] = 0.0400  # snapshot "mutates mid-run"
+    after = _qe.bootstrap_zero_curve(par)
+
+    assert not np.array_equal(before, after), "mutated input served a stale curve"
+    want = curve_cache._original([(1.0, 0.0300), (5.0, 0.0400)])
+    assert after.tobytes() == want.tobytes(), "mutated input's curve is not the raw recompute"
+
+
+def test_key_totality_run_determinants_reach_the_key(uninstalled):
+    """Probe the determinants a partial key would be most likely to drop --
+    sigma_bp (scales the percentile scenarios), baseDate (sets the
+    tenor->year-fraction resolution of the fixture's tenor-labelled
+    irsCurves), and the scenario shock vector itself. Each probe run differs
+    from the previous ONLY in that determinant, so if it fails to mint new
+    cache keys, two genuinely different curves are sharing entries and the
+    module-global memo is unsafe: stand down, do not patch."""
+    curve_cache.install()
+
+    _run_simulate(_fan_fixture_request())
+    m_base = curve_cache.stats()["misses"]
+    assert m_base > 0
+
+    probe = _fan_fixture_request()
+    probe["sigma_bp"] = 4.0
+    _run_simulate(probe)
+    m_sigma = curve_cache.stats()["misses"]
+    assert m_sigma > m_base, "sigma_bp does not reach the cache key"
+
+    probe = _fan_fixture_request()
+    probe["baseDate"] = "2026-07-22"
+    _run_simulate(probe)
+    m_date = curve_cache.stats()["misses"]
+    assert m_date > m_sigma, "baseDate does not reach the cache key"
+
+    probe = _fan_fixture_request()
+    probe["shockCurves"]["swapCurve"] = [
+        {**pt, "val": pt["val"] + 5.0} for pt in probe["shockCurves"]["swapCurve"]
+    ]
+    _run_simulate(probe)
+    m_shock = curve_cache.stats()["misses"]
+    assert m_shock > m_date, "the scenario shock vector does not reach the cache key"
+
+
+def test_raw_engine_called_exactly_once_per_variant_and_never_on_repeat(uninstalled, monkeypatch):
+    """The raw-invocation contract, pinned through the _original seam (the
+    landed pins assert miss-counts, which lru_cache guarantees by
+    construction; this counts what actually reaches the unmemoized engine, so
+    a bypass path or a double-compute shows up here): a cold fixture run
+    invokes the raw bootstrap exactly once per distinct par-rate variant --
+    not one more -- and an identical second run invokes it exactly zero
+    times."""
+    calls = {"n": 0, "keys": set()}
+    raw = curve_cache._original
+
+    def counting(par_rates):
+        calls["n"] += 1
+        calls["keys"].add(tuple((float(t), float(r)) for t, r in par_rates))
+        return raw(par_rates)
+
+    monkeypatch.setattr(curve_cache, "_original", counting)
+    curve_cache.install()
+
+    _run_simulate(_fan_fixture_request())
+    assert calls["n"] > 0
+    assert calls["n"] == len(calls["keys"]), (
+        f"raw engine ran {calls['n']} times for {len(calls['keys'])} distinct variants -- "
+        "some variant was computed more than once"
+    )
+    assert calls["n"] == curve_cache.stats()["misses"], (
+        "raw invocations != cache misses -- some path bypasses the memo"
+    )
+
+    n_cold = calls["n"]
+    _run_simulate(_fan_fixture_request())
+    assert calls["n"] == n_cold, (
+        f"repeat run reached the raw engine {calls['n'] - n_cold} times; must be 0"
+    )
+
+
+@pytest.mark.parametrize(
+    "fixture_name",
+    ["fan_non_monotone_request.json", "simulate_request_representative.json"],
+)
+def test_simulate_http_bytes_identical_cached_vs_uncached(uninstalled, monkeypatch, fixture_name):
+    """T2 A/B, permanent form: the same request POSTed through the real app
+    with the cache killed vs installed must return byte-identical HTTP bodies
+    -- fan bands, ratePaths, totalReturnDecomposition, exclusions, funding
+    strip, everything, at the serialization level the frontend actually
+    consumes. Zero tolerance; approx-equality here would defeat the point."""
+    from fastapi.testclient import TestClient
+
+    from irs_pricer.api.app import app
+
+    payload = _fixture_payload(fixture_name)
+
+    monkeypatch.setenv(curve_cache.ENV_FLAG, "0")
+    with TestClient(app) as client:
+        assert curve_cache.stats()["installed"] is False
+        r_off = client.post("/api/simulate", json=payload)
+
+    monkeypatch.delenv(curve_cache.ENV_FLAG)
+    with TestClient(app) as client:
+        assert curve_cache.stats()["installed"] is True
+        r_on = client.post("/api/simulate", json=payload)
+
+    assert r_off.status_code == 200 and r_on.status_code == 200
+    assert r_off.content == r_on.content, (
+        "cached and uncached responses differ at the byte level"
+    )
