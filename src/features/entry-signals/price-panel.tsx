@@ -16,6 +16,7 @@ import { ChartFrame } from "@/components/chart/ChartFrame";
 import { LwChartBase, rateFormatter } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
+import { formatBp } from "@/lib/format";
 import { alignToDates, rollingSeries } from "@/lib/math/rolling-stats";
 import { instrumentLabel } from "@/lib/rv-instruments";
 import { LOOKBACK_PRESETS, useEntrySignalsStore } from "@/stores/entry-signals-store";
@@ -30,7 +31,6 @@ import {
 } from "./use-synced-time-scales";
 
 const PANEL_ID = "es-price";
-const spreadFormatter = (v: number) => v.toFixed(2);
 
 function ControlBar() {
   const lookback = useEntrySignalsStore((s) => s.lookback);
@@ -162,7 +162,7 @@ export function PricePanel() {
     const values = focusedSeries.lineData.map((d) => d.value);
     const isSpread = focusedSeries.kind === "spread";
     const priceScaleId = focusedSeries.priceScaleId;
-    const fmt = isSpread ? spreadFormatter : rateFormatter;
+    const fmt = isSpread ? formatBp : rateFormatter;
 
     const idChanged = prevIdRef.current !== focusedSeries.id;
     if (idChanged) {

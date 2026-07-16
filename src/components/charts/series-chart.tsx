@@ -11,7 +11,9 @@
  *     from the caller, which gets them from src/lib/chart-colors.ts — this
  *     component owns no palette.
  *  2. Last-value badges on the price scale per series (lightweight-charts
- *     lastValueVisible, on by default).
+ *     lastValueVisible) under the s14 collision policy: past `badgeLimit`
+ *     series (default 2) only `primary`-marked series keep a badge — the
+ *     rest read via crosshair. See series-defaults.ts.
  *  3. Crosshair reticle + optional multi-series tooltip. COORDINATE-SPACE
  *     NOTE (the historical "crosshair sits left of the cursor" bug): every
  *     pixel lightweight-charts reports (params.point, timeToCoordinate,
@@ -20,8 +22,10 @@
  *     scale sits between the two. snap-reticle.ts owns the fix (paneOffsetX)
  *     and this component routes ALL overlay positioning through it, so hosts
  *     can no longer regress by passing raw pane-space points.
- *  4. Per-series price formatters (axis ticks + badges). KRW hosts pass
- *     formatKrwAxis (lib/format.ts): 억/만-scaled, never raw floats.
+ *  4. Per-series price formatters (axis ticks + badges + tooltip), resolved
+ *     from the declared `valueKind` since s14 — KRW series default to the
+ *     signed 억/만 formatter (never raw floats), rate/bp keep their existing
+ *     formats. An explicit `formatter` overrides (series-defaults.ts).
  *
  * Series lifecycle is diffed by id (add new / drop removed / update data),
  * and fitContent runs only when the SET of ids changes, so a user's manual
@@ -45,6 +49,7 @@ import { ZERO_LINE_COLOR } from "@/lib/chart-colors";
 import { LwChartBase } from "./lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "./crosshair-reticle";
 import { paneOffsetX, seriesDistanceY, snapReticleToNearestSeries } from "./snap-reticle";
+import { badgeVisible, resolveSeriesFormatter, type SeriesValueKind } from "./series-defaults";
 
 export interface SeriesChartSeriesDef {
   /** Stable identity — diffing, pills, and click resolution key off it. */
@@ -56,13 +61,25 @@ export interface SeriesChartSeriesDef {
   dashed?: boolean;
   /** "right" (default) or "left" — the left scale shows only while a series uses it. */
   priceScaleId?: "right" | "left";
-  /** Axis-badge/tick formatter for this series' scale. */
+  /** What the values ARE. Resolves the default axis/badge/tooltip formatter
+   * when `formatter` is absent: "krw" → signed 억/만 (never raw floats or
+   * sub-만원 digits — s14 owner directive), "rate" → 4dp %, "bp" → 2dp. */
+  valueKind?: SeriesValueKind;
+  /** Axis-badge/tick formatter for this series' scale — overrides the
+   * valueKind default (see series-defaults.ts). */
   formatter?: (v: number) => string;
   /** Text next to the last-value badge. Defaults to `label`; pass "" to keep
    * the badge value-only (multi-series hosts where pills already name them). */
   axisTitle?: string;
   /** Pill shows × when true AND the host passed onRemoveSeries. */
   removable?: boolean;
+  /** Keeps its last-value badge when the pane has more series than
+   * `badgeLimit` (badge collision policy, s14). Opt-in. */
+  primary?: boolean;
+  /** Hard per-series badge override — wins over the collision policy in both
+   * directions (e.g. a single-series chart whose header already shows the
+   * last value passes false). */
+  lastValueBadge?: boolean;
 }
 
 export interface SeriesChartMarker {
@@ -95,6 +112,11 @@ interface SeriesChartProps {
    * library default (true) for parity with pre-extraction Rate History;
    * multi-series hosts usually pass false. */
   priceLineVisible?: boolean;
+  /** Badge collision policy threshold: with more series than this on the
+   * pane, only `primary` series keep their last-value badge (the rest read
+   * via crosshair). Default DEFAULT_BADGE_LIMIT (2); pass Infinity to opt a
+   * chart out of the policy entirely. */
+  badgeLimit?: number;
   /** Mount-time chart-option overrides (e.g. canonical --bg-surface canvas). */
   chartOptions?: DeepPartial<ChartOptions>;
   onRemoveSeries?: (id: string) => void;
@@ -120,6 +142,7 @@ export function SeriesChart({
   zeroLine = false,
   markers = EMPTY_MARKERS,
   priceLineVisible,
+  badgeLimit,
   chartOptions,
   onRemoveSeries,
   onClick,
@@ -200,7 +223,7 @@ export function SeriesChart({
         if (!s) continue;
         const d = params.seriesData.get(s) as { value?: number } | undefined;
         if (d?.value == null || !Number.isFinite(d.value)) continue;
-        const fmt = def.formatter ?? ((v: number) => v.toLocaleString());
+        const fmt = resolveSeriesFormatter(def) ?? ((v: number) => v.toLocaleString());
         rows.push({ id: def.id, label: def.label, color: def.color, text: fmt(d.value) });
       }
       setHover(rows.length > 0 ? { x: p.x, y: p.y, date, paneWidth, rows } : null);
@@ -234,15 +257,21 @@ export function SeriesChart({
 
     for (const def of series) {
       let s = seriesMap.get(def.id);
+      const formatter = resolveSeriesFormatter(def);
+      const showBadge = badgeVisible(def, series.length, badgeLimit);
       const options = {
         color: def.color,
         lineWidth: def.lineWidth ?? 2,
         lineStyle: def.dashed ? LineStyle.Dashed : LineStyle.Solid,
-        title: def.axisTitle ?? def.label,
+        // lightweight-charts paints the title label on the price axis even
+        // with lastValueVisible off — blank it too or the badge pile survives
+        // as a label pile (verified live, s14).
+        title: showBadge ? (def.axisTitle ?? def.label) : "",
         priceScaleId: def.priceScaleId ?? "right",
+        lastValueVisible: showBadge,
         ...(priceLineVisible === undefined ? {} : { priceLineVisible }),
-        ...(def.formatter
-          ? { priceFormat: { type: "custom" as const, formatter: def.formatter } }
+        ...(formatter
+          ? { priceFormat: { type: "custom" as const, formatter } }
           : {}),
         visible: !hiddenIds.has(def.id),
       };
@@ -315,7 +344,7 @@ export function SeriesChart({
       prevIdsRef.current = idsKey;
       chart.timeScale().fitContent();
     }
-  }, [series, hiddenIds, zeroLine, markers, priceLineVisible]);
+  }, [series, hiddenIds, zeroLine, markers, priceLineVisible, badgeLimit]);
 
   const toggleSeries = useCallback((id: string) => {
     setHiddenIds((prev) => {

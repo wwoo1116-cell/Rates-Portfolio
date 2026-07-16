@@ -19,7 +19,6 @@
 import { useCallback, useMemo, useState } from "react";
 import type { DockviewApi } from "dockview-react";
 import { ChartFrame } from "@/components/chart/ChartFrame";
-import { rateFormatter } from "@/components/charts/lw-chart-base";
 import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
 import {
   SeriesChart,
@@ -54,8 +53,6 @@ function defaultOutright(tenor: string): SelectedInstrument {
 }
 const DEFAULT_INSTRUMENTS: SelectedInstrument[] = [defaultOutright("3Y"), defaultOutright("10Y")];
 
-const spreadFormatter = (v: number) => v.toFixed(2);
-
 interface RateHistoryChartProps {
   api?: DockviewApi | null;
 }
@@ -88,7 +85,7 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
 
   const chartSeries = useMemo<SeriesChartSeriesDef[]>(
     () =>
-      builtSeries.map((b) => ({
+      builtSeries.map((b, i) => ({
         id: b.id,
         // Same string the pre-extraction series passed as its lw `title`, so
         // the price-scale badge text is pixel-identical.
@@ -97,7 +94,10 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
         data: b.lineData as SeriesChartSeriesDef["data"],
         lineWidth: (b.kind === "spread" ? 1 : 2) as 1 | 2,
         priceScaleId: b.priceScaleId as "left" | "right",
-        formatter: b.kind === "spread" ? spreadFormatter : rateFormatter,
+        valueKind: (b.kind === "spread" ? "bp" : "rate") as SeriesChartSeriesDef["valueKind"],
+        // Badge collision policy (s14): with 3+ instruments overlaid, only the
+        // first selected one keeps its last-value badge.
+        primary: i === 0,
       })),
     [builtSeries],
   );

@@ -15,6 +15,7 @@ import { ChartFrame } from "@/components/chart/ChartFrame";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX } from "@/components/charts/snap-reticle";
+import { formatKrwAxisSigned } from "@/lib/format";
 import { useEntrySignalsStore } from "@/stores/entry-signals-store";
 import { CHART_COLORS } from "./chart-theme";
 import { useEntrySignalsData } from "./use-entry-signals-data";
@@ -23,7 +24,6 @@ import { PanelEmptyState, SyncedTimeGuide } from "./panel-shell";
 import { registerSyncChart, setSharedHoverTime, unregisterSyncChart } from "./use-synced-time-scales";
 
 const PANEL_ID = "es-equity";
-const pnlFormatter = (v: number) => Math.round(v).toLocaleString();
 
 export function EquityCurvePanel() {
   const { focusedSeries } = useEntrySignalsData();
@@ -90,7 +90,8 @@ export function EquityCurvePanel() {
         color: CHART_COLORS.accent,
         lineWidth: 2,
         title: "Cumulative P&L",
-        priceFormat: { type: "custom", formatter: pnlFormatter },
+        // Signed 억/만 on the KRW axis/badge (s14) — raw won digits before.
+        priceFormat: { type: "custom", formatter: formatKrwAxisSigned },
       });
       markersRef.current = createSeriesMarkers(seriesRef.current, []);
     }
@@ -131,7 +132,7 @@ export function EquityCurvePanel() {
           <span className="text-micro text-fg-muted">
             {result.trades.length} trades · net{" "}
             <span style={{ color: result.summary.totalPnl >= 0 ? "var(--chart-pnl-pos)" : "var(--chart-pnl-neg)" }}>
-              {Math.round(result.summary.totalPnl).toLocaleString()}
+              {formatKrwAxisSigned(result.summary.totalPnl)}
             </span>
           </span>
         )}

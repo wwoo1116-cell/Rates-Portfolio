@@ -18,6 +18,7 @@ import { SegmentedControl } from "@blueprintjs/core";
 
 import { ChartFrame } from "@/components/chart/ChartFrame";
 import { useCreditCurveSeries, useMarketDataRange, useRateHistory } from "@/hooks/use-api";
+import { formatKrwAxisSigned } from "@/lib/format";
 import { formatPnlKrw } from "./pnl-format";
 import {
   creditLegsOf,
@@ -283,7 +284,9 @@ export function SpreadPositionPanel({ params }: { params: SpreadPositionPanelPar
               data-num
               className={`font-normal ${(lastPnl?.value ?? 0) >= 0 ? "text-chart-pnl-pos" : "text-chart-pnl-neg"}`}
             >
-              {lastPnl ? `${formatPnlKrw(lastPnl.value)} KRW` : "—"}
+              {/* Chart-surface badge: signed 억/만 like the chart's own axis/
+                  tooltip (s14) — full-digit formatPnlKrw stays table-only. */}
+              {lastPnl ? `${formatKrwAxisSigned(lastPnl.value)} KRW` : "—"}
             </span>
           </div>
           <ChartFrame

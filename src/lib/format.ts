@@ -58,7 +58,15 @@ export function formatKrwAxis(value: number): string {
 /** formatKrwAxis with an explicit sign for positive values ("+3.2억",
  * "-450만") — for SIGNED KRW chart surfaces (MtM/P&L) where the axis ticks,
  * tooltip rows, and last-value badges must all carry the sign and never show
- * sub-만원 digits (S10 Portfolio MtM formatting decision). */
+ * sub-만원 digits (S10 Portfolio MtM formatting decision; the SeriesChart
+ * default for valueKind "krw" series since s14). */
 export function formatKrwAxisSigned(value: number): string {
   return value > 0 ? `+${formatKrwAxis(value)}` : formatKrwAxis(value);
+}
+
+/** Chart axis formatter for basis-point spread series — the exact behavior
+ * the Rate History and Entry Signals hosts each duplicated as a local
+ * `spreadFormatter` before s14 hoisted it here (SeriesChart valueKind "bp"). */
+export function formatBp(value: number): string {
+  return value.toFixed(2);
 }
