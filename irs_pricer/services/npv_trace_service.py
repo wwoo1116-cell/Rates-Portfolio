@@ -24,7 +24,7 @@ from ..db import trace_repository, trade_repository
 from ..engine.curve import build_curve
 from ..engine.fixings import FixingResolution, dedupe_data_quality_events
 from ..engine.instruments import VanillaSwap
-from ..engine.mtm_valuation import value_booked_trade
+from ..engine.mtm_valuation import settled_cash_between, value_booked_trade
 from . import market_data_service, mtm_service
 
 import logging
@@ -220,6 +220,15 @@ def compute_npv_trace_for_trade(
     queried for the same trade, whichever query ran most recently "wins" for
     the derived daily_pnl/cumulative_pnl on any overlapping date; clean_npv/
     dirty_npv (what the cache actually exists to save) never change either way.
+
+    BASIS (s13): daily_pnl/cumulative_pnl are **dirty + settled cash** --
+        daily = Δdirty_npv + settled_cash_between(prev_point, this_point)
+    matching compute_npv_trace() (which always folded cash) and the Home
+    daily-PnL decomposition (s11: ΔNPV(dirty) + cash == MtM + Theta). The old
+    clean-basis derivation dropped the accrued roll from every day and left a
+    sawtooth at each settlement; clean_npv itself keeps its meaning (level
+    field), only the derived P&L series changed values. Settled cash needs no
+    curve (schedule + fixing store), so the all-cached fast path stays curve-free.
     """
     trade = trade_repository.get(db, trade_id)
     if trade is None:
@@ -249,7 +258,8 @@ def compute_npv_trace_for_trade(
 
     points: list[NpvTracePoint] = []
     skipped_dates: list[date] = []
-    prev_npv: float | None = None
+    prev_dirty: float | None = None
+    prev_date: date | None = None
 
     for valuation_date in window_dates:
         cached_point = cached.get(valuation_date)
@@ -264,7 +274,15 @@ def compute_npv_trace_for_trade(
             result = mtm_service.value_trade(snapshot, swap, fixings)
             clean_npv, dirty_npv = result.clean_npv, result.dirty_npv
 
-        daily_pnl = 0.0 if prev_npv is None else clean_npv - prev_npv
+        # dirty+cash basis (s13): a payment leaving the schedule between two
+        # points is folded back in, so the series is continuous across
+        # coupon/reset dates instead of dropping by the settled amount.
+        if prev_dirty is None or prev_date is None:
+            daily_pnl = 0.0
+        else:
+            daily_pnl = (dirty_npv - prev_dirty) + settled_cash_between(
+                swap, fixings, prev_date, valuation_date
+            )
         points.append(
             NpvTracePoint(
                 valuation_date=valuation_date,
@@ -274,15 +292,20 @@ def compute_npv_trace_for_trade(
                 cumulative_pnl=0.0,
             )
         )
-        prev_npv = clean_npv
+        prev_dirty, prev_date = dirty_npv, valuation_date
 
     if not points:
         raise ValueError(f"조회 구간 [{start_date}, {end_date}]에 평가 가능한 날짜가 없습니다.")
 
-    entry_npv = points[0].clean_npv
+    # Same convention as compute_npv_trace(): entry mark is the first point's
+    # dirty NPV, cumulative is the running sum of the decomposed daily P&L
+    # (0 at the first point by construction).
+    entry_npv = points[0].dirty_npv
     upsert_rows = []
+    cum_pnl = 0.0
     for p in points:
-        p.cumulative_pnl = p.clean_npv - entry_npv
+        cum_pnl += p.daily_pnl
+        p.cumulative_pnl = cum_pnl
         upsert_rows.append(
             {
                 "valuation_date": p.valuation_date,

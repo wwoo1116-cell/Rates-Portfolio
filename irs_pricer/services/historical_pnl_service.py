@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from ..core.errors import NonBusinessDayError
 from ..db import trace_repository, trade_repository
 from ..engine.instruments import VanillaSwap
+from ..engine.mtm_valuation import settled_cash_between
 from . import market_data_service
 from .portfolio_service import price_portfolio
 
@@ -30,7 +31,11 @@ class PnlPoint:
     payer_npv: float
     receiver_npv: float
     active_position_ids: list[str]
-    cumulative_pnl: float  # net_npv - baseline_net_npv, filled in a second pass
+    # dirty+cash basis (s13): running Σ [Δdirty_npv + settled cash], re-zeroed
+    # at the baseline point. NOT net_npv - baseline anymore: that clean-basis
+    # difference dropped the daily accrued roll and sawtoothed at every
+    # settlement. net_npv/payer/receiver keep their clean-LEVEL meaning.
+    cumulative_pnl: float
 
 
 @dataclass
@@ -75,6 +80,7 @@ def compute_historical_pnl(
     window_dates = [d for d in market_data_service.list_available_dates() if start_date <= d <= end_date]
 
     points: list[PnlPoint] = []
+    dirty_sums: list[float] = []  # aligned with points; the P&L basis (s13)
     skipped_dates: list[date] = []
 
     for valuation_date in window_dates:
@@ -82,6 +88,7 @@ def compute_historical_pnl(
 
         if not active:
             points.append(PnlPoint(valuation_date, 0.0, 0.0, 0.0, [], cumulative_pnl=0.0))
+            dirty_sums.append(0.0)
             skipped_dates.append(valuation_date)
             continue
 
@@ -102,6 +109,7 @@ def compute_historical_pnl(
                 cumulative_pnl=0.0,
             )
         )
+        dirty_sums.append(sum(r.dirty_npv for r in result.position_results))
 
     if not points:
         raise ValueError(f"조회 구간 [{start_date}, {end_date}]에 평가 가능한 날짜가 없습니다.")
@@ -115,8 +123,7 @@ def compute_historical_pnl(
         except StopIteration:
             raise ValueError(f"기준일 {baseline_date}이(가) 조회 구간에 없거나 시장 데이터가 없습니다.") from None
 
-    for p in points:
-        p.cumulative_pnl = p.net_npv - baseline_net_npv
+    _fill_cumulative_dirty_cash(points, dirty_sums, positions, fixings, baseline_date)
 
     return HistoricalPnlResult(
         baseline_date=baseline_date,
@@ -124,6 +131,42 @@ def compute_historical_pnl(
         points=points,
         skipped_dates=skipped_dates,
     )
+
+
+def _fill_cumulative_dirty_cash(
+    points: list[PnlPoint],
+    dirty_sums: list[float],
+    positions: list[tuple[str, VanillaSwap]],
+    fixings: dict[date, float],
+    baseline_date: date,
+) -> None:
+    """cumulative_pnl on the dirty+cash basis (s13), re-zeroed at the baseline.
+
+        cum[i] = cum[i-1] + (dirty[i] - dirty[i-1]) + settled_cash((d[i-1], d[i]])
+
+    The cash term sums over EVERY position, not just the active set: a swap
+    whose maturity falls inside the gap has left the active set by d[i], but
+    its final settlement is real cash — the clean-basis series cliffed by
+    exactly that amount at maturity. Flows outside a swap's schedule
+    contribute 0, so inactive positions cost nothing but the schedule walk.
+
+    Shared by both entry points so the ad-hoc and DB-trade variants cannot
+    drift onto different bases.
+    """
+    cums: list[float] = []
+    running = 0.0
+    for i, p in enumerate(points):
+        if i > 0:
+            cash = sum(
+                settled_cash_between(swap, fixings, points[i - 1].valuation_date, p.valuation_date)
+                for _pid, swap in positions
+            )
+            running += (dirty_sums[i] - dirty_sums[i - 1]) + cash
+        cums.append(running)
+
+    baseline_cum = next(c for p, c in zip(points, cums) if p.valuation_date == baseline_date)
+    for p, c in zip(points, cums):
+        p.cumulative_pnl = c - baseline_cum
 
 
 def compute_historical_pnl_for_trades(
@@ -174,6 +217,7 @@ def compute_historical_pnl_for_trades(
     window_dates = [d for d in market_data_service.list_available_dates() if start_date <= d <= end_date]
 
     points: list[PnlPoint] = []
+    dirty_sums: list[float] = []  # aligned with points; the P&L basis (s13)
     skipped_dates: list[date] = []
 
     for valuation_date in window_dates:
@@ -183,6 +227,7 @@ def compute_historical_pnl_for_trades(
 
         if not active_ids:
             points.append(PnlPoint(valuation_date, 0.0, 0.0, 0.0, [], cumulative_pnl=0.0))
+            dirty_sums.append(0.0)
             skipped_dates.append(valuation_date)
             continue
 
@@ -205,6 +250,9 @@ def compute_historical_pnl_for_trades(
                     cumulative_pnl=0.0,
                 )
             )
+            # the cache stores dirty_npv precisely so the P&L basis stays
+            # available without a curve build on the fast path
+            dirty_sums.append(sum(float(cached_rows[tid].dirty_npv) for tid in active_ids))
             continue
 
         try:
@@ -221,10 +269,25 @@ def compute_historical_pnl_for_trades(
                 t for t, ext_id in external_id_by_trade_id.items() if ext_id == position_result.position_id
             )
             clean_npv = position_result.clean_npv
+            dirty_npv = position_result.dirty_npv
+            swap = swaps_by_id[tid]
+            # dirty+cash basis (s13) for the persisted derived columns too --
+            # mixed-basis rows in npv_pnl_trace would make the cache-aside
+            # variants disagree with a fresh compute over the same window.
             latest_prior = trace_repository.get_latest_before(db, tid, valuation_date)
-            daily_pnl = None if latest_prior is None else clean_npv - float(latest_prior.clean_npv)
+            daily_pnl = (
+                None
+                if latest_prior is None
+                else (dirty_npv - float(latest_prior.dirty_npv))
+                + settled_cash_between(swap, fixings, latest_prior.valuation_date, valuation_date)
+            )
             entry = trace_repository.get_entry_point(db, tid)
-            cumulative_pnl = 0.0 if entry is None else clean_npv - float(entry.clean_npv)
+            cumulative_pnl = (
+                0.0
+                if entry is None
+                else (dirty_npv - float(entry.dirty_npv))
+                + settled_cash_between(swap, fixings, entry.valuation_date, valuation_date)
+            )
             trace_repository.upsert_points(
                 db,
                 tid,
@@ -232,7 +295,7 @@ def compute_historical_pnl_for_trades(
                     {
                         "valuation_date": valuation_date,
                         "clean_npv": clean_npv,
-                        "dirty_npv": position_result.dirty_npv,
+                        "dirty_npv": dirty_npv,
                         "daily_pnl": daily_pnl,
                         "cumulative_pnl": cumulative_pnl,
                     }
@@ -249,6 +312,7 @@ def compute_historical_pnl_for_trades(
                 cumulative_pnl=0.0,
             )
         )
+        dirty_sums.append(sum(r.dirty_npv for r in result.position_results))
 
     if not points:
         raise ValueError(f"조회 구간 [{start_date}, {end_date}]에 평가 가능한 날짜가 없습니다.")
@@ -262,8 +326,13 @@ def compute_historical_pnl_for_trades(
         except StopIteration:
             raise ValueError(f"기준일 {baseline_date}이(가) 조회 구간에 없거나 시장 데이터가 없습니다.") from None
 
-    for p in points:
-        p.cumulative_pnl = p.net_npv - baseline_net_npv
+    _fill_cumulative_dirty_cash(
+        points,
+        dirty_sums,
+        [(external_id_by_trade_id[tid], swap) for tid, swap in swaps_by_id.items()],
+        fixings,
+        baseline_date,
+    )
 
     return HistoricalPnlResult(
         baseline_date=baseline_date,

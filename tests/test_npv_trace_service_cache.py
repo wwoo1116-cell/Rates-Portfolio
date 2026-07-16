@@ -87,7 +87,11 @@ def test_first_point_has_zero_daily_pnl_and_zero_cumulative_pnl(db, patch_market
     result = npv_trace_service.compute_npv_trace_for_trade(db, booked_trade.trade_id, date(2024, 1, 2), date(2024, 1, 8))
     assert result.points[0].daily_pnl == 0.0
     assert result.points[0].cumulative_pnl == 0.0
-    assert result.entry_npv == pytest.approx(result.points[0].clean_npv)
+    # s13: the entry mark is the first point's DIRTY npv, matching
+    # compute_npv_trace(). (On this fixture clean == dirty at entry -- the
+    # valuation date precedes the effective start, so nothing has accrued --
+    # but the pinned convention is dirty.)
+    assert result.entry_npv == pytest.approx(result.points[0].dirty_npv)
 
 
 def test_nonexistent_trade_id_raises(db, patch_market_data):
