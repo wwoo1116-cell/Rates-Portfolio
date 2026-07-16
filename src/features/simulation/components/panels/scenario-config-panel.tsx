@@ -84,30 +84,37 @@ function SegmentedButtons({
 
 /**
  * Numeric bp field with a local draft so partial input ("-", "1.") can be typed:
- * every keystroke commits toNum(text) clamped to ±absMax (the sliders' old
- * min/max), the draft renders verbatim until blur, then snaps to the store value.
+ * every keystroke commits toNum(text) clamped to [min, max], the draft renders
+ * verbatim until blur, then snaps to the store value. Generalized in s13 (step/
+ * min/max props) so the σ field shares the exact control the waypoints use;
+ * commits round to 3 decimals so fractional steps (σ ±0.5) never leak float
+ * noise like 1.5999999999 into the store.
  */
 function BpStepperField({
   value,
-  absMax,
+  min,
+  max,
+  step,
   onCommit,
   ariaLabel,
 }: {
   value: number;
-  absMax: number;
+  min: number;
+  max: number;
+  step: number;
   onCommit: (bp: number) => void;
   ariaLabel: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
-  const clamp = (n: number) => Math.max(-absMax, Math.min(absMax, n));
+  const clamp = (n: number) => Math.round(Math.max(min, Math.min(max, n)) * 1000) / 1000;
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <Button
         type="button"
         variant="icon"
         size="sm"
-        aria-label={`${ariaLabel} ${WAYPOINT_STEP_BP}bp 감소`}
-        onClick={() => onCommit(clamp(value - WAYPOINT_STEP_BP))}
+        aria-label={`${ariaLabel} ${step}bp 감소`}
+        onClick={() => onCommit(clamp(value - step))}
       >
         −
       </Button>
@@ -130,8 +137,8 @@ function BpStepperField({
         type="button"
         variant="icon"
         size="sm"
-        aria-label={`${ariaLabel} ${WAYPOINT_STEP_BP}bp 증가`}
-        onClick={() => onCommit(clamp(value + WAYPOINT_STEP_BP))}
+        aria-label={`${ariaLabel} ${step}bp 증가`}
+        onClick={() => onCommit(clamp(value + step))}
       >
         +
       </Button>
@@ -209,6 +216,22 @@ export function ScenarioConfigPanel() {
           </div>
         </div>
 
+        {/* 2b. 분포 σ — s13: 팬 차트의 bp/√영업일 불확실성, (0, 25] 클램프 */}
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <label className="text-label uppercase text-fg-muted">분포 σ (팬 차트)</label>
+            <span className="text-micro text-fg-dim">bp/√day</span>
+          </div>
+          <BpStepperField
+            value={toNum(params.sigmaBp)}
+            min={0.1}
+            max={25}
+            step={0.5}
+            onCommit={(v) => patchParams({ sigmaBp: String(v) })}
+            ariaLabel="분포 σ"
+          />
+        </div>
+
         {/* 3. 경로 설정 (waypoints) */}
         <div>
           <label className="mb-3 block text-label uppercase text-fg-muted">경로 설정 (국채 3Y)</label>
@@ -226,7 +249,9 @@ export function ScenarioConfigPanel() {
                   <span data-num className="w-12 flex-shrink-0 text-micro text-fg-muted">D+{wp.day}</span>
                   <BpStepperField
                     value={wp.bp}
-                    absMax={absMax}
+                    min={-absMax}
+                    max={absMax}
+                    step={WAYPOINT_STEP_BP}
                     onCommit={(bp) => setWaypoint(wp.day, bp)}
                     ariaLabel={`D+${wp.day} 변동폭`}
                   />

@@ -79,6 +79,7 @@ describe("buildSimulateRequest", () => {
     expect(req.customPath).toBe(DEFAULT_SCENARIO_PARAMS.waypoints);
     expect(req.fundingEvents).toEqual([]); // no dated events
     expect(req.shockCurves.bondCurves.국채).toHaveLength(11);
+    expect(req.sigma_bp).toBe(2.0); // s13 default — backend-identical to omitting it
   });
 
   it("converts dated 금통위 events into fundingEvents", () => {
@@ -87,5 +88,20 @@ describe("buildSimulateRequest", () => {
       { ...DEFAULT_SCENARIO_PARAMS, shortEndEvents: [{ id: 1, date: "2026-02-01", shiftBp: "-25" }] },
     );
     expect(req.fundingEvents).toEqual([{ date: "2026-02-01", shiftBp: -25 }]);
+  });
+
+  it("carries the user σ and sanitizes junk to the 2.0 default (s13)", () => {
+    const inputs = { ...EMPTY_SIMULATION_INPUTS, baseDate: "2026-01-01" };
+    const at = (sigmaBp: string) =>
+      buildSimulateRequest(inputs, { ...DEFAULT_SCENARIO_PARAMS, sigmaBp }).sigma_bp;
+
+    expect(at("4")).toBe(4);
+    expect(at("0.5")).toBe(0.5);
+    expect(at("25")).toBe(25);
+    // out-of-contract store states must not ship a 422-able payload
+    expect(at("0")).toBe(2.0);
+    expect(at("-3")).toBe(2.0);
+    expect(at("26")).toBe(2.0);
+    expect(at("abc")).toBe(2.0);
   });
 });

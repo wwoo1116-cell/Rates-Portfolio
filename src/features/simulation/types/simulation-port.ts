@@ -42,6 +42,9 @@ export interface ScenarioParams {
   creditSpreads: Record<string, string>;
   irsSpread: string;
   shortEndEvents: { id: number; date: string; shiftBp: string }[];
+  /** s13 — fan-chart σ in bp/√business-day (free-text like the other numeric
+   * params; sanitized to (0, 25] at request-build time, backend default 2.0). */
+  sigmaBp: string;
 }
 
 export interface SimulationDataPort {
@@ -87,6 +90,7 @@ export const DEFAULT_SCENARIO_PARAMS: ScenarioParams = {
   creditSpreads: { 특은채: "0", 은행채: "0", 카드채: "0", 회사채: "0" },
   irsSpread: "0",
   shortEndEvents: [],
+  sigmaBp: "2.0",
 };
 
 export const EMPTY_SIMULATION_INPUTS: SimulationInputs = {

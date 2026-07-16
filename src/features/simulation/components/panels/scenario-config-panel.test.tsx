@@ -84,6 +84,18 @@ describe("ScenarioConfigPanel (S4 interaction)", () => {
     ).toBe(-12);
   });
 
+  it("edits the fan σ with the stepper and clamps typed values to (0, 25] (s13)", () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "분포 σ 0.5bp 증가" }));
+    expect(useSimulationDataStore.getState().params.sigmaBp).toBe("2.5");
+
+    fireEvent.change(screen.getByLabelText("분포 σ"), { target: { value: "4" } });
+    expect(useSimulationDataStore.getState().params.sigmaBp).toBe("4");
+
+    fireEvent.change(screen.getByLabelText("분포 σ"), { target: { value: "99" } });
+    expect(useSimulationDataStore.getState().params.sigmaBp).toBe("25");
+  });
+
   it("keeps waypoint state semantics identical for equivalent selections (payload parity)", () => {
     // The same {simDays, waypoints} the sliders would have produced: the store
     // shape is unchanged, so buildSimulateRequest sees identical params.
