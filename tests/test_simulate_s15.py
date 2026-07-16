@@ -111,9 +111,14 @@ def _decomposition_sum(d: dict) -> float:
 # ── T1: funding = 기준금리 + 10bp, fixed for the horizon ─────────────────────
 
 def test_funding_constants_spec() -> None:
-    assert simulation_service.POLICY_BASE_RATE_KRW == 0.025
+    """s18 T1 — pins BOTH the manually maintained policy constant and the
+    derived funding rate, so a silent drift of either fails loudly. Current
+    value: 2.75%, effective 2026-07-16 (MPC hike from 2.50%). This constant is
+    deliberately NOT derived from the repo's BOK Base Rate series (it lags the
+    decision); update the constant AND this pin together on the next change."""
+    assert simulation_service.POLICY_BASE_RATE_KRW == 0.0275
     assert simulation_service.FUNDING_SPREAD_BP == 10
-    assert simulation_service.FUNDING_RATE_KRW == pytest.approx(0.026, abs=1e-15)
+    assert simulation_service.FUNDING_RATE_KRW == pytest.approx(0.0285, abs=1e-15)
 
 
 def test_funding_omitted_is_constant_everywhere_despite_events(client: TestClient) -> None:
@@ -132,7 +137,7 @@ def test_funding_omitted_is_constant_everywhere_despite_events(client: TestClien
     fc = body["fundingCurve"]
     assert len(fc) > 1
     for p in fc:
-        assert p["fundingRate"] == pytest.approx(0.026, abs=1e-12), p
+        assert p["fundingRate"] == pytest.approx(0.0285, abs=1e-12), p
         if p["positionRate"] is not None:
             # 0.1bp regression bound from the task spec (0.005bp measured).
             assert p["carryBp"] == pytest.approx(
@@ -140,8 +145,8 @@ def test_funding_omitted_is_constant_everywhere_despite_events(client: TestClien
             ), p
 
     # Cumulative carry accrues at (mtmYield − funding) with funding CONSTANT:
-    # 30 calendar days × 1e10 × (0.030 − 0.026) / 365, despite the -25bp event.
-    expected = round(30 * 10_000_000_000 * 0.004 / 365)
+    # 30 calendar days × 1e10 × (0.030 − 0.0285) / 365, despite the -25bp event.
+    expected = round(30 * 10_000_000_000 * 0.0015 / 365)
     assert body["summary"]["finalCarry"] == expected
 
 

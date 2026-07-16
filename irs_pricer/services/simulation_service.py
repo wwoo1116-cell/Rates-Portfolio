@@ -24,6 +24,10 @@ attribute exactly as the source did.
 from __future__ import annotations
 
 import logging
+import os
+import sys
+import time as _time
+from contextlib import contextmanager
 from datetime import date, timedelta
 
 import numpy as np
@@ -50,15 +54,101 @@ logger = logging.getLogger(__name__)
 # 조달 스트립(fundingCurve), 헤더 캐리 칩, Total Return 캐리 계산이 소비하는
 # 유일한 원천이다.
 #
-# 값의 출처: Data/BOK Base Rate.xlsx 최신 행(2026-07-08 == 2.50%)과 일치.
-# 정책금리 변경 시 이 상수를 갱신한다.
+# 값의 출처(s18 T1): **수기 관리 상수** — 2026-07-16 금통위 결정으로 기준금리
+# 2.50% → 2.75% 인상(2023-01 이후 첫 인상, 14개월 동결 종료). 이 상수는 리포의
+# BOK Base Rate 시계열(Data/BOK Base Rate.xlsx / loaders/base_rate.py)에서
+# 파생하지 **않는다**: 그 시계열은 결정일보다 늦게 적재되므로(2026-07-16 현재
+# 최신 행이 2026-07-08 == 2.50%) 이 상수의 원천으로 삼으면 안 된다. 정책금리
+# 변경 시 여기 한 곳을 수기로 갱신한다. 유효일: 2026-07-16 (MPC 결정일).
+#
+# 금통위 스테핑 없음 — 전 기간 고정 상수가 스펙이다(스테핑은 별도 추후 결정).
 #
 # 하위 호환: 요청이 fundingRate를 명시하면(소스 골든 캡처 등 구형 페이로드)
 # 원본 의미론 — 그 값 + fundingEvents 계단 스테핑 — 을 그대로 유지한다.
 # 라이브 프론트 브리지는 s15부터 fundingRate를 싣지 않는다.
-POLICY_BASE_RATE_KRW = 0.025     # BOK 기준금리 (소수, 2.50%)
+POLICY_BASE_RATE_KRW = 0.0275    # BOK 기준금리 (소수, 2.75%; 2026-07-16 금통위)
 FUNDING_SPREAD_BP = 10           # 기준금리 대비 조달 스프레드 (bp)
-FUNDING_RATE_KRW = POLICY_BASE_RATE_KRW + FUNDING_SPREAD_BP / 10000.0  # 0.026
+FUNDING_RATE_KRW = POLICY_BASE_RATE_KRW + FUNDING_SPREAD_BP / 10000.0  # 0.0285
+
+
+# ── s18 T5: /api/simulate 프로파일러 — 측정 전용, 최적화 아님 ─────────────────
+# IRS_PRICER_SIM_PROFILE=1 일 때만 활성. 모듈 어트리뷰트를 런타임에 감싸므로
+# quant_engine.py 파일은 바이트 그대로다(내부 호출도 모듈 전역 이름으로 해석돼
+# 래퍼를 통과한다 — 진짜 호출 수가 잡힌다). 비활성 시 비용 0(분기 하나).
+# 주의: 래핑은 프로세스 전역이라 프로파일링은 단일 요청 측정 용도다 — 동시
+# 요청이 섞이면 수치가 합산된다. 일반 운영에서는 절대 켜지 않는다.
+SIM_PROFILE_ENV = "IRS_PRICER_SIM_PROFILE"
+
+
+@contextmanager
+def _sim_profiler():
+    if not os.environ.get(SIM_PROFILE_ENV):
+        yield None
+        return
+
+    stats: dict[str, dict] = {"_phases": {}}
+
+    def _wrap(mod, name: str, label: str):
+        orig = getattr(mod, name)
+        rec = stats.setdefault(label, {"calls": 0, "secs": 0.0})
+
+        def wrapper(*a, **k):
+            t0 = _time.perf_counter()
+            try:
+                return orig(*a, **k)
+            finally:
+                rec["calls"] += 1
+                rec["secs"] += _time.perf_counter() - t0
+
+        setattr(mod, name, wrapper)
+        return (mod, name, orig)
+
+    _self = sys.modules[__name__]
+    saved = [
+        # 커브 부트스트랩 — "일별 × 시나리오별 × 종목별 중 무엇인가"의 답은 이 카운트다.
+        _wrap(qe, "bootstrap_zero_curve", "qe.bootstrap_zero_curve"),
+        _wrap(qe, "build_bumped_curves", "qe.build_bumped_curves"),
+        # 스왑 프라이싱 (FM 경로, 종목당 1회 × 런당)
+        _wrap(qe, "simulate_irs_path_fm", "qe.simulate_irs_path_fm"),
+        _wrap(qe, "compute_irs_krd_map", "qe.compute_irs_krd_map"),
+        _wrap(qe, "portfolio_krd_day", "qe.portfolio_krd_day"),
+        # 채권 프라이싱 (글루 루프)
+        _wrap(_self, "calculate_daily_mtm", "svc.calculate_daily_mtm"),
+        _wrap(_self, "calculate_daily_carry", "svc.calculate_daily_carry"),
+    ]
+    try:
+        yield stats
+    finally:
+        for mod, name, orig in saved:
+            setattr(mod, name, orig)
+
+
+@contextmanager
+def _phase(stats: dict | None, label: str):
+    if stats is None:
+        yield
+        return
+    t0 = _time.perf_counter()
+    try:
+        yield
+    finally:
+        stats["_phases"][label] = stats["_phases"].get(label, 0.0) + (_time.perf_counter() - t0)
+
+
+def _log_profile(stats: dict, *, n_positions: int, n_swaps: int, sim_days: int, total_secs: float) -> None:
+    lines = [
+        f"[SIM PROFILE] total={total_secs:.1f}s positions={n_positions} (swaps={n_swaps}) simDays={sim_days} scenarios=5 (base + 4 percentile runs)",
+        "[SIM PROFILE] phases (wall):",
+    ]
+    for label, secs in stats["_phases"].items():
+        lines.append(f"[SIM PROFILE]   {label:<28} {secs:10.2f}s")
+    lines.append("[SIM PROFILE] functions (calls / cumulative secs — nested, overlaps phases):")
+    for label, rec in stats.items():
+        if label == "_phases":
+            continue
+        lines.append(f"[SIM PROFILE]   {label:<28} {rec['calls']:>9} calls {rec['secs']:10.2f}s")
+    for ln in lines:
+        logger.info(ln)
 
 
 # ── 프론트엔드 시뮬레이션 요청 모델 ──────────────────────────────────────────
@@ -473,9 +563,12 @@ def build_chart_data(
     custom_path: list[dict] | None = None,
     skip_recon: bool = False,
     funding_rate_fixed: bool = False,
-) -> tuple[list[dict], dict, list[dict], list[dict], list[dict], dict]:
-    """6-튜플 (chart_data, summary, settlement_events, daily_recon, funding_curve,
-    decomposition).
+) -> tuple[list[dict], dict, list[dict], list[dict], list[dict], dict, list[dict]]:
+    """7-튜플 (chart_data, summary, settlement_events, daily_recon, funding_curve,
+    decomposition, rate_path).
+
+    rate_path (s18 T3): 이 런이 소비한 국채 3Y 누적 충격 경로 [{day, bp}] —
+    chart_data와 같은 day 축. 분포 밴드의 금리 팬(이중축 분리) 원천.
 
     funding_curve (s11 T4): 시뮬레이션 타임스텝별 조달금리/포지션 운용수익률/캐리 bp.
     chartData와 같은 영업일 스케줄(+day 0 앵커)로 정렬된다.
@@ -855,10 +948,24 @@ def build_chart_data(
 
     funding_curve: list[dict] = []
 
+    # ── s18 T3: 이 런이 실제로 소비한 국채 3Y 누적 충격 경로 (bp) ────────────
+    # 금리 팬(이중축 분리의 1축)은 "라벨이 진실인" 금리 분위수 밴드를 그린다 —
+    # 그 원천은 엔진이 채권 쇼크에 실제로 쓴 것과 같은 변수들이다: matrix 모드는
+    # 국채 커브의 3Y 노드 보간 × multiplier, parallel 모드는 base_shock_bp ×
+    # multiplier. 새 수식이 아니라 calculate_daily_mtm이 소비하는 항의 3Y 단면.
+    def _ktb3y_bp(mult: float) -> float:
+        if shock_mode == "parallel" or not shock_curves:
+            return (base_shock_bp or 0.0) * mult
+        ktb = shock_curves.bondCurves.get("국채") or []
+        return interpolate_curve_shift(3.0, ktb) * mult
+
+    rate_path: list[dict] = []
+
     # Day 0 초기 항목 (모든 P&L = 0)
     chart_data.append({"day": 0, "mtmPnL": 0, "cumulativeCarry": 0, "swapPnL": 0, "totalPnL": 0,
                         "swapThetaPnL": 0, "swapValuationPnL": 0})
     funding_curve.append(_funding_row(0, base_date, _factor(0)))
+    rate_path.append({"day": 0, "bp": _ktb3y_bp(_factor(0))})
 
     prev_cal        = 0
     prev_short_mult = _short_factor(0)
@@ -1032,6 +1139,7 @@ def build_chart_data(
             entry["bokBreakdown"] = bok_breakdown
         chart_data.append(entry)
         funding_curve.append(_funding_row(t, current_date, multiplier))
+        rate_path.append({"day": t, "bp": _ktb3y_bp(multiplier)})
 
         prev_cal        = t
         prev_short_mult = short_mult
@@ -1058,7 +1166,7 @@ def build_chart_data(
         "total":       bond_mtm + cumulative_bond_carry + irs_mtm_t + cumulative_irs_carry,
     }
 
-    return chart_data, summary, irs_settlement_events, irs_daily_recon, funding_curve, decomposition
+    return chart_data, summary, irs_settlement_events, irs_daily_recon, funding_curve, decomposition, rate_path
 
 
 # ── s11 T3: 분포(퍼센타일 팬) 밴드 ────────────────────────────────────────────
@@ -1110,6 +1218,7 @@ def _offset_custom_path(custom_path: list[dict] | None, off_bp: float, sim_days:
 
 def build_distribution_bands(
     base_chart: list[dict],
+    base_rate_path: list[dict] | None = None,
     *,
     positions: list[FrontendPosition],
     shock_curves: FrontendShockCurves | None,
@@ -1132,7 +1241,13 @@ def build_distribution_bands(
     생성 시나리오에 고정된다(위 확률 가정 블록의 s15 T4 항목).
 
     sigma_bp (s13): 요청으로 조정 가능한 σ(bp/√영업일). 검증(0<σ≤25)은 라우터
-    Field가 담당하고, 여기서는 기본값이 s11 상수와 같아 생략 시 바이트 동일이다."""
+    Field가 담당하고, 여기서는 기본값이 s11 상수와 같아 생략 시 바이트 동일이다.
+
+    ratePaths (s18 T3 — 이중축 분리): 각 분위수 시나리오가 실제 소비한 국채 3Y
+    누적 충격 경로(bp)를 bands와 같은 day 축으로 반환한다. 금리는 분위수에 대해
+    구성상 단조라서 이 밴드는 절대 교차하지 않는다 — P5..P95 라벨이 진실인 축.
+    수익 밴드(bands)는 시나리오 정체성 그대로이며 순위 의미를 갖지 않는다(FE는
+    라인으로, "금리 P95 시나리오"처럼 시나리오 라벨로만 렌더링)."""
     try:
         _bd = date.fromisoformat(base_date_str[:10])
     except Exception:
@@ -1145,6 +1260,10 @@ def build_distribution_bands(
     runs: dict[int, dict[int, float]] = {
         50: {int(r.get("day", 0)): float(r.get("totalPnL", 0)) for r in base_chart}
     }
+    # s18 T3 — 시나리오별 국채 3Y 경로 (p50 = 기본 런의 경로, 바이트 동일 원천)
+    rate_runs: dict[int, dict[int, float]] = {
+        50: {int(r.get("day", 0)): float(r.get("bp", 0.0)) for r in (base_rate_path or [])}
+    }
     for pct in _DIST_PERCENTILES:
         if pct == 50:
             continue
@@ -1155,7 +1274,7 @@ def build_distribution_bands(
             # 그 불연속을 피하기 위해 무시할 수 있는 크기만큼 비켜 간다.
             off += 1e-6
             shifted_base = base_shock_bp + off
-        chart_p, *_rest = build_chart_data(
+        chart_p, _sum_p, _ev_p, _rec_p, _fc_p, _dec_p, rate_path_p = build_chart_data(
             positions=positions,
             shock_curves=_offset_shock_curves(shock_curves, off),
             funding_rate=funding_rate,
@@ -1172,6 +1291,7 @@ def build_distribution_bands(
             funding_rate_fixed=funding_rate_fixed,
         )
         runs[pct] = {int(r.get("day", 0)): float(r.get("totalPnL", 0)) for r in chart_p}
+        rate_runs[pct] = {int(r.get("day", 0)): float(r.get("bp", 0.0)) for r in rate_path_p}
 
     bands: list[dict] = []
     for d in days:
@@ -1182,12 +1302,19 @@ def build_distribution_bands(
             **{f"p{p}": runs[p].get(d, 0.0) for p in _DIST_PERCENTILES},
         })
 
+    rate_paths: list[dict] = [
+        {"day": d, **{f"p{p}": rate_runs[p].get(d, 0.0) for p in _DIST_PERCENTILES}}
+        for d in days
+    ]
+
     return {
         "sigmaBpDaily": sigma_bp,
         "sigmaTerminalBp": round(sigma_t, 4),
         "percentiles": list(_DIST_PERCENTILES),
         "method": "quantile-scenario",
         "bands": bands,
+        # s18 T3 추가 필드 (확장 전용): 금리 분위수 경로 — 절대 비교차.
+        "ratePaths": rate_paths,
     }
 
 
@@ -1572,10 +1699,49 @@ def run_simulation(
     if funding_rate is None:
         funding_rate = FUNDING_RATE_KRW
 
+    # s18 T5 — 측정 전용 프로파일러 (IRS_PRICER_SIM_PROFILE=1일 때만; 아니면 no-op)
+    _prof_t0 = _time.perf_counter()
+    _prof_ctx = _sim_profiler()
+    _prof = _prof_ctx.__enter__()
+    try:
+        return _run_simulation_profiled(
+            _prof, positions=positions, shock_curves=shock_curves,
+            daily_shock_curves=daily_shock_curves, funding_rate=funding_rate,
+            funding_rate_fixed=funding_rate_fixed, funding_events=funding_events,
+            sim_days=sim_days, shock_type=shock_type, shock_mode=shock_mode,
+            base_shock_bp=base_shock_bp, base_date=base_date,
+            irs_curves=irs_curves, custom_path=custom_path, sigma_bp=sigma_bp,
+            _prof_t0=_prof_t0,
+        )
+    finally:
+        _prof_ctx.__exit__(None, None, None)
+
+
+def _run_simulation_profiled(
+    _prof: dict | None,
+    *,
+    positions: list[FrontendPosition],
+    shock_curves: FrontendShockCurves | None,
+    daily_shock_curves: FrontendShockCurves | None,
+    funding_rate: float,
+    funding_rate_fixed: bool,
+    funding_events: list[dict],
+    sim_days: int,
+    shock_type: str,
+    shock_mode: str,
+    base_shock_bp: float,
+    base_date: str,
+    irs_curves: list[dict],
+    custom_path: list[dict],
+    sigma_bp: float,
+    _prof_t0: float,
+) -> dict:
+
     # ── s15 T2: 스왑 시장 데이터 결정 (par 커브 + 픽싱 필드) ────────────────
-    positions, irs_curves, exclusions = _resolve_swap_inputs(positions, irs_curves, base_date)
-    swaps_excluded = any(x["assetClass"] == "swap" for x in exclusions)
-    positions = _resolve_swap_float_fields(positions, base_date)
+    with _phase(_prof, "swap-market-resolve"):
+        positions, irs_curves, exclusions = _resolve_swap_inputs(positions, irs_curves, base_date)
+        swaps_excluded = any(x["assetClass"] == "swap" for x in exclusions)
+        positions = _resolve_swap_float_fields(positions, base_date)
 
     # maturityDate 없는 커브 항목(테너 라벨만 있는 경우)에 실제 만기일을 채워
     # 넣는다 — 이후 enrich_irs_pvbp/build_chart_data 양쪽에서 공통으로 사용.
@@ -1599,48 +1765,16 @@ def run_simulation(
 
     # ── IRS 포지션에 백엔드 프라이싱 결과 주입 ────────────────────────────────
     try:
-        positions = enrich_irs_pvbp(positions, irs_curves, base_date)
+        with _phase(_prof, "swap-static-pricing (enrich)"):
+            positions = enrich_irs_pvbp(positions, irs_curves, base_date)
     except Exception:
         logger.exception("[CRITICAL] enrich_irs_pvbp 실패")
         raise
 
     funding_events = funding_events or (shock_curves.fundingEvents if shock_curves else [])
 
-    chart_data, summary, irs_settlement_events, irs_daily_recon, funding_curve, decomposition = build_chart_data(
-        positions=positions,
-        shock_curves=shock_curves,
-        funding_rate=funding_rate,
-        funding_events=funding_events,
-        sim_days=sim_days,
-        shock_type=shock_type,
-        shock_mode=shock_mode,
-        base_shock_bp=base_shock_bp,
-        base_date_str=base_date,
-        irs_curves=irs_curves,
-        irs_shock_curve_prebuilt=irs_shock_curve,
-        custom_path=custom_path or None,
-        funding_rate_fixed=funding_rate_fixed,
-    )
-
-    # 스왑이 제외된 경우(당일 호가 없음): 스왑 성분은 0이 아니라 "미정의"다 —
-    # FE는 이 null을 —(공란)으로 렌더링한다(blank-MtM 정책). 스왑이 아예 없는
-    # 북(제외 아님)은 정직한 0 기여로 남는다.
-    if swaps_excluded:
-        decomposition["swapMtm"] = None
-        decomposition["swapCarry"] = None
-        decomposition["total"] = (
-            decomposition["bondMtm"] + decomposition["bondCarry"] + decomposition["fundingCost"]
-        )
-    pvbp_sensitivity = build_pvbp_sensitivity(positions)
-    # bookDailyPnL: 당일 실제 금리변동만 반영. dailyShockCurves 없으면 shockCurves로 fallback
-    daily_curves = daily_shock_curves if daily_shock_curves is not None else shock_curves
-    book_daily_pnls = build_book_daily_pnl(positions, daily_curves, funding_rate)
-
-    # s11 T3 — 분포 밴드는 **추가** 필드다: 실패해도 기존 응답은 그대로 나간다.
-    distribution = None
-    try:
-        distribution = build_distribution_bands(
-            chart_data,
+    with _phase(_prof, "base-run (bond+swap pricing+recon)"):
+        chart_data, summary, irs_settlement_events, irs_daily_recon, funding_curve, decomposition, base_rate_path = build_chart_data(
             positions=positions,
             shock_curves=shock_curves,
             funding_rate=funding_rate,
@@ -1651,13 +1785,59 @@ def run_simulation(
             base_shock_bp=base_shock_bp,
             base_date_str=base_date,
             irs_curves=irs_curves,
-            irs_shock_curve=irs_shock_curve,
+            irs_shock_curve_prebuilt=irs_shock_curve,
             custom_path=custom_path or None,
-            sigma_bp=sigma_bp,
             funding_rate_fixed=funding_rate_fixed,
         )
+
+    # 스왑이 제외된 경우(당일 호가 없음): 스왑 성분은 0이 아니라 "미정의"다 —
+    # FE는 이 null을 —(공란)으로 렌더링한다(blank-MtM 정책). 스왑이 아예 없는
+    # 북(제외 아님)은 정직한 0 기여로 남는다.
+    if swaps_excluded:
+        decomposition["swapMtm"] = None
+        decomposition["swapCarry"] = None
+        decomposition["total"] = (
+            decomposition["bondMtm"] + decomposition["bondCarry"] + decomposition["fundingCost"]
+        )
+    with _phase(_prof, "assembly (pvbp+bookPnL)"):
+        pvbp_sensitivity = build_pvbp_sensitivity(positions)
+        # bookDailyPnL: 당일 실제 금리변동만 반영. dailyShockCurves 없으면 shockCurves로 fallback
+        daily_curves = daily_shock_curves if daily_shock_curves is not None else shock_curves
+        book_daily_pnls = build_book_daily_pnl(positions, daily_curves, funding_rate)
+
+    # s11 T3 — 분포 밴드는 **추가** 필드다: 실패해도 기존 응답은 그대로 나간다.
+    distribution = None
+    try:
+        with _phase(_prof, "scenario-expansion (4 runs)"):
+            distribution = build_distribution_bands(
+                chart_data,
+                base_rate_path,
+                positions=positions,
+                shock_curves=shock_curves,
+                funding_rate=funding_rate,
+                funding_events=funding_events,
+                sim_days=sim_days,
+                shock_type=shock_type,
+                shock_mode=shock_mode,
+                base_shock_bp=base_shock_bp,
+                base_date_str=base_date,
+                irs_curves=irs_curves,
+                irs_shock_curve=irs_shock_curve,
+                custom_path=custom_path or None,
+                sigma_bp=sigma_bp,
+                funding_rate_fixed=funding_rate_fixed,
+            )
     except Exception:
         logger.exception("[s11 T3] 분포 밴드 계산 실패 — distribution=null로 응답")
+
+    if _prof is not None:
+        _log_profile(
+            _prof,
+            n_positions=len(positions),
+            n_swaps=sum(1 for p in positions if p.bondType == "swap"),
+            sim_days=sim_days,
+            total_secs=_time.perf_counter() - _prof_t0,
+        )
 
     return {
         "status": "ok",
