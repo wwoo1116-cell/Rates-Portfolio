@@ -1,0 +1,39 @@
+국고 10Y−3Y lb=20 entry=2σ: trades=104 net=175,650,000 lastTrade=2026-05-11->2026-05-22 SHORT pnl=-4,400,000
+국고 10Y−3Y lb=20 entry=2.5σ: trades=49 net=109,700,000 lastTrade=2026-05-12->2026-05-22 SHORT pnl=-1,700,000
+국고 10Y−3Y lb=20 entry=3σ: trades=21 net=57,900,000 lastTrade=2026-05-12->2026-05-22 SHORT pnl=-1,700,000
+국고 10Y−3Y lb=20 entry=3.5σ: trades=1 net=3,300,000 lastTrade=2020-03-13->2020-03-26 SHORT pnl=3,300,000
+국고 10Y−3Y lb=60 entry=2σ: trades=61 net=39,950,000 lastTrade=2026-05-15->2026-05-29 SHORT pnl=11,200,000
+국고 10Y−3Y lb=60 entry=2.5σ: trades=43 net=51,300,000 lastTrade=2026-05-18->2026-05-29 SHORT pnl=14,700,000
+국고 10Y−3Y lb=60 entry=3σ: trades=24 net=10,600,000 lastTrade=2026-03-23->2026-05-06 LONG pnl=8,300,000
+국고 10Y−3Y lb=60 entry=3.5σ: trades=11 net=-6,800,000 lastTrade=2026-03-23->2026-05-06 LONG pnl=8,300,000
+국고 10Y−3Y lb=120 entry=2σ: trades=37 net=50,300,000 lastTrade=2026-03-23->2026-05-11 LONG pnl=10,200,000
+국고 10Y−3Y lb=120 entry=2.5σ: trades=30 net=40,700,000 lastTrade=2026-01-05->2026-02-19 SHORT pnl=5,800,000
+국고 10Y−3Y lb=120 entry=3σ: trades=17 net=9,900,000 lastTrade=2025-12-11->2025-12-22 LONG pnl=10,300,000
+국고 10Y−3Y lb=120 entry=3.5σ: trades=9 net=21,500,000 lastTrade=2023-10-04->2023-10-05 SHORT pnl=-600,000
+
+국고 3Y−10Y (reversed) lb=20 entry=2σ: trades=104 net=175,650,000 lastTrade=2026-05-11->2026-05-22 LONG pnl=-4,400,000
+국고 3Y−10Y (reversed) lb=20 entry=2.5σ: trades=49 net=109,700,000 lastTrade=2026-05-12->2026-05-22 LONG pnl=-1,700,000
+국고 3Y−10Y (reversed) lb=20 entry=3σ: trades=21 net=57,900,000 lastTrade=2026-05-12->2026-05-22 LONG pnl=-1,700,000
+국고 3Y−10Y (reversed) lb=20 entry=3.5σ: trades=1 net=3,300,000 lastTrade=2020-03-13->2020-03-26 LONG pnl=3,300,000
+국고 3Y−10Y (reversed) lb=60 entry=2σ: trades=61 net=39,950,000 lastTrade=2026-05-15->2026-05-29 LONG pnl=11,200,000
+국고 3Y−10Y (reversed) lb=60 entry=2.5σ: trades=43 net=51,300,000 lastTrade=2026-05-18->2026-05-29 LONG pnl=14,700,000
+국고 3Y−10Y (reversed) lb=60 entry=3σ: trades=24 net=10,600,000 lastTrade=2026-03-23->2026-05-06 SHORT pnl=8,300,000
+국고 3Y−10Y (reversed) lb=60 entry=3.5σ: trades=11 net=-6,800,000 lastTrade=2026-03-23->2026-05-06 SHORT pnl=8,300,000
+국고 3Y−10Y (reversed) lb=120 entry=2σ: trades=37 net=50,300,000 lastTrade=2026-03-23->2026-05-11 SHORT pnl=10,200,000
+국고 3Y−10Y (reversed) lb=120 entry=2.5σ: trades=30 net=40,700,000 lastTrade=2026-01-05->2026-02-19 LONG pnl=5,800,000
+국고 3Y−10Y (reversed) lb=120 entry=3σ: trades=17 net=9,900,000 lastTrade=2025-12-11->2025-12-22 SHORT pnl=10,300,000
+국고 3Y−10Y (reversed) lb=120 entry=3.5σ: trades=9 net=21,500,000 lastTrade=2023-10-04->2023-10-05 LONG pnl=-600,000
+
+IRS 10Y−3Y lb=20 entry=2σ: trades=166 net=122,550,000 lastTrade=2026-06-29->2026-06-30 SHORT pnl=3,150,000
+IRS 10Y−3Y lb=20 entry=2.5σ: trades=82 net=57,650,000 lastTrade=2026-05-18->2026-05-28 SHORT pnl=6,900,000
+IRS 10Y−3Y lb=20 entry=3σ: trades=24 net=36,850,000 lastTrade=2024-12-11->2025-01-21 SHORT pnl=-5,100,000
+IRS 10Y−3Y lb=20 entry=3.5σ: trades=7 net=30,800,000 lastTrade=2023-10-04->2023-10-24 SHORT pnl=4,650,000
+IRS 10Y−3Y lb=60 entry=2σ: trades=92 net=71,450,000 lastTrade=2026-03-24->2026-05-07 LONG pnl=6,150,000
+IRS 10Y−3Y lb=60 entry=2.5σ: trades=64 net=71,500,000 lastTrade=2026-03-24->2026-05-07 LONG pnl=6,150,000
+IRS 10Y−3Y lb=60 entry=3σ: trades=38 net=48,600,000 lastTrade=2026-03-20->2026-03-23 LONG pnl=-8,600,000
+IRS 10Y−3Y lb=60 entry=3.5σ: trades=17 net=-11,200,000 lastTrade=2026-03-09->2026-03-23 LONG pnl=-13,350,000
+IRS 10Y−3Y lb=120 entry=2σ: trades=66 net=84,250,000 lastTrade=2026-03-25->2026-05-14 LONG pnl=10,150,000
+IRS 10Y−3Y lb=120 entry=2.5σ: trades=45 net=58,600,000 lastTrade=2026-03-25->2026-05-14 LONG pnl=10,150,000
+IRS 10Y−3Y lb=120 entry=3σ: trades=31 net=80,150,000 lastTrade=2026-03-25->2026-05-14 LONG pnl=10,150,000
+IRS 10Y−3Y lb=120 entry=3.5σ: trades=17 net=39,800,000 lastTrade=2026-03-25->2026-05-14 LONG pnl=10,150,000
+

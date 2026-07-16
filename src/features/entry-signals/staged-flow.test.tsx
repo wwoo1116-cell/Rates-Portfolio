@@ -96,7 +96,10 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-const runButton = () => screen.getByRole("button", { name: "백테스트 실행" });
+// s19 gate remediation: getByRole types as HTMLElement, which has no
+// `.disabled` — a pre-existing s17 typing error that a full (non-incremental)
+// tsc run surfaces. Cast only; behavior identical.
+const runButton = () => screen.getByRole("button", { name: "백테스트 실행" }) as HTMLButtonElement;
 
 describe("staged flow (s17)", () => {
   it("starts at Configure: inputs only, no results surfaces", () => {
