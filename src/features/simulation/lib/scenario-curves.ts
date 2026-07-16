@@ -134,5 +134,15 @@ export function buildSimulateRequest(inputs: SimulationInputs, params: ScenarioP
     baseDate: inputs.baseDate,
     irsCurves: inputs.irsParRates,
     customPath: params.waypoints,
+    sigma_bp: sanitizeSigmaBp(params.sigmaBp),
   };
+}
+
+/** σ for the fan chart, sanitized to the backend's (0, 25] contract — an
+ * unparseable or out-of-range value falls back to the 2.0 default rather than
+ * shipping a payload the backend would 422 (the config input clamps too; this
+ * guards store states written by other paths). */
+export function sanitizeSigmaBp(raw: string): number {
+  const v = toNum(raw);
+  return v > 0 && v <= 25 ? v : 2.0;
 }

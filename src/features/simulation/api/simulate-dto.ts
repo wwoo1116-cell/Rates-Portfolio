@@ -40,6 +40,9 @@ export interface SimulateRequest {
   baseDate: string;
   irsCurves: IrsParRate[];
   customPath?: Waypoint[];
+  /** s13 — fan-chart σ in bp/√business-day. Optional; backend defaults to 2.0
+   * (byte-identical to the s11 constant) and 422s outside (0, 25]. */
+  sigma_bp?: number;
 }
 
 export interface SimulationSummary {
