@@ -24,6 +24,8 @@ export type {
   SimulateResponse,
   SimulationSummary,
   SimulationChartPoint,
+  SimulationExclusion,
+  TotalReturnDecomposition,
   Waypoint,
   IrsParRate,
 } from "./api/simulate-dto";
@@ -49,10 +51,9 @@ export {
 export { useSimulationPort, useRunSimulation, SIMULATION_KEYS } from "./hooks/use-simulation";
 export { simulationApi, SIMULATION_API_BASE } from "./api/simulation-api";
 
-// Dockview panel bodies (Phase 3). Pure, port-driven; the app-layer mount host
-// composes them into the dockview tab. Chart panels are staged for the S5
-// recharts -> lightweight-charts rewrite.
-export { ScenarioConfigPanel } from "./components/panels/scenario-config-panel";
-export { ResultsGridPanel } from "./components/panels/results-grid-panel";
+// Screen surface (s15 T3): the staged single flow — Configure → Running →
+// Results — mounted by the app-layer tab host. It supersedes the four dockview
+// panel bodies; the chart panels remain exported for direct reuse/testing.
+export { SimulationFlow } from "./components/simulation-flow";
 export { CurveViewPanel } from "./components/panels/curve-view-panel";
 export { DistributionChartPanel } from "./components/panels/distribution-chart-panel";

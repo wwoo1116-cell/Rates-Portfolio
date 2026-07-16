@@ -31,7 +31,11 @@ export interface SimulateRequest {
   positions: Position[];
   shockCurves: ShockCurves;
   dailyShockCurves: ShockCurves;
-  fundingRate: number;
+  /** s15 — OMITTED by the live bridge: the backend then derives funding as its
+   * 기준금리+10bp constant, fixed for the whole horizon (no 금통위 stepping).
+   * Sending an explicit value keeps the legacy source semantics (value +
+   * fundingEvents stepping) — used only by old payloads/tests. */
+  fundingRate?: number;
   fundingEvents: FundingEvent[];
   simDays: number;
   shockType: "ramp" | "step";
@@ -62,8 +66,10 @@ export interface SimulationChartPoint {
 }
 
 /** s11 T4 — funding rate along the simulation time axis. Rates are decimals
- * (0.042 = 4.2%); positionRate/carryBp are null (unknown, not zero) when no
- * live bonds remain at that step. */
+ * (0.026 = 2.6%); positionRate/carryBp are null (unknown, not zero) when no
+ * live bonds remain at that step. s15: with fundingRate omitted from the
+ * request, fundingRate here is the backend's 기준금리+10bp constant on every
+ * row, and carryBp === (positionRate − fundingRate) × 1e4. */
 export interface FundingCurvePoint {
   day: number;
   date: string;
@@ -93,6 +99,27 @@ export interface SimulationDistribution {
   bands: DistributionBand[];
 }
 
+/** s15 T2 — explicit asset-class exclusion. An excluded class renders as a
+ * notice + blank (—) line, NEVER as a numeric zero (blank-MtM policy). */
+export interface SimulationExclusion {
+  assetClass: string;
+  reason: string;
+  asOf: string;
+}
+
+/** s15 T2 — horizon Total Return decomposition (unrounded KRW floats).
+ * bondMtm + bondCarry + fundingCost + swapMtm + swapCarry === final totalPnL
+ * (±₩1, pinned server-side). swapMtm/swapCarry are null when swaps were
+ * excluded (unknown, not zero). */
+export interface TotalReturnDecomposition {
+  bondMtm: number;
+  bondCarry: number;
+  fundingCost: number;
+  swapMtm: number | null;
+  swapCarry: number | null;
+  total: number;
+}
+
 /** Response body of POST /api/simulate. */
 export interface SimulateResponse {
   chartData: SimulationChartPoint[];
@@ -104,4 +131,7 @@ export interface SimulateResponse {
   // s11 additive fields — optional so cached/older responses stay valid.
   fundingCurve?: FundingCurvePoint[];
   distribution?: SimulationDistribution | null;
+  // s15 additive fields — same optionality rationale.
+  exclusions?: SimulationExclusion[];
+  totalReturnDecomposition?: TotalReturnDecomposition;
 }

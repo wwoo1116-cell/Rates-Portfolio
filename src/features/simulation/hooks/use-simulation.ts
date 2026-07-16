@@ -9,7 +9,7 @@
  */
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { simulationApi } from "../api/simulation-api";
@@ -29,7 +29,8 @@ export function useRunSimulation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: SIMULATION_KEYS.run(),
-    mutationFn: (req: SimulateRequest) => simulationApi.simulate(req),
+    mutationFn: ({ req, signal }: { req: SimulateRequest; signal?: AbortSignal }) =>
+      simulationApi.simulate(req, signal),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: SIMULATION_KEYS.all }),
   });
 }
@@ -42,18 +43,28 @@ export function useRunSimulation() {
 export function useSimulationPort(): SimulationDataPort {
   const store = useSimulationDataStore();
   const runMutation = useRunSimulation();
+  // s15 — controller for the in-flight request so the Running interstitial's
+  // cancel button can abort it. One run at a time (the UI gates on status).
+  const abortRef = useRef<AbortController | null>(null);
 
   const run = useCallback(
     async (request: SimulateRequest): Promise<SimulateResponse | null> => {
       const { markRunning, ingestResult, markError } = useSimulationDataStore.getState();
+      const controller = new AbortController();
+      abortRef.current = controller;
       markRunning();
       try {
-        const result = await runMutation.mutateAsync(request);
+        const result = await runMutation.mutateAsync({ req: request, signal: controller.signal });
         ingestResult(request, result);
         return result;
       } catch (err) {
-        markError(err instanceof Error ? err.message : "시뮬레이션 오류가 발생했습니다.");
+        // A user cancel is not an error state: markCancelled already ran.
+        if (!(err instanceof DOMException && err.name === "AbortError")) {
+          markError(err instanceof Error ? err.message : "시뮬레이션 오류가 발생했습니다.");
+        }
         return null;
+      } finally {
+        if (abortRef.current === controller) abortRef.current = null;
       }
     },
     [runMutation],
@@ -65,6 +76,14 @@ export function useSimulationPort(): SimulationDataPort {
     const { inputs, params } = useSimulationDataStore.getState();
     return run(buildSimulateRequest(inputs, params));
   }, [run]);
+
+  const cancelRun = useCallback((): void => {
+    // Flip the store first so the abort's rejection sees status already idle;
+    // previous result stays untouched (replace-on-arrival semantics).
+    useSimulationDataStore.getState().markCancelled();
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
 
   return {
     inputs: store.inputs,
@@ -78,5 +97,6 @@ export function useSimulationPort(): SimulationDataPort {
     resetParams: store.resetParams,
     run,
     runCurrent,
+    cancelRun,
   };
 }
