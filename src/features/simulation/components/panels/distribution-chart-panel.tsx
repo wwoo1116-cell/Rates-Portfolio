@@ -58,7 +58,7 @@ function FundingReadout({ point, hovered }: { point: FundingCurvePoint; hovered:
       </span>
       <span>
         Carry{" "}
-        <span className={point.carryBp === null ? "text-fg-dim" : point.carryBp >= 0 ? "text-sem-positive" : "text-sem-negative"}>
+        <span className={point.carryBp === null ? "text-fg-dim" : point.carryBp >= 0 ? "text-chart-pnl-pos" : "text-chart-pnl-neg"}>
           {point.carryBp === null ? "—" : formatBp(point.carryBp)}
         </span>
       </span>

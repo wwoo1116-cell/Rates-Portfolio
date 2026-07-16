@@ -49,7 +49,9 @@ export interface SimulationChartTheme {
 export function getSimulationChartTheme(): SimulationChartTheme {
   const ocean = resolveCssVar("--chart-ocean", "#2B95D6");
   const aqua = resolveCssVar("--chart-aqua", "#91CCF1");
-  const berry = resolveCssVar("--chart-berry", "#E75353");
+  // iv3: token renamed --chart-berry → --chart-scarlet by s12 (the legacy red
+  // accent was never the MS Berry family); same hex, name rewired.
+  const berry = resolveCssVar("--chart-scarlet", "#E75353");
   const purple = resolveCssVar("--chart-purple", "#8A9BA8"); // source called this --chart-violet
   const tangerine = resolveCssVar("--chart-tangerine", "#D9822B");
   const accent = resolveCssVar("--accent", "#3B82F6");

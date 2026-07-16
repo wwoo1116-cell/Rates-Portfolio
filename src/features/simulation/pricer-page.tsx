@@ -214,8 +214,10 @@ export function PricerPage() {
               </div>
               {[
                 { label: "Mid", value: tooltip.mid, color: "var(--accent)" },
-                { label: "Bid", value: tooltip.bid, color: "var(--sem-positive)" },
-                { label: "Ask", value: tooltip.ask, color: "var(--sem-negative)" },
+                // iv3: Jade/Berry universal pair (bid was green, ask red) —
+                // retired sem-* aliases deleted at integration.
+                { label: "Bid", value: tooltip.bid, color: "var(--chart-pnl-pos)" },
+                { label: "Ask", value: tooltip.ask, color: "var(--chart-pnl-neg)" },
               ].map(({ label, value, color }) => (
                 <div
                   key={label}

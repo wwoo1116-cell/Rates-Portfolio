@@ -219,7 +219,7 @@ export function TradeEntry() {
                 <button
                   type="button"
                   onClick={() => removeTrade(trade.id)}
-                  className="text-fg-muted hover:text-sem-negative transition-colors"
+                  className="text-fg-muted hover:text-sem-danger transition-colors"
                   aria-label="Remove trade"
                 >
                   <X size={12} strokeWidth={1.5} />

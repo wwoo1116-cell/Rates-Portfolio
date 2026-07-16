@@ -19,7 +19,7 @@ export function ResultsGridPanel() {
   if (error) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
-        <p className="text-body-strong text-sem-negative">시뮬레이션 오류</p>
+        <p className="text-body-strong text-sem-danger">시뮬레이션 오류</p>
         <p className="text-micro text-fg-muted break-all">{error}</p>
       </div>
     );
@@ -53,7 +53,7 @@ export function ResultsGridPanel() {
               <td className="py-1.5 text-fg-muted">{r.label}</td>
               <td
                 className={`py-1.5 text-right ${r.strong ? "text-body-strong" : ""} ${
-                  r.value >= 0 ? "text-sem-positive" : "text-sem-negative"
+                  r.value >= 0 ? "text-chart-pnl-pos" : "text-chart-pnl-neg"
                 }`}
               >
                 {fmtSigned(r.value)}
@@ -63,7 +63,7 @@ export function ResultsGridPanel() {
         </tbody>
       </table>
       {s.breakEvenDay > 0 && (
-        <p className="text-micro text-sem-positive">손익분기점 도달: D+{s.breakEvenDay}</p>
+        <p className="text-micro text-chart-pnl-pos">손익분기점 도달: D+{s.breakEvenDay}</p>
       )}
       <p className="mt-auto text-micro text-fg-dim">S5: BOK 이벤트 MTM 분해 · IRS 정산/일별 대사 sticky 그리드 이식.</p>
     </div>

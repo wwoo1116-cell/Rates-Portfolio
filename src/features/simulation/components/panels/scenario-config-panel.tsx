@@ -169,7 +169,9 @@ export function ScenarioConfigPanel() {
     patchParams({ waypoints: params.waypoints.map((w) => (w.day === day ? { ...w, bp } : w)) });
 
   const bpTone = (bp: number) =>
-    bp > 0 ? "text-sem-negative" : bp < 0 ? "text-sem-positive" : "text-fg-muted";
+    // iv3: Jade/Berry universal pair, sign convention preserved from the old
+    // green/red (rates UP = adverse = Berry; rates DOWN = Jade).
+    bp > 0 ? "text-chart-pnl-neg" : bp < 0 ? "text-chart-pnl-pos" : "text-fg-muted";
 
   const eventCount = params.shortEndEvents.filter((e) => e.date).length;
   const nextEventId = () => (params.shortEndEvents.reduce((m, e) => Math.max(m, e.id), -1) + 1);
@@ -407,7 +409,7 @@ export function ScenarioConfigPanel() {
                       onClick={() =>
                         patchParams({ shortEndEvents: params.shortEndEvents.filter((x) => x.id !== ev.id) })
                       }
-                      className="flex-shrink-0 text-body leading-none text-fg-dim hover:text-sem-negative"
+                      className="flex-shrink-0 text-body leading-none text-fg-dim hover:text-sem-danger"
                       aria-label="이벤트 삭제"
                     >
                       ✕
