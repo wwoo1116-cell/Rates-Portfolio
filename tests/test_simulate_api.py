@@ -71,12 +71,13 @@ def test_response_matches_frontend_contract_shape(representative_response: dict)
     body = representative_response
 
     # SimulateResponse keys (simulate-dto.ts) -- status is a source extra.
-    # fundingCurve/distribution are the s11 additive extensions (T3/T4): the
-    # source contract may only ever GROW by explicitly-listed keys, never change.
+    # fundingCurve/distribution are the s11 additive extensions (T3/T4), and
+    # exclusions/totalReturnDecomposition the s15 ones (T2): the source
+    # contract may only ever GROW by explicitly-listed keys, never change.
     assert set(body.keys()) == {
         "status", "chartData", "summary", "pvbpSensitivity",
         "bookDailyPnLs", "irsSettlementEvents", "irsDailyReconciliation",
-        "fundingCurve", "distribution",
+        "fundingCurve", "distribution", "exclusions", "totalReturnDecomposition",
     }
     assert body["status"] == "ok"
 
@@ -158,11 +159,14 @@ def _assert_deep_close(mine, golden, path=""):
 
 def test_matches_source_backend_golden(representative_response: dict) -> None:
     # The golden file is the SOURCE backend's response. s11 extended the route
-    # additively (fundingCurve/distribution) -- parity is asserted over every
-    # key the source emitted, at full depth, and the extras must be EXACTLY the
-    # two known extensions (a third unlisted key is a contract change, not an
-    # extension, and must fail here).
-    assert set(representative_response) - set(GOLDEN_RESPONSE) == {"fundingCurve", "distribution"}
+    # additively (fundingCurve/distribution), s15 again (exclusions/
+    # totalReturnDecomposition) -- parity is asserted over every key the source
+    # emitted, at full depth, and the extras must be EXACTLY the known
+    # extensions (an unlisted key is a contract change, not an extension, and
+    # must fail here).
+    assert set(representative_response) - set(GOLDEN_RESPONSE) == {
+        "fundingCurve", "distribution", "exclusions", "totalReturnDecomposition",
+    }
     _assert_deep_close(
         {k: representative_response[k] for k in GOLDEN_RESPONSE}, GOLDEN_RESPONSE
     )
@@ -262,8 +266,14 @@ def test_bond_only_analytic(client: TestClient) -> None:
 
 def test_distribution_bands(representative_response: dict) -> None:
     """Additive percentile fan: p50 must equal the base totalPnL trace exactly
-    (the z=0 run IS the base run), bands must be ordered p5<=...<=p95 on every
-    day, aligned to chartData's day axis, and deterministic (no RNG)."""
+    (the z=0 run IS the base run), bands aligned to chartData's day axis, and
+    deterministic (no RNG).
+
+    s15 T4: bands are keyed to their GENERATING rate-quantile scenario -- no
+    per-day re-sorting -- so p5<=...<=p95 ordering is NOT asserted anymore
+    (bands may cross on non-monotone books; on a rates-up-loses book the p95
+    rate path sits below p50 by design). Scenario identity itself is pinned by
+    test_fan_scenario_identity_non_monotone_book below."""
     dist = representative_response["distribution"]
     assert dist is not None
     assert dist["percentiles"] == [5, 25, 50, 75, 95]
@@ -274,13 +284,12 @@ def test_distribution_bands(representative_response: dict) -> None:
     bands = dist["bands"]
     assert [b["day"] for b in bands] == [row["day"] for row in chart]
     for b, row in zip(bands, chart):
-        assert b["p5"] <= b["p25"] <= b["p50"] <= b["p75"] <= b["p95"], b
         assert b["p50"] == pytest.approx(row["totalPnL"]), (
             f"day {b['day']}: median band must be the base scenario trace"
         )
     # The fan must actually open: by the horizon the outer band pair straddles
     # a nonzero spread (a zero-width fan means the offset runs were dropped).
-    assert bands[-1]["p95"] > bands[-1]["p5"]
+    assert bands[-1]["p95"] != bands[-1]["p5"]
 
 
 def test_distribution_is_deterministic(client: TestClient, representative_response: dict) -> None:
@@ -382,6 +391,9 @@ def test_sigma_scales_bands_and_never_moves_the_median(client: TestClient) -> No
         assert [b["p50"] for b in body["distribution"]["bands"]] == pytest.approx(base_trace)
 
     def half_widths(body: dict) -> list[tuple[float, float]]:
+        # s15 T4: bands are scenario-keyed (p95 = the +1.645sigma RATE path), so
+        # on this LONG bond fixture p95 sits BELOW p50 -- the "half-widths" are
+        # signed offsets from the median and scale linearly in sigma either way.
         return [(b["p95"] - b["p50"], b["p50"] - b["p5"]) for b in body["distribution"]["bands"][1:]]
 
     for hw1, hw2, hw4 in zip(half_widths(responses[1.0]), half_widths(responses[2.0]),
@@ -390,7 +402,7 @@ def test_sigma_scales_bands_and_never_moves_the_median(client: TestClient) -> No
             assert hw2[k] == pytest.approx(2.0 * hw1[k], abs=3.0), (hw1, hw2)
             assert hw4[k] == pytest.approx(2.0 * hw2[k], abs=3.0), (hw2, hw4)
     # and the fan actually opens
-    assert half_widths(responses[2.0])[-1][0] > 0
+    assert abs(half_widths(responses[2.0])[-1][0]) > 0
 
 
 # ── 4. The live bridge's request shape (empty irsCurves) ─────────────────────
