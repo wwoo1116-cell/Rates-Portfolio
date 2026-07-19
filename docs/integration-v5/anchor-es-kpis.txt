@@ -1,0 +1,6 @@
+=== A: 국고 10Y−3Y, lookback 60, entry 3σ (expect 35 trades / 70.4M) ===
+  KPIs: trades=24 net=10,600,000 win=54% sharpe=0.06 mdd=48,600,000
+=== B: IRS 10Y−3Y, defaults entry 2σ (expect 92 trades / 71.45M) ===
+  KPIs: trades=92 net=71,450,000 win=64% sharpe=0.26 mdd=53,100,000
+=== C: IRS 3Y outright, defaults entry 2σ (expect 69 trades / −432.4M) ===
+  KPIs: trades=69 net=-432,400,000 win=43% sharpe=-0.59 mdd=487,250,000

@@ -1,0 +1,15 @@
+src/components/charts/lw-chart-base.tsx:49:  timeScale: {
+src/components/charts/lw-chart-base.tsx:67:    minBarSpacing: 0.05,
+src/features/entry-signals/fit-harness.ts:5: * barSpacing to `options.minBarSpacing`, right-edge anchoring, and the
+src/features/entry-signals/fit-harness.ts:11: * The minBarSpacing floor defaults to the SHIPPED value in
+src/features/entry-signals/fit-harness.ts:20: * ever applies, and the minBarSpacing floor when options leave it unset. */
+src/features/entry-signals/fit-harness.ts:30:  minBarSpacing?: number;
+src/features/entry-signals/fit-harness.ts:35:  private readonly minBarSpacing_: number;
+src/features/entry-signals/fit-harness.ts:50:    this.minBarSpacing_ =
+src/features/entry-signals/fit-harness.ts:51:      opts.minBarSpacing ??
+src/features/entry-signals/fit-harness.ts:52:      (BASE_CHART_OPTIONS.timeScale?.minBarSpacing as number | undefined) ??
+src/features/entry-signals/fit-harness.ts:58:    return { timeScale: () => this };
+src/features/entry-signals/fit-harness.ts:112:      this.barSpacing = clamp(this.width_ / span, this.minBarSpacing_, this.width_ * 0.5);
+src/features/entry-signals/full-domain-fit.ts:25: * (pane narrower than barCount × minBarSpacing — see the BASE_CHART_OPTIONS
+src/features/simulation/components/charts/lw-line-chart.tsx:97:      timeScale: { borderColor: t.grid, timeVisible: false, secondsVisible: false },
+src/features/simulation/components/charts/rate-fan-chart.tsx:67:      timeScale: { borderColor: t.grid, timeVisible: false, secondsVisible: false },

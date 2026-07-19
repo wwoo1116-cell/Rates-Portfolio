@@ -1,0 +1,15 @@
+== retired-anchor sweep (merged head c26c4d9) ==
+== grep: 70.4M / 70,400,000 / 35-trade expectation in src/ (product+tests) ==
+(no hits in src/ — retired capture referenced nowhere in product or test code)
+
+== documentary mentions (expected, historical record only) ==
+INTEGRATION_V2_REPORT.md
+REPORT_integration_v3.md
+REPORT_s20.md
+docs/session-s19/harness-output.txt
+docs/session-s19/harness.mts
+docs/session-s19/REPORT_s19.md
+docs/session-s19/sweep.mts
+docs/session-s19/sweep2.mts
+docs/session-s19/sweep3-output.txt
+docs/session-s19/sweep3.mts

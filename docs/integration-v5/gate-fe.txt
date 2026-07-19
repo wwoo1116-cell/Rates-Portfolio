@@ -1,0 +1,12 @@
+== vitest (merged head c26c4d9) ==
+      Tests  221 passed (221)
+   Start at  16:43:53
+   Duration  7.98s (transform 5.11s, setup 0ms, import 27.23s, tests 3.59s, environment 28.64s)
+
+
+== tsc --noEmit ==
+clean (exit 0)
+
+== eslint repo-wide ==
+✖ 47 problems (21 errors, 26 warnings)
+

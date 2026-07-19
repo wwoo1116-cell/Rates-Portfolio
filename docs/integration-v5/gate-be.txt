@@ -1,0 +1,7 @@
+== pytest tests (merged head dce8e78) ==
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+336 passed, 4 xfailed, 1 warning in 52.24s
+
+== frozen-market anchor suites ==
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+42 passed, 1 warning in 14.56s

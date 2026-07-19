@@ -1,51 +1,65 @@
-# KRW FI / Rates Portfolio Management System
+# KRW FI / Rates Portfolio — Frontend (UIUX_test)
 
-See `WORK_ORDER.md` for full spec, design system, and phase plan.
+원화 금리(KRW IRS·국고채) 포트폴리오 관리 시스템의 프론트엔드입니다.
+백엔드는 형제 저장소 **`../IRS Pricer_Mock`** (FastAPI, `:8000`)이며, 이 앱은 그 API를 소비하는 Next.js 클라이언트입니다.
 
-## Run
+## 실행 방법
+
+백엔드를 먼저 띄운 뒤(아래 참고), 프론트를 실행합니다.
 
 ```bash
+# 1. 백엔드 (../IRS Pricer_Mock 에서)
+python -m uvicorn irs_pricer.api.app:app --reload --port 8000
+
+# 2. 프론트엔드 (이 폴더에서)
 pnpm install
-pnpm dev         # http://localhost:3000
-pnpm typecheck && pnpm lint && pnpm build
+pnpm dev          # http://localhost:3000
 ```
 
-## Stack notes (deviations from create-next-app defaults)
+품질 게이트:
 
-- **Tailwind pinned to v3.4**, not the v4 that `create-next-app` installs by
-  default. The work order's directory structure and Phase 0 steps assume a
-  `tailwind.config.ts` with `theme.extend` — v4's CSS-first `@theme` config
-  would drop that file. `postcss.config.mjs` uses the classic
-  `tailwindcss`/`autoprefixer` plugin pair accordingly.
-- **Next.js 16** (satisfies the work order's "14+" pin) with React 19.
+```bash
+pnpm typecheck && pnpm lint && pnpm build
+pnpm test               # vitest (컬러 대비/hex 가드 포함)
+pnpm check:contrast     # 차트 색상 대비 게이트만 단독 실행
+```
 
-## Phase status
+> `npm`이 아니라 **pnpm** 을 사용합니다 (`pnpm-workspace.yaml` 존재).
+> Windows에서는 `start-frontend.ps1`로도 실행할 수 있습니다.
 
-- **Phase 0 — Bootstrap:** done. `tokens.css` (dark/light), extended
-  `tailwind.config.ts` (type scale, spacing, radius, color tokens mapped to
-  CSS vars), Inter + JetBrains Mono via `next/font`, Zustand theme store with
-  `data-theme` sync (no-flash init script + persisted toggle).
-- **Phase 1 — Layout Shell:** done. Sidebar (5 nav items, collapse +
-  `Cmd/Ctrl+B`, persisted), Top Bar (workspace selector, status dot, live KST
-  clock, search/bell/user stubs), dockview shell per tab rendering one empty
-  panel. Verified via Playwright: navigation, theme toggle, sidebar
-  collapse + reload persistence, no console errors.
-- **Phase 2 — Component Library:** done. All `ui/` primitives (Button,
-  Input, Select, SegmentedControl, Chip, Badge, Tooltip, Toast) and `data/`
-  components (PriceDisplay, DeltaIndicator, Sparkline, HeatmapPill,
-  StatusDot, WorkspacePanel) built. Radix used for Select/Tooltip/Toast/
-  SegmentedControl per the primitive stack. `/dev/components` gallery route
-  renders every component/state for visual review — 404s in production
-  builds, reachable only in dev (verified via `pnpm build && pnpm start`).
-  Verified via Playwright in both themes: no console errors.
-- **Phase 3 — Portfolio Management Tab:** done. Fully virtualized TanStack Table grid rendering 500+ positions. Implemented custom filter chips, Group By aggregates (None, Asset Class, Book, Tenor Bucket, Direction), column resize, reordering, row checkboxes, and localStorage layout persistence.
-- **Phase 4 — Home Tab:** done. Implemented high-density KPI cards with Recharts micro-charts, custom D3-based KTB and IRS yield curves rendering benchmark shifts, and a compact Top Movers grid sorted by absolute daily P&L.
-- **Phase 5 — Backtest Tab:** done. Interactive scenario selector cards (MPC, FX, Historical Replays), Pre vs Post-Shock metrics comparison grid, and a sign-colored horizontal P&L Recharts bar chart.
-- **Phase 6 — Simulation Tab:** done. What-If trade entry form validation (Zod/Hook Form), sandbox trades list, Live Impact comparison matrix (Current vs Post-Sandbox metrics), and a custom Recharts horizontal tenor bucket risk profile overlay chart.
-- **Phase 7 — Optimal Portfolio Tab:** done. Grouped constraints form validation (carry/dv01/sharpe objectives, limits, universe checkboxes), Run Optimization toast, and a 3-panel dashboard layout for results (Weights, Frontier, Slack placeholders).
-- **Phase 8 — Polish:** done. Global command palette stub (triggered via `Cmd+K` or search buttons), global shortcuts (`Cmd+B` sidebar toggle, `Cmd+1..5` fast tab switches), custom pulse skeleton loading states, and full empty-state grid states. Passed strict typecheck, eslint rules, and production build checks.
+## 기술 스택
 
-## Known gaps
+- **Next.js 16 / React 19**, TypeScript strict
+- **Tailwind v3.4 고정** — v4의 CSS-first `@theme` 방식이 아니라 `tailwind.config.ts` + `tokens.css`(다크/라이트 CSS 변수) 조합을 사용
+- 상태: **Zustand** / 폼: React Hook Form + Zod / 테이블: TanStack Table(가상화)
+- 차트: **lightweight-charts** 기반 공용 `SeriesChart` + `ChartFrame`(최대화/분리 → `/chart` 라우트), 일부 Recharts·D3
 
-- Simulation and Optimal Portfolio pricing models use naive linear and placeholder calculations (ready for backend model migration).
-- §10 items (3) Historical Replay date ranges and (5) multi-window persistence scope (per-user vs per-workspace) are still open; not required for MVP UI.
+## 화면 구성 (`src/features/`)
+
+| 탭 | 내용 |
+|---|---|
+| `home` | KPI 카드, KTB/IRS 수익률곡선(전일 대비 시프트), Top Movers |
+| `portfolio` | 가상화 포지션 그리드(필터 칩, Group By, 컬럼 이동/리사이즈, 레이아웃 영속화), Daily P&L |
+| `rates-history` | 금리 히스토리 차트 (dirty+settled-cash 기준으로 통일된 PnL 시계열 포함) |
+| `simulation` | 시나리오 시뮬레이터 — Configure→Running→Results 단계 흐름, 퍼센타일 팬차트(금리 경로 + 시나리오별 수익 곡선 이중축), 펀딩(기준금리+10bp), 스왑 편입/제외, TR 분해 |
+| `entry-signals` | ES 백테스트 — Configure→Running→Results, 고정된 lastRun 결과 vs 라이브 모니터링 |
+| `optimal` | 최적 포트폴리오(제약조건 폼 + 결과 3패널) |
+| `settings` | 데이터/정책 설정 (펀딩 상수 등 백엔드 정책값 표시) |
+
+## 지켜야 할 규칙 (요약)
+
+- **디자인 시스템**: UI 수정 전 `PRODUCT.md` / `DESIGN.md` / `WORK_ORDER.md` 필독. 그라데이션·글래스·글로우 금지, 시맨틱 컬러는 포인트로만, 숫자는 tabular numerics.
+- **차트 색상은 반드시 `src/lib/chart-colors.ts` / `--chart-*` 토큰 경유** — 컴포넌트에 hex 하드코딩 금지 (vitest 게이트가 잡아냄). 손익 부호색은 Jade(+)/Berry(−) 쌍으로 통일, Pay=Berry.
+- **금리 단위는 소수(decimal)** — `0.0305` = 3.05%. 퍼센트 스케일 입력은 백엔드가 422로 거부.
+- 시뮬레이션 기준금리 2.75%는 **수동 상수**(BOK 시계열에서 유도하지 말 것), 펀딩 = 기준금리+10bp 상수.
+
+## 테스트·문서
+
+- 단위/가드 테스트: `vitest` (`scripts/`의 대비·hex 게이트 포함). E2E 확인은 Playwright 스크린샷 패턴 사용.
+- 개발 히스토리: `SESSION*_REPORT.md`, `REPORT_s10~s20.md`, 통합 기준선은 **`REPORT_integration_v5.md`** (최신), 마이그레이션 계획은 `MIGRATION_PLAN.md`.
+
+## 알려진 이슈
+
+- `/api/spread-backtest`는 UI에서 사용되지 않음(백테스트는 클라이언트 사이드 시뮬레이션).
+
+(ES 백테스트 차트가 꼬리 구간만 렌더링되던 마운트 레이스는 s20에서 수정 — 전체 구간 fit + 트레이드 마커, `REPORT_s20.md` 참고. s19의 xfail 수용 테스트는 통과로 전환됨.)
