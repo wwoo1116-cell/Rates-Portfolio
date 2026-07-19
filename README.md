@@ -1,88 +1,94 @@
-# KRW IRS NPV Pricer
-This project is a production-grade KRW Interest Rate Swap (IRS) pricing and risk management application. It calculates Net Present Value.
+# KRW IRS NPV Pricer — Backend (IRS Pricer_Mock)
 
-## 🏗️ Architecture
-The codebase strictly adheres to modular design principles to separate pure quantitative logic from I/O and presentation.
+원화 이자율스왑(KRW IRS)·국고채 프라이싱 및 리스크 관리 백엔드입니다.
+커브 부트스트래핑부터 NPV / KRD / PVBP / MtM / 일별 PnL까지 계산하며, FastAPI로 프론트엔드(`../UIUX_test`)에 제공합니다.
 
-### Backend (irs_pricer/)
-engine/: The core quantitative library. It is 100% side-effect-free and mathematically pure. The heart is `quant_engine.py`, a hand-rolled full-revaluation engine (numpy/scipy/holidays only — QuantLib was fully removed on 2026-07-14) that owns curve bootstrapping, schedule generation, NPV, KRD and PVBP.
+## 🏗️ 아키텍처
 
-**`quant_engine.py` must stay byte-identical to `rates-simulator-main/backend/quant_engine.py`** (the authoritative source; sha256 begins `2d600a3a`, 83,895 bytes). Never edit it. Optimizations wrap it from the outside — `curve_cache.py` is the precedent: it memoizes `bootstrap_zero_curve` by rebinding the module attribute at app startup, leaving the file untouched. The wrappers around it (`curve.py`, `instruments.py`, `pricing.py`, `mtm_valuation.py`, `risk.py`, `bond_valuation.py`) are the editable glue.
+순수 수치 로직과 I/O·표현 계층을 엄격히 분리한 모듈 구조입니다.
 
-### loaders/: 
-The data access layer. Implements a robust Factory Pattern (factory.py) that seamlessly routes market snapshots from True Data.xlsx, Total Data.xlsx, or CSV fallbacks. Employs a two-tier in-memory and on-disk caching layer (cache.py) to eliminate parsing latency. Every loader takes the data directory as a parameter and never resolves a path itself — callers get it from `config.DATA_DIR` (see Getting Started §0).
+### `irs_pricer/engine/` — 수치 엔진 (side-effect 없음)
 
-### services/: 
-The orchestration layer. Manages business logic for pricing (pricing_service.py), Mark-to-Market repricing (mtm_service.py), and market data distribution. Fully decoupled from disk I/O through Dependency Injection.
+핵심은 **`quant_engine.py`** — numpy/scipy/holidays만 사용하는 hand-rolled full-revaluation 엔진입니다 (QuantLib은 2026-07-14 완전 제거). 커브 부트스트래핑, 스케줄 생성, NPV, KRD, PVBP를 담당합니다.
 
-### api/: 
-The FastAPI presentation layer. Exposes REST endpoints serving market data and pricing calculations to the frontend while enforcing strict Pydantic schemas.
+> ⚠️ **`quant_engine.py`는 `rates-simulator-main/backend/quant_engine.py`와 byte-identical하게 유지해야 합니다** (원본 sha256 시작 `2d600a3a`, 83,895 bytes). **절대 직접 수정 금지.**
+> 최적화는 바깥에서 감쌉니다 — `curve_cache.py`가 선례: 앱 기동 시 모듈 속성을 재바인딩해 `bootstrap_zero_curve`를 메모이즈하고, 파일 자체는 건드리지 않습니다.
+> 수정 가능한 글루 레이어: `curve.py`, `instruments.py`, `pricing.py`, `mtm_valuation.py`, `risk.py`, `bond_valuation.py`, `fixings.py`(변동금리 픽싱, Seoul 영업일 기준).
 
-### Frontend
-The production frontend is the **sibling repo `../UIUX_test`** (Next.js 16 / React 19, its own git repository) — see its README for setup.
+### `irs_pricer/loaders/` — 데이터 접근 계층
 
-`web/` in this repo is the older Vite + React reference client. It still runs and documents the API-consumption patterns, but it is not where UI work happens.
+Factory 패턴(`factory.py`)으로 `True Data.xlsx` / `Total Data.xlsx` / CSV 폴백을 자동 라우팅. 2단(메모리+디스크) 캐시(`cache.py`)로 파싱 지연 제거. 모든 로더는 데이터 경로를 파라미터로 받으며 직접 경로를 해석하지 않습니다 — 경로는 `config.DATA_DIR`에서 옵니다 (아래 §0).
 
-### Command-Line Interface (scripts/)
-run_pricer.py: The canonical CLI entry point for executing batch calculations or dry-running swap pricing directly against the services layer.
+### `irs_pricer/services/` — 오케스트레이션
 
-## 🚀 Getting Started
-### 0. Data files
-The market-data workbooks are **not in this repo**. They live in a shared `Data/`
-folder next to it:
+프라이싱(`pricing_service.py`), MtM 재평가(`mtm_service.py`), 시장데이터 배포의 비즈니스 로직. DI로 디스크 I/O와 완전 분리.
+
+### `irs_pricer/api/` — FastAPI 표현 계층
+
+시장데이터·프라이싱·시뮬레이션 REST 엔드포인트. Pydantic 스키마 강제.
+
+### 프론트엔드
+
+프로덕션 UI는 형제 저장소 **`../UIUX_test`** (Next.js 16 / React 19) — 설치·실행은 그쪽 README 참고.
+이 저장소의 `web/`은 구형 Vite + React 레퍼런스 클라이언트로, 동작은 하지만(:5173) UI 작업 장소가 아닙니다.
+
+### CLI (`scripts/`)
+
+`run_pricer.py` — services 계층을 직접 호출해 배치 계산/스왑 프라이싱을 드라이런하는 표준 CLI 진입점.
+
+## 🚀 시작하기
+
+### 0. 데이터 파일
+
+시장데이터 엑셀은 **저장소에 포함되어 있지 않습니다.** 옆의 공유 `Data/` 폴더에 둡니다:
 
 ```
 Rates Portfolio/
   Data/                 <- True Data.xlsx, Credit Matrix Data.xlsx, BOK Base Rate.xlsx, ...
-  IRS Pricer_Mock/      <- this repo
-  UIUX_test/            <- the frontend repo
+  IRS Pricer_Mock/      <- 이 저장소 (백엔드)
+  UIUX_test/            <- 프론트엔드 저장소
 ```
 
-They're data, not code: the upload page overwrites the same files the loaders
-read, so keeping them here meant every upload dirtied the working tree and wrote
-a fresh 41MB blob into history. `irs_pricer/config.py` resolves the folder;
-set `IRS_PRICER_DATA_DIR` to point somewhere else (it must be on the same
-filesystem — uploads rely on an atomic `os.replace`).
+업로드 페이지가 로더가 읽는 파일을 그대로 덮어쓰는 구조라, 저장소 안에 두면 업로드마다 워킹트리가 더러워지고 41MB 블랍이 히스토리에 쌓이기 때문입니다. 경로는 `irs_pricer/config.py`가 해석하며, `IRS_PRICER_DATA_DIR` 환경변수로 바꿀 수 있습니다 (업로드가 원자적 `os.replace`에 의존하므로 같은 파일시스템이어야 함).
 
-A fresh clone has no `Data/`. That's fine — the app still boots; data endpoints
-return a clear error naming the path and the env var, and uploading the four
-workbooks through the app's upload page creates the folder for you.
+갓 clone한 상태에는 `Data/`가 없어도 앱은 부팅됩니다 — 데이터 엔드포인트가 경로와 환경변수를 명시한 에러를 반환하고, 앱 업로드 페이지로 워크북 4개를 올리면 폴더가 자동 생성됩니다.
 
-### 1. Run the FastAPI Backend
-Launch the backend from the project root:
+### 1. 백엔드 실행
 
-Bash
+```bash
 python -m uvicorn irs_pricer.api.app:app --reload --port 8000
-API documentation is available at http://127.0.0.1:8000/docs.
+```
 
-### 2. Run the Frontend
-The production UI lives in the sibling repo:
+API 문서: http://127.0.0.1:8000/docs (Windows에서는 `start-backend.ps1`도 사용 가능)
 
-Bash
+### 2. 프론트엔드 실행
+
+```bash
 cd ../UIUX_test
 pnpm install
-pnpm dev
-The application is accessible at http://localhost:3000.
+pnpm dev        # http://localhost:3000
+```
 
-(The legacy reference client in `web/` still runs via `cd web && npm run dev` on :5173.)
+### 3. CLI 실행
 
-### 3. CLI Execution
-To test core pricing capabilities via the terminal:
-
-Bash
+```bash
 python scripts/run_pricer.py
+```
 
-## 🧪 Testing
-The mathematical engine and orchestrated services are covered by Pytest. From the project root (the package is resolved from the working directory, so set `PYTHONPATH` unless you've done an editable install):
+## 🧪 테스트
 
-Bash
+엔진과 서비스 계층은 Pytest로 커버됩니다. 프로젝트 루트에서 (패키지가 작업 디렉터리 기준으로 해석되므로 editable install이 아니면 `PYTHONPATH` 지정):
+
+```bash
 PYTHONPATH=$PWD python -m pytest tests/
+```
 
-`tests/test_engine_regression.py` is the regression gate for pricing/risk glue changes; `tests/test_true_data_loader.py` reads the real workbook and self-skips when `Data/` is absent.
+- `tests/test_engine_regression.py` — 프라이싱/리스크 글루 변경의 회귀 게이트
+- `tests/test_true_data_loader.py` — 실제 워크북을 읽으며 `Data/` 부재 시 self-skip
 
-## 🛡️ Stability and Safety
-Event-loop protection: CPU-bound handlers are plain `def` (FastAPI runs them in a threadpool), so seconds of numpy can never stall unrelated requests — `tests/test_portfolio_analytics_api.py` enforces this.
+## 🛡️ 안정성·안전장치
 
-Caching: `engine/curve_cache.py` memoizes curve bootstraps (installed at app startup — note for benchmarking: `TestClient(app)` must be used as a context manager or the lifespan never runs and pricing is ~50x slower). `core/ttl_cache.py` shares derived values (portfolio delta, fixings, credit shifts) across endpoints; its invalidation contract is documented in the module and must be preserved when adding cache consumers.
-
-Data Integrity: Implements strict Fail-Fast error handling for missing market data to prevent corrupt historical MTM results. Rates at the API boundary are decimals (0.0305 = 3.05%); percent-scaled input is rejected with a 422 rather than silently destroying the long end of the curve.
+- **이벤트 루프 보호**: CPU-bound 핸들러는 일반 `def`(FastAPI가 스레드풀에서 실행) — 수 초짜리 numpy 계산이 다른 요청을 막지 않습니다. `tests/test_portfolio_analytics_api.py`가 강제.
+- **캐싱**: `engine/curve_cache.py`가 커브 부트스트랩을 메모이즈(앱 기동 시 설치 — 벤치마크 시 `TestClient(app)`를 컨텍스트 매니저로 쓰지 않으면 lifespan이 안 돌아 ~50배 느려짐). `core/ttl_cache.py`는 파생값(포트폴리오 델타, 픽싱, 크레딧 시프트)을 엔드포인트 간 공유 — 무효화 계약이 모듈에 문서화되어 있으며 캐시 소비자를 추가할 때 반드시 지켜야 합니다.
+- **데이터 무결성**: 시장데이터 누락 시 Fail-Fast로 오염된 히스토리컬 MtM을 방지. **API 경계의 금리는 소수(decimal) 단위** (`0.0305` = 3.05%) — 퍼센트 스케일 입력은 커브 장기 구간을 조용히 망가뜨리는 대신 422로 거부됩니다.
+- **평가 기준 통일**: 히스토리컬 PnL/트레이스 시계열은 dirty MtM + settled cash 기준으로 통일 (`settled_cash_between`, curve-free) — basis guard 테스트가 강제.
