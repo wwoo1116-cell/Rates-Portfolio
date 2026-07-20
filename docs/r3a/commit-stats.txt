@@ -1,0 +1,125 @@
+commit e1f950a9c233a457169e97c70ba8451f9647fa99
+
+    docs(r3a): split plan for simulation_service.py (Phase A, analysis only)
+    
+    No code change. Records T0 preflight (327+4 xfail measured at 4cf96a3 —
+    prompt's 336+4 documented as deviation, repo-declared baseline confirmed by
+    three sources), external surface census, region map, hazards H1-H7, and the
+    C2-C6 move stack. Test counts untouched: 327+4 xfail.
+    
+    Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+ docs/r3a/SPLIT_PLAN.md | 230 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 230 insertions(+)
+
+commit e3b2a753a0acd4c1fca252c67189c682e2a5a26d
+
+    move(r3a): sim DTOs + funding constants -> services/simulation/ (C2)
+    
+    Creates the simulation/ package (family __init__ doc) and extracts, verbatim:
+    - models.py: FrontendPosition, FrontendShockCurves (frozen FE contract)
+    - constants.py: POLICY_BASE_RATE_KRW / FUNDING_SPREAD_BP / FUNDING_RATE_KRW
+      with the s15 T1/s18 T1 manual-constant ruling block intact
+    simulation_service.py imports the names back into its namespace, so every
+    external access (router direct-from, pas direct-from, tests attr) is
+    unchanged. No test deleted; counts preserved: pytest 327 passed + 4 xfail.
+    
+    Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+ irs_pricer/services/simulation/__init__.py  | 22 ++++++++++
+ irs_pricer/services/simulation/constants.py | 24 +++++++++++
+ irs_pricer/services/simulation/models.py    | 43 +++++++++++++++++++
+ irs_pricer/services/simulation_service.py   | 64 +++--------------------------
+ 4 files changed, 95 insertions(+), 58 deletions(-)
+
+commit d2640479b2383458dc3ecb213b31e2edbfdd60bc
+
+    move(r3a): KR calendar + daily-valuation glue -> services/simulation/ (C3)
+    
+    Extracts, verbatim:
+    - kr_calendar.py: _KR_HOLIDAYS guarded init (H5 structure preserved),
+      next_kr_business_day (service-local one — H2: distinct from quant_engine's),
+      modified_following_kr, _TENOR_MONTHS, tenor_to_maturity_date,
+      resolve_curve_maturity_dates, build_bizday_schedule
+    - daily_valuation.py: sector/tenor/curve-shift helpers, get_position_shock_bp,
+      _is_matured, calculate_daily_mtm, calculate_daily_carry,
+      calculate_daily_funding_cost, calc_dynamic_funding_rate
+    simulation_service back-imports all names; the s18 T5 profiler still wraps
+    this module's calculate_daily_* attrs, which remains the namespace
+    build_chart_data resolves (retarget lands with the chart move, C4).
+    No test deleted; counts preserved: pytest 327 passed + 4 xfail.
+    
+    Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+ irs_pricer/services/simulation/daily_valuation.py | 236 ++++++++++++++
+ irs_pricer/services/simulation/kr_calendar.py     | 137 ++++++++
+ irs_pricer/services/simulation_service.py         | 364 ++--------------------
+ 3 files changed, 392 insertions(+), 345 deletions(-)
+
+commit e165846446017d02f7e1138dbd465bafc475ea28
+
+    move(r3a): chart builder + profiler -> services/simulation/ (C4)
+    
+    - chart.py: _build_irs_shock_curve + build_chart_data moved verbatim (body
+      byte-copied by line-range script). All bootstraps stay module-attr calls
+      (qe.bootstrap_zero_curve) so the curve_cache wrapper is picked up.
+    - profiling.py: SIM_PROFILE_ENV/_sim_profiler/_phase/_log_profile. The two
+      service-level wrap targets retarget from sys.modules[__name__] to the
+      chart module in the SAME commit (SPLIT_PLAN H3) — the namespace
+      build_chart_data resolves at call time. Labels/restore semantics unchanged.
+      Evidence: IRS_PRICER_SIM_PROFILE=1 smoke on the committed fan fixture logs
+      svc.calculate_daily_mtm/carry = 200 calls (40 bizdays x 5 scenario runs).
+    simulation_service back-imports both modules' names; external surface
+    unchanged. No test deleted; counts preserved: pytest 327 passed + 4 xfail.
+    
+    Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+ irs_pricer/services/simulation/chart.py     | 684 ++++++++++++++++++++++++++
+ irs_pricer/services/simulation/profiling.py |  98 ++++
+ irs_pricer/services/simulation_service.py   | 735 +---------------------------
+ 3 files changed, 789 insertions(+), 728 deletions(-)
+
+commit 9c50c039364b4ad1ab1f990855b5ff3442448e72
+
+    move(r3a): distribution + aggregates + enrichment + swap inputs -> services/simulation/ (C5)
+    
+    Extracts, verbatim:
+    - distribution.py: _DIST_* constants, _offset_* helpers, build_distribution_bands
+    - aggregates.py: build_frontend_pvbp_sensitivity, build_book_daily_pnl
+      (H2 family note: distinct from portfolio_analytics_service's same-name fn)
+    - enrichment.py: enrich_irs_pvbp
+    - swap_inputs.py: _MONTHS_TO_TENOR (rederived from kr_calendar._TENOR_MONTHS,
+      same expression), SWAP_EXCLUSION_REASON_NO_QUOTES, _resolve_swap_inputs,
+      _resolve_swap_float_fields — calls market_data_service through the module
+      attribute so the tests' monkeypatch seam (H4) keeps landing.
+    simulation_service back-imports everything; external surface unchanged.
+    No test deleted; counts preserved: pytest 327 passed + 4 xfail.
+    
+    Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+ irs_pricer/services/simulation/aggregates.py   | 105 +++++
+ irs_pricer/services/simulation/distribution.py | 161 ++++++++
+ irs_pricer/services/simulation/enrichment.py   | 140 +++++++
+ irs_pricer/services/simulation/swap_inputs.py  | 156 ++++++++
+ irs_pricer/services/simulation_service.py      | 525 +------------------------
+ 5 files changed, 581 insertions(+), 506 deletions(-)
+
+commit bccfac24047f5d4dc693b1ebe13e2dc626fc8e45
+
+    move(r3a): orchestrator; simulation_service -> facade (C6)
+    
+    - orchestrator.py: run_simulation + _run_simulation_profiled moved verbatim;
+      imports each collaborator from its family module.
+    - simulation_service.py reduced to a documented re-export facade (99 lines):
+      the full pre-split surface — public builders, funding constants, DTOs, the
+      underscore seams tests use (_resolve_swap_float_fields, _resolve_swap_inputs,
+      helpers), and the market_data_service module attr (monkeypatch seam H4) —
+      is importable exactly as before. External call sites: zero changes.
+    No test deleted; counts preserved: pytest 327 passed + 4 xfail.
+    
+    Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+ irs_pricer/services/simulation/orchestrator.py | 210 ++++++++++++++++++
+ irs_pricer/services/simulation_service.py      | 286 +++++--------------------
+ 2 files changed, 265 insertions(+), 231 deletions(-)
+

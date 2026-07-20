@@ -1,0 +1,6 @@
+tests/test_simulate_api.py::test_matches_source_backend_golden PASSED    [ 20%]
+tests/test_curve_cache.py::test_simulate_http_bytes_identical_cached_vs_uncached[fan_non_monotone_request.json] PASSED [ 40%]
+tests/test_curve_cache.py::test_simulate_http_bytes_identical_cached_vs_uncached[simulate_request_representative.json] PASSED [ 60%]
+tests/test_curve_cache.py::test_raw_engine_called_exactly_once_per_variant_and_never_on_repeat PASSED [ 80%]
+tests/test_curve_cache.py::test_env_kill_switch_controls_install PASSED  [100%]
+======================== 5 passed, 1 warning in 11.63s ========================
