@@ -276,3 +276,105 @@ describe("BookDailyPnlTable daily table column integrity (s16)", () => {
     expect(within(row.cells[col("MtM")]).getByText("—")).toBeDefined();
   });
 });
+
+/**
+ * HARDEN-1 — 채권/스왑 class sub-rows (owner feedback). The split re-groups
+ * the SAME legs, so per column bond+swap must display as summing to the book
+ * row; blank policy and the s16 fill/text-right mechanism apply per class.
+ */
+function dailyWithClasses() {
+  const bond = { theta: 1_100_000, mtm: 2_200_000, total: 3_300_000, funding: -1_100_000, mtm_complete: true };
+  // Swap source (IRS) stale: MtM unknown → class total is theta-only, partial.
+  const swap = { theta: 4_400_000, mtm: null, total: 4_400_000, funding: -3_300_000, mtm_complete: false };
+  return {
+    as_of: "2026-07-16",
+    quote_sources: [
+      { source: "IRS", latest: "2026-07-15", has_as_of: false },
+      { source: "Credit Matrix", latest: "2026-07-16", has_as_of: true },
+    ],
+    daily_pnl: { total: 7_700_000, mtm: 2_200_000, theta: 5_500_000, mtm_complete: false },
+    by_book: [
+      {
+        book: "RP Fund",
+        theta: 5_500_000, mtm: 2_200_000, total: 7_700_000, funding: -4_400_000,
+        mtm_complete: false,
+        by_class: { bond, swap },
+      },
+      // Legacy-shaped row (no by_class): must render with no sub-rows.
+      { book: "Total", theta: 5_500_000, mtm: 2_200_000, total: 7_700_000, funding: -4_400_000, mtm_complete: false },
+    ],
+  };
+}
+
+describe("BookDailyPnlTable 채권/스왑 sub-rows (HARDEN-1)", () => {
+  it("renders class sub-rows whose cells sum to the book row, column by column", () => {
+    analytics({ bookDailyPnl: dailyWithClasses() });
+    period();
+    const { container } = render(<BookDailyPnlTable />);
+    const { col, rowFor } = grabTable(container);
+
+    const bond = rowFor("채권");
+    const swap = rowFor("스왑");
+    const book = rowFor("RP Fund");
+
+    // bond + swap == book, as displayed: theta 1.1M + 4.4M = 5.5M,
+    // funding -1.1M + -3.3M = -4.4M, total 3.3M + 4.4M‡ = 7.7M‡.
+    expect(cellText(bond, col("Theta"))).toBe("+1.1M");
+    expect(cellText(swap, col("Theta"))).toBe("+4.4M");
+    expect(cellText(book, col("Theta"))).toBe("+5.5M");
+    expect(cellText(bond, col("Funding"))).toBe("-1.1M");
+    expect(cellText(swap, col("Funding"))).toBe("-3.3M");
+    expect(cellText(book, col("Funding"))).toBe("-4.4M");
+    expect(cellText(bond, col("Total"))).toBe("+3.3M");
+    expect(cellText(book, col("Total"))).toBe("+7.7M‡");
+  });
+
+  it("applies the blank policy per class: bond keeps its MtM, swap shows — and ‡", () => {
+    analytics({ bookDailyPnl: dailyWithClasses() });
+    period();
+    const { container } = render(<BookDailyPnlTable />);
+    const { col, rowFor } = grabTable(container);
+
+    const bond = rowFor("채권");
+    const swap = rowFor("스왑");
+    expect(cellText(bond, col("MtM"))).toBe("+2.2M");
+    expect(cellText(swap, col("MtM"))).toBe("—");
+    expect(cellText(swap, col("Total"))).toBe("+4.4M‡");
+    // Book row stays partial (unchanged semantics).
+    expect(cellText(rowFor("RP Fund"), col("Total"))).toBe("+7.7M‡");
+  });
+
+  it("renders NO sub-rows for a row without by_class (legacy responses)", () => {
+    analytics({ bookDailyPnl: dailyWithClasses() });
+    period();
+    const { container } = render(<BookDailyPnlTable />);
+    const table = container.querySelector("table")!;
+    const labels = [...table.tBodies].flatMap((tb) => [...tb.rows]).map(
+      (r) => r.cells[0].textContent?.trim(),
+    );
+    // Exactly one 채권 and one 스왑 sub-row (RP Fund's); Total has none.
+    expect(labels.filter((l) => l === "채권").length).toBe(1);
+    expect(labels.filter((l) => l === "스왑").length).toBe(1);
+  });
+
+  it("extends the s16 mechanism to sub-rows: fill tooltip targets + td-owned right alignment", () => {
+    analytics({ bookDailyPnl: dailyWithClasses() });
+    period();
+    const { container } = render(<BookDailyPnlTable />);
+    const { col, rowFor } = grabTable(container);
+
+    const swap = rowFor("스왑");
+    for (const name of ["MtM", "Total"] as const) {
+      const wrapper = swap.cells[col(name)].firstElementChild!;
+      expect(wrapper.classList.contains("bp5-popover-target"), `${name} tooltip target`).toBe(true);
+      expect(wrapper.tagName, `${name} target must be the block-level fill div`).toBe("DIV");
+      expect(
+        wrapper.firstElementChild?.classList.contains("bp5-fill"),
+        `${name} cell content must carry bp5-fill`,
+      ).toBe(true);
+    }
+    for (const name of ["Theta", "MtM", "Total", "Funding"] as const) {
+      expect(swap.cells[col(name)].className, `${name} td alignment`).toContain("text-right");
+    }
+  });
+});

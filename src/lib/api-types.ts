@@ -526,6 +526,13 @@ export interface DailyPnlFigures {
 
 export interface DailyPnlBookRow extends DailyPnlFigures {
   book: string;
+  /** HARDEN-1 — per-class (채권/스왑) sub-aggregates of the SAME legs this
+   * row sums. A class the book doesn't hold is ABSENT (no zero-valued class).
+   * Optional: responses predating the field simply render no sub-rows. */
+  by_class?: {
+    bond?: DailyPnlFigures;
+    swap?: DailyPnlFigures;
+  };
 }
 
 /** POST /api/portfolio/book-daily-pnl.

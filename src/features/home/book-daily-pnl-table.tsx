@@ -23,12 +23,20 @@
  *  3. A row summing over any unknown MtM is PARTIAL and is marked (muted Total
  *     + ‡ footnote), never presented as a finished total.
  */
+import { Fragment } from "react";
 import { Spinner, Tooltip } from "@blueprintjs/core";
 import { usePortfolioAnalytics } from "@/hooks/use-portfolio-analytics";
 import { usePeriodPnl } from "@/hooks/use-period-pnl";
 import { useSettingsStore } from "@/stores/settings-store";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { PeriodPnlFigure, QuoteSource } from "@/lib/api-types";
+import type { DailyPnlFigures, PeriodPnlFigure, QuoteSource } from "@/lib/api-types";
+
+/** HARDEN-1 — the class sub-rows under each book row. Display order and the
+ * quote source each class prices off (for the class-specific blank tooltip). */
+const CLASS_ROWS = [
+  { key: "bond", label: "채권", source: "Credit Matrix" },
+  { key: "swap", label: "스왑", source: "IRS" },
+] as const;
 
 function formatKrwCompact(value: number): string {
   const abs = Math.abs(value);
@@ -321,52 +329,99 @@ export function BookDailyPnlTable() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr
-                  key={row.book}
-                  className="border-t border-border-subtle"
-                  style={
-                    row.book === "Total"
-                      ? { borderTop: "1px solid var(--border-dim)", fontWeight: 700 }
-                      : {}
-                  }
-                >
-                  {/* Numeric tds carry text-right themselves (s16): alignment
-                      is the COLUMN's property, never the value's — a
-                      shrink-wrapped child (e.g. a tooltip target) must still
-                      land at the right edge of its own column. */}
-                  <td className="py-1.5 text-label text-fg-muted truncate">{row.book}</td>
-                  <td className="py-1 text-right">
-                    <KrwCell value={row.theta} />
-                  </td>
-                  <td className="py-1 text-right">
-                    {row.mtm === null ? (
-                      <UnknownCell
-                        tooltip={`No ${asOf} quotes from ${staleSources.join(" / ")} — MtM is unknown, not zero`}
+                <Fragment key={row.book}>
+                  <tr
+                    className="border-t border-border-subtle"
+                    style={
+                      row.book === "Total"
+                        ? { borderTop: "1px solid var(--border-dim)", fontWeight: 700 }
+                        : {}
+                    }
+                  >
+                    {/* Numeric tds carry text-right themselves (s16): alignment
+                        is the COLUMN's property, never the value's — a
+                        shrink-wrapped child (e.g. a tooltip target) must still
+                        land at the right edge of its own column. */}
+                    <td className="py-1.5 text-label text-fg-muted truncate">{row.book}</td>
+                    <td className="py-1 text-right">
+                      <KrwCell value={row.theta} />
+                    </td>
+                    <td className="py-1 text-right">
+                      {row.mtm === null ? (
+                        <UnknownCell
+                          tooltip={`No ${asOf} quotes from ${staleSources.join(" / ")} — MtM is unknown, not zero`}
+                        />
+                      ) : (
+                        <KrwCell value={row.mtm} />
+                      )}
+                    </td>
+                    <td className="py-1 text-right">
+                      {/* A partial Total is still worth showing -- theta is real
+                          money and already known -- but it must not pass for a
+                          finished ΔNPV. Marked with ‡ and dropped to the
+                          secondary weight the components use. */}
+                      <KrwCell
+                        value={row.total}
+                        emphasis={row.mtm_complete}
+                        suffix={row.mtm_complete ? undefined : "‡"}
+                        tooltip={
+                          row.mtm_complete
+                            ? undefined
+                            : `Partial — excludes MtM from ${staleSources.join(" / ")}, which has no ${asOf} quotes yet.`
+                        }
                       />
-                    ) : (
-                      <KrwCell value={row.mtm} />
-                    )}
-                  </td>
-                  <td className="py-1 text-right">
-                    {/* A partial Total is still worth showing -- theta is real
-                        money and already known -- but it must not pass for a
-                        finished ΔNPV. Marked with ‡ and dropped to the
-                        secondary weight the components use. */}
-                    <KrwCell
-                      value={row.total}
-                      emphasis={row.mtm_complete}
-                      suffix={row.mtm_complete ? undefined : "‡"}
-                      tooltip={
-                        row.mtm_complete
-                          ? undefined
-                          : `Partial — excludes MtM from ${staleSources.join(" / ")}, which has no ${asOf} quotes yet.`
-                      }
-                    />
-                  </td>
-                  <td className="py-1 text-right">
-                    <KrwCell value={row.funding} />
-                  </td>
-                </tr>
+                    </td>
+                    <td className="py-1 text-right">
+                      <KrwCell value={row.funding} />
+                    </td>
+                  </tr>
+
+                  {/* HARDEN-1 (owner feedback) — 채권/스왑 sub-rows: the same
+                      legs the book row sums, re-grouped by asset class. Only
+                      classes the book actually holds appear (an absent class
+                      is no row, not a zero row). The Total row keeps its
+                      portfolio-level split too. Blank policy is per class:
+                      a class whose source is stale shows — and its partial
+                      class total carries the same ‡. */}
+                  {CLASS_ROWS.map(({ key, label, source }) => {
+                    const cls: DailyPnlFigures | undefined = row.by_class?.[key];
+                    if (!cls) return null;
+                    return (
+                      <tr key={`${row.book}:${key}`}>
+                        <td className="py-0.5 pl-4 text-label text-fg-dim truncate">{label}</td>
+                        {/* s16 mechanism inherited verbatim: numeric tds carry
+                            text-right; tooltip targets keep Blueprint `fill`
+                            via KrwCell/UnknownCell. */}
+                        <td className="py-0.5 text-right">
+                          <KrwCell value={cls.theta} />
+                        </td>
+                        <td className="py-0.5 text-right">
+                          {cls.mtm === null ? (
+                            <UnknownCell
+                              tooltip={`No ${asOf} quotes from ${source} — ${label} MtM is unknown, not zero`}
+                            />
+                          ) : (
+                            <KrwCell value={cls.mtm} />
+                          )}
+                        </td>
+                        <td className="py-0.5 text-right">
+                          <KrwCell
+                            value={cls.total}
+                            suffix={cls.mtm_complete ? undefined : "‡"}
+                            tooltip={
+                              cls.mtm_complete
+                                ? undefined
+                                : `Partial — ${label} MtM from ${source} has no ${asOf} quotes yet.`
+                            }
+                          />
+                        </td>
+                        <td className="py-0.5 text-right">
+                          <KrwCell value={cls.funding} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
               ))}
             </tbody>
           </table>
