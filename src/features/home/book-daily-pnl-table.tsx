@@ -3,14 +3,14 @@
 /**
  * Book-level daily P&L, decomposed as ΔNPV = MtM + Theta.
  * Backed by POST /api/portfolio/book-daily-pnl via use-portfolio-analytics.ts.
- * Columns: Book | Theta | MtM | Total | Funding
+ * Columns: Book | Theta | MtM | Funding | Total
  *
- * Total is the emphasized figure; MtM/Theta are its two components and are
- * rendered secondary. They sum to Total exactly -- the backend derives them by
- * revaluation (roll the date holding quotes fixed / hold the date and move the
- * quotes), so there is no residual bucket to hide a discrepancy in.
- *
- * Funding sits OUTSIDE Total: it's a financing cost, not a change in NPV.
+ * Total is the emphasized figure and includes funding (owner ruling, F1):
+ * Total = Theta + MtM + Funding, matching the waterfall's 토탈 definition
+ * (which already includes 조달비용). The backend's `total` field remains
+ * Theta + known-MtM (the ΔNPV identity is untouched); this table ADDS the
+ * response's `funding` at display time. MtM/Theta/Funding are the components
+ * and render secondary.
  *
  * THREE HONESTY RULES, all about not overstating what we know:
  *  1. An unknown MtM renders "—", never 0. 0 asserts "quotes arrived, nothing
@@ -405,8 +405,8 @@ export function BookDailyPnlTable() {
               <col style={{ width: 110 }} />
               <col style={{ minWidth: 84 }} />
               <col style={{ minWidth: 84 }} />
-              <col style={{ minWidth: 92 }} />
               <col style={{ minWidth: 84 }} />
+              <col style={{ minWidth: 92 }} />
             </colgroup>
             <thead>
               <tr className="border-b border-border-subtle">
@@ -419,11 +419,11 @@ export function BookDailyPnlTable() {
                 <th className="py-1.5 text-right text-label text-fg-muted font-bold uppercase">
                   MtM
                 </th>
-                <th className="py-1.5 text-right text-label text-fg-primary font-bold uppercase">
-                  Total
-                </th>
                 <th className="py-1.5 text-right text-label text-fg-muted font-bold uppercase">
                   Funding
+                </th>
+                <th className="py-1.5 text-right text-label text-fg-primary font-bold uppercase">
+                  Total
                 </th>
               </tr>
             </thead>
@@ -456,12 +456,19 @@ export function BookDailyPnlTable() {
                       )}
                     </td>
                     <td className="py-1 text-right">
-                      {/* A partial Total is still worth showing -- theta is real
-                          money and already known -- but it must not pass for a
-                          finished ΔNPV. Marked with ‡ and dropped to the
-                          secondary weight the components use. */}
+                      <KrwCell value={row.funding} />
+                    </td>
+                    <td className="py-1 text-right">
+                      {/* F1 (owner ruling): Total = Theta + MtM + Funding. The
+                          backend's `total` is Theta + known-MtM; funding is
+                          added HERE, display-side — presentation arithmetic,
+                          not engine math. A partial Total is still worth
+                          showing -- theta and funding are real money and
+                          already known -- but it must not pass for a finished
+                          figure. Marked with ‡ and dropped to the secondary
+                          weight the components use. */}
                       <KrwCell
-                        value={row.total}
+                        value={row.total + row.funding}
                         emphasis={row.mtm_complete}
                         suffix={row.mtm_complete ? undefined : "‡"}
                         tooltip={
@@ -470,9 +477,6 @@ export function BookDailyPnlTable() {
                             : `Partial — excludes MtM from ${staleSources.join(" / ")}, which has no ${asOf} quotes yet.`
                         }
                       />
-                    </td>
-                    <td className="py-1 text-right">
-                      <KrwCell value={row.funding} />
                     </td>
                   </tr>
 
@@ -505,8 +509,15 @@ export function BookDailyPnlTable() {
                           )}
                         </td>
                         <td className="py-0.5 text-right">
+                          <KrwCell value={cls.funding} />
+                        </td>
+                        <td className="py-0.5 text-right">
+                          {/* F1: each sub-row's Total includes its OWN funding
+                              (채권 carries the book's funding attribution,
+                              스왑 0) — so per column the sub-rows still sum
+                              to the book row. */}
                           <KrwCell
-                            value={cls.total}
+                            value={cls.total + cls.funding}
                             suffix={cls.mtm_complete ? undefined : "‡"}
                             tooltip={
                               cls.mtm_complete
@@ -514,9 +525,6 @@ export function BookDailyPnlTable() {
                                 : `Partial — ${label} MtM from ${source} has no ${asOf} quotes yet.`
                             }
                           />
-                        </td>
-                        <td className="py-0.5 text-right">
-                          <KrwCell value={cls.funding} />
                         </td>
                       </tr>
                     );

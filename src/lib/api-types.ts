@@ -533,8 +533,10 @@ export interface DailyPnlFigures {
    * `mtm_complete`; otherwise it's a PARTIAL figure and must be marked as such
    * rather than shown as a finished total. */
   total: number;
-  /** Funding is deliberately outside `total`: it's a financing cost, not a
-   * change in NPV. */
+  /** Funding is deliberately outside `total` ON THE WIRE: it's a financing
+   * cost, not a change in NPV, and the server's ΔNPV identity math is
+   * untouched. F1 (owner ruling): the Home table DISPLAYS Total as
+   * total + funding, adding this field at presentation time. */
   funding: number;
   /** False when any constituent position's MtM is still unknown. */
   mtm_complete: boolean;

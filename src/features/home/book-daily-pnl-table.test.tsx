@@ -215,7 +215,8 @@ function grabTable(container: HTMLElement) {
   const table = container.querySelector("table")!;
   expect(table).not.toBeNull();
   const headers = [...table.tHead!.rows[0].cells].map((th) => th.textContent?.trim());
-  expect(headers).toEqual(["Book", "Theta", "MtM", "Total", "Funding"]);
+  // [CHANGED, F1] Funding moved BEFORE Total (owner ruling: Total includes it).
+  expect(headers).toEqual(["Book", "Theta", "MtM", "Funding", "Total"]);
   const col = (name: string) => headers.indexOf(name);
   const bodyRows = [...table.tBodies].flatMap((tb) => [...tb.rows]);
   const rowFor = (book: string) => {
@@ -239,8 +240,10 @@ describe("BookDailyPnlTable daily table column integrity (s16)", () => {
       const row = rowFor(book);
       expect(cellText(row, col("Theta"))).toBe("+1.1M");
       expect(cellText(row, col("MtM"))).toBe("+2.2M");
-      expect(cellText(row, col("Total"))).toBe("+3.3M");
       expect(cellText(row, col("Funding"))).toBe("-4.4M");
+      // [CHANGED, F1] Total = Theta + MtM + Funding = 1.1 + 2.2 − 4.4 = −1.1M
+      // (was +3.3M when funding sat outside Total).
+      expect(cellText(row, col("Total"))).toBe("-1.1M");
     }
     expect(screen.queryByText(/‡ Partial/)).toBeNull();
   });
@@ -257,8 +260,9 @@ describe("BookDailyPnlTable daily table column integrity (s16)", () => {
       // ‡-Total under MtM, leaving Total empty. Assert each cell exactly.
       expect(cellText(row, col("Theta"))).toBe("+270.1M");
       expect(cellText(row, col("MtM"))).toBe("—");
-      expect(cellText(row, col("Total"))).toBe("+270.1M‡");
       expect(cellText(row, col("Funding"))).toBe("-10.3M");
+      // [CHANGED, F1] partial Total now includes funding: 270.1 − 10.3 = 259.8M‡.
+      expect(cellText(row, col("Total"))).toBe("+259.8M‡");
     }
     // Footnote referent: ‡ belongs to Total and names the stale sources.
     expect(screen.getByText(/‡ Partial — excludes MtM from IRS \/ Credit Matrix/)).toBeDefined();
@@ -335,15 +339,18 @@ describe("BookDailyPnlTable 채권/스왑 sub-rows (HARDEN-1)", () => {
     const book = rowFor("RP Fund");
 
     // bond + swap == book, as displayed: theta 1.1M + 4.4M = 5.5M,
-    // funding -1.1M + -3.3M = -4.4M, total 3.3M + 4.4M‡ = 7.7M‡.
+    // funding -1.1M + -3.3M = -4.4M.
+    // [CHANGED, F1] each Total includes its own funding: bond 3.3−1.1 = 2.2M,
+    // swap 4.4−3.3 = 1.1M‡, book 7.7−4.4 = 3.3M‡ — sub-rows still sum to the
+    // book row per column.
     expect(cellText(bond, col("Theta"))).toBe("+1.1M");
     expect(cellText(swap, col("Theta"))).toBe("+4.4M");
     expect(cellText(book, col("Theta"))).toBe("+5.5M");
     expect(cellText(bond, col("Funding"))).toBe("-1.1M");
     expect(cellText(swap, col("Funding"))).toBe("-3.3M");
     expect(cellText(book, col("Funding"))).toBe("-4.4M");
-    expect(cellText(bond, col("Total"))).toBe("+3.3M");
-    expect(cellText(book, col("Total"))).toBe("+7.7M‡");
+    expect(cellText(bond, col("Total"))).toBe("+2.2M");
+    expect(cellText(book, col("Total"))).toBe("+3.3M‡");
   });
 
   it("applies the blank policy per class: bond keeps its MtM, swap shows — and ‡", () => {
@@ -356,9 +363,10 @@ describe("BookDailyPnlTable 채권/스왑 sub-rows (HARDEN-1)", () => {
     const swap = rowFor("스왑");
     expect(cellText(bond, col("MtM"))).toBe("+2.2M");
     expect(cellText(swap, col("MtM"))).toBe("—");
-    expect(cellText(swap, col("Total"))).toBe("+4.4M‡");
+    // [CHANGED, F1] Totals include own funding: swap 4.4−3.3, book 7.7−4.4.
+    expect(cellText(swap, col("Total"))).toBe("+1.1M‡");
     // Book row stays partial (unchanged semantics).
-    expect(cellText(rowFor("RP Fund"), col("Total"))).toBe("+7.7M‡");
+    expect(cellText(rowFor("RP Fund"), col("Total"))).toBe("+3.3M‡");
   });
 
   it("renders NO sub-rows for a row without by_class (legacy responses)", () => {
