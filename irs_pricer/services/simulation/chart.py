@@ -24,6 +24,7 @@ from datetime import date, timedelta
 import numpy as np
 
 from ...engine import quant_engine as qe
+from .. import funding_basis
 from .daily_valuation import (
     _is_matured,
     calc_dynamic_funding_rate,
@@ -485,8 +486,15 @@ def build_chart_data(
             tot_eval += ev
         return (acc / tot_eval) / 100.0 if tot_eval > 0 else None
 
+    # SIM2-7 (owner ruling): 고정 모드의 조달 '베이스'는 날짜별 실적 기준금리
+    # (BOK 시계열, 커버리지 내) + 스프레드 — 조인 이후는 정책 상수. 명시적
+    # fundingRate(레거시/골든 경로)는 종전 그대로. SIM2-5 이벤트 스테핑은
+    # calc_dynamic_funding_rate가 이 베이스 위에 쌓는다(이중 계상 없음).
+    def _funding_base(cur_date: date) -> float:
+        return funding_basis.funding_rate_at(cur_date) if funding_rate_fixed else funding_rate
+
     def _funding_row(t: int, cur_date: date, multiplier: float) -> dict:
-        rate = calc_dynamic_funding_rate(funding_rate, _cost_events, cur_date)
+        rate = calc_dynamic_funding_rate(_funding_base(cur_date), _cost_events, cur_date)
         pos_rate = _weighted_position_rate(t, multiplier, cur_date)
         return {
             "day": t,
@@ -530,7 +538,7 @@ def build_chart_data(
         t = cal_day
         multiplier = _factor(t)
         short_mult  = _short_factor(t)
-        active_rate = calc_dynamic_funding_rate(funding_rate, _cost_events, current_date)
+        active_rate = calc_dynamic_funding_rate(_funding_base(current_date), _cost_events, current_date)
 
         # 채권: 기존 선형 MTM / IRS: FM 결과 직접 사용 (내부에서 이미 ramp/step 적용)
         bond_mtm  = calculate_daily_mtm(bond_positions, shock_mode, shock_type, base_shock_bp, shock_curves, multiplier, t, current_date, short_mult)

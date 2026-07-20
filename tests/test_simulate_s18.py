@@ -81,23 +81,30 @@ def test_carry_ab_only_funding_moves(client: TestClient) -> None:
     fb = r_b.json()["fundingCurve"]
 
     assert [p["day"] for p in fa] == [p["day"] for p in fb]
-    expected_delta_bp = (0.042 - simulation_service.FUNDING_RATE_KRW) * 10000.0  # +135.0
+    # [CHANGED, SIM2-7] the omitted-funding side is the HISTORICAL staircase
+    # (2.60% through 2026-07-15, 2.85% from the 07-16 hike), so the per-row
+    # funding delta varies by segment — the funding-only ISOLATION assertion
+    # itself survives: carry delta == funding delta per row, MTM byte-equal,
+    # and the carry gap equals the strip-integral of the per-day difference.
     for pa, pb in zip(fa, fb):
         # The operating yield must not know about funding at all.
         assert pa["positionRate"] == pb["positionRate"], (pa, pb)
         assert pa["fundingRate"] == pytest.approx(0.042, abs=1e-12)
-        assert pb["fundingRate"] == pytest.approx(0.0285, abs=1e-12)
+        want_b = 0.0260 if pb["date"] <= "2026-07-15" else 0.0285
+        assert pb["fundingRate"] == pytest.approx(want_b, abs=1e-12), pb
         if pa["carryBp"] is not None:
-            assert pb["carryBp"] - pa["carryBp"] == pytest.approx(expected_delta_bp, abs=0.1), (
-                f"day {pa['day']}: carry residual beyond funding delta"
-            )
+            assert pb["carryBp"] - pa["carryBp"] == pytest.approx(
+                (0.042 - pb["fundingRate"]) * 10000.0, abs=0.1
+            ), f"day {pa['day']}: carry residual beyond funding delta"
 
     # And the P&L side agrees: same MTM (funding never touches valuation),
     # carry differs by exactly the funding accrual difference on this book.
     a, b = r_a.json()["summary"], r_b.json()["summary"]
     assert a["finalMTM"] == b["finalMTM"]
-    accrual_diff = 30 * 10_000_000_000 * (0.042 - 0.0285) / 365.0
-    assert (a["finalCarry"] - b["finalCarry"]) == pytest.approx(-accrual_diff, abs=1.0)
+    accrual_diff = 0.0
+    for prev, cur in zip(fb, fb[1:]):
+        accrual_diff += 10_000_000_000 * (0.042 - cur["fundingRate"]) * (cur["day"] - prev["day"]) / 365.0
+    assert (a["finalCarry"] - b["finalCarry"]) == pytest.approx(-accrual_diff, abs=2.0)
 
 
 # ── T3: rate paths — the axis where P-labels are truthful ────────────────────

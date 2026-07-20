@@ -79,7 +79,7 @@ def test_response_matches_frontend_contract_shape(representative_response: dict)
         "status", "chartData", "summary", "pvbpSensitivity",
         "bookDailyPnLs", "irsSettlementEvents", "irsDailyReconciliation",
         "fundingCurve", "distribution", "exclusions", "totalReturnDecomposition",
-        "decompositionDaily",
+        "decompositionDaily", "fundingBasis",
     }
     assert body["status"] == "ok"
 
@@ -168,7 +168,7 @@ def test_matches_source_backend_golden(representative_response: dict) -> None:
     # contract change, not an extension, and must fail here).
     assert set(representative_response) - set(GOLDEN_RESPONSE) == {
         "fundingCurve", "distribution", "exclusions", "totalReturnDecomposition",
-        "decompositionDaily",
+        "decompositionDaily", "fundingBasis",
     }
     _assert_deep_close(
         {k: representative_response[k] for k in GOLDEN_RESPONSE}, GOLDEN_RESPONSE

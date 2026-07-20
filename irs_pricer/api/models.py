@@ -574,6 +574,11 @@ class NpvTracePointOut(BaseModel):
     daily_pnl: float
     cumulative_pnl: float
     delta: float = 0.0
+    # SIM2-7 (additive) — historical funding basis at this date and the
+    # cumulative funding cost (negative) accrued on notional; see
+    # services/funding_basis.py.
+    funding_rate: float = 0.0
+    cumulative_funding: float = 0.0
 
 
 class FixingWarningOut(BaseModel):

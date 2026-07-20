@@ -10,6 +10,7 @@ import logging
 import time as _time
 from datetime import date
 
+from .. import funding_basis
 from .aggregates import build_book_daily_pnl, build_frontend_pvbp_sensitivity
 from .chart import build_chart_data
 from .constants import FUNDING_RATE_KRW
@@ -227,4 +228,8 @@ def _run_simulation_profiled(
         # HARDEN-1 추가 필드 (확장 전용): 일별 누적 성분 분해 경로 — Results의
         # 성분 커브 히어로가 소비한다. 매일 5성분 합 == total (±₩1 핀).
         "decompositionDaily": decomposition_daily,
+        # SIM2-7 추가 필드 (확장 전용): 조달 기준 출처 — FE 프로버넌스 라인
+        # (실적(BOK) vs 상수 vs 이벤트)과 리포트가 소비. applied는 고정 모드
+        # (실적 기준이 실제로 쓰인 런)에서만 True.
+        "fundingBasis": {**funding_basis.provenance(), "applied": funding_rate_fixed},
     }

@@ -209,3 +209,97 @@ def test_funding_stepping_moves_only_funding_side_fields(client) -> None:
     for row in b["decompositionDaily"]:
         s = row["fundingCost"] + row["bondMtm"] + row["bondCarry"] + (row["swapMtm"] or 0) + (row["swapCarry"] or 0)
         assert s == pytest.approx(row["total"], abs=1.0)
+
+
+# ── SIM2-7 (owner ruling) — historical funding basis ────────────────────────
+
+def test_funding_basis_resolver_pins() -> None:
+    """Series facts pinned from Data/BOK Base Rate.xlsx: the 2021-11-25 MPC
+    hike (0.75% → 1.00%) steps EXACTLY at the change date; 2021-11-05 sits in
+    the 0.75% era (funding 0.85%); the join is the series end 2026-07-16 whose
+    value equals the policy constant (NOT stale, value-continuous join);
+    beyond the join the constant governs; pre-coverage dates flat-extend the
+    earliest value (documented approximation, never the absurd constant)."""
+    from datetime import date as _d
+
+    from irs_pricer.services import funding_basis as fb
+
+    assert fb.base_rate_at(_d(2021, 11, 24)) == pytest.approx(0.0075, abs=1e-12)
+    assert fb.base_rate_at(_d(2021, 11, 25)) == pytest.approx(0.0100, abs=1e-12)
+    assert fb.base_rate_at(_d(2021, 11, 5)) == pytest.approx(0.0075, abs=1e-12)
+    assert fb.funding_rate_at(_d(2021, 11, 5)) == pytest.approx(0.0085, abs=1e-12)
+
+    assert fb.join_date() == _d(2026, 7, 16)
+    assert fb.is_stale() is False  # latest series row 0.0275 == policy constant
+    assert fb.base_rate_at(_d(2026, 7, 16)) == pytest.approx(0.0275, abs=1e-12)
+    assert fb.base_rate_at(_d(2026, 12, 31)) == pytest.approx(0.0275, abs=1e-12)
+    # Pre-coverage: earliest series value flat-extended backward.
+    assert fb.base_rate_at(_d(2015, 6, 1)) == fb.base_rate_at(_d(2016, 1, 1))
+
+
+def test_strictly_future_window_keeps_the_constant(client) -> None:
+    """A window that starts BEYOND the join must be byte-identical to the
+    pre-SIM2-7 behavior: every strip row at the policy constant + spread."""
+    req = {
+        "positions": [{
+            "id": "b1", "name": "KTB", "book": "RP Fund", "bondType": "bond",
+            "sector": "국고채", "couponRate": 3.0, "notional": 10_000_000_000,
+            "evaluationAmount": 10_000_000_000, "mtmYield": 3.0,
+            "duration": 1.0, "pvbp": 1_000_000, "tenor": "1Y",
+            "remainingDays": 365, "krdMap": {"1Y": 1_000_000},
+        }],
+        "shockCurves": {"bondCurves": {}, "swapCurve": []},
+        "dailyShockCurves": {"bondCurves": {}, "swapCurve": []},
+        "fundingEvents": [],
+        "simDays": 30,
+        "shockType": "step",
+        "shockMode": "parallel",
+        "baseShockBp": 0,
+        "baseDate": "2026-07-17",  # first date beyond the 2026-07-16 join
+        "irsCurves": [],
+        "customPath": [],
+    }
+    body = client.post("/api/simulate", json=req).json()
+    for p in body["fundingCurve"]:
+        assert p["fundingRate"] == pytest.approx(0.0285, abs=1e-12), p
+    assert body["fundingBasis"]["applied"] is True
+
+
+def test_trace_funding_leg_accrues_at_the_historical_basis(client) -> None:
+    """PnL Trace (additive funding leg): the 2021-11-05 case accrues at the
+    0.85%-era rate, and the per-point rate steps to 1.10% after the real
+    2021-11-25 hike — never the 2.85% constant for past dates. Cumulative
+    funding is a COST (monotonically non-increasing on a positive-notional
+    trade)."""
+    req = {
+        "swap": {
+            "trade_date": "2021-11-05",
+            "tenor_years": 1826 / 365,
+            "maturity_date": "2026-07-03",
+            "notional": 10_000_000_000,
+            "fixed_rate": 0.020041506146991912,
+            "pay_fixed": True,
+        },
+        "start_date": "2021-11-05",
+        "end_date": "2021-12-31",
+    }
+    r = client.post("/api/mtm/npv-trace", json=req)
+    assert r.status_code == 200, r.text
+    pts = r.json()["points"]
+    assert pts, "trace must produce points"
+
+    first = pts[0]
+    assert first["funding_rate"] == pytest.approx(0.0085, abs=1e-12)
+    assert first["cumulative_funding"] == 0.0
+
+    pre = [p for p in pts if p["valuation_date"] < "2021-11-25"]
+    post = [p for p in pts if p["valuation_date"] >= "2021-11-25"]
+    assert pre and post, "window must straddle the 2021-11-25 hike"
+    assert all(p["funding_rate"] == pytest.approx(0.0085, abs=1e-12) for p in pre)
+    assert all(p["funding_rate"] == pytest.approx(0.0110, abs=1e-12) for p in post)
+
+    cum = [p["cumulative_funding"] for p in pts]
+    assert all(b <= a + 1e-9 for a, b in zip(cum, cum[1:])), "funding is a cost"
+    # Envelope: 56 calendar days ≈ 20d @0.85% + 36d @1.10% on 100억 ≈ −15.5M
+    # (measured −15,575,342 — the 2.85% constant would be ≈ −43.7M).
+    assert -20_000_000 < cum[-1] < -10_000_000

@@ -142,12 +142,13 @@ def test_home_funding_rate_uses_policy_constant(client: TestClient) -> None:
 
 
 def test_funding_omitted_stays_constant_when_stepping_off(client: TestClient) -> None:
-    """[CHANGED, SIM2-5 ruling ④ — re-specced, assertions unchanged] The old
-    'constant everywhere despite events' pin is now the STEPPING-OFF case:
-    with fundingStepping absent/false (the default), fundingRate omitted + a
-    금통위 cut still yields the constant on EVERY row, and the carry identity
-    carryBp == (운용 − funding) holds to 0.1bp — byte-identical to the
-    pre-SIM2-5 behavior."""
+    """[CHANGED, SIM2-7 ruling — historical basis; supersedes the SIM2-5
+    re-spec's rate rows] With stepping OFF, funding is the HISTORICAL
+    staircase: series-covered dates fund at the actual BOK base rate + 10bp
+    (2026-07-14/15 → 2.50%+10bp = 2.60%), and from the join (2026-07-16, the
+    real MPC hike row: 2.75%) the series and the policy constant agree at
+    2.85% — one continuous staircase, still NO user-event stepping. The
+    per-row carry identity and the strip-integral finalCarry hold."""
     req = _base_request(
         [dict(BOND)],
         baseShockBp=0,  # no rate shock — isolates the carry arithmetic
@@ -160,17 +161,24 @@ def test_funding_omitted_stays_constant_when_stepping_off(client: TestClient) ->
     fc = body["fundingCurve"]
     assert len(fc) > 1
     for p in fc:
-        assert p["fundingRate"] == pytest.approx(0.0285, abs=1e-12), p
+        # Historical stairs: 2.60% through 2026-07-15, 2.85% from the hike.
+        want = 0.0260 if p["date"] <= "2026-07-15" else 0.0285
+        assert p["fundingRate"] == pytest.approx(want, abs=1e-12), p
         if p["positionRate"] is not None:
             # 0.1bp regression bound from the task spec (0.005bp measured).
             assert p["carryBp"] == pytest.approx(
                 (p["positionRate"] - p["fundingRate"]) * 10000.0, abs=0.1
             ), p
+    assert {round(p["fundingRate"], 4) for p in fc} == {0.0260, 0.0285}, "straddle must show the step"
 
-    # Cumulative carry accrues at (mtmYield − funding) with funding CONSTANT:
-    # 30 calendar days × 1e10 × (0.030 − 0.0285) / 365, despite the -25bp event.
-    expected = round(30 * 10_000_000_000 * 0.0015 / 365)
-    assert body["summary"]["finalCarry"] == expected
+    # Strip-integral identity (same convention as the stepping-on case).
+    expected = 0.0
+    for prev, cur in zip(fc, fc[1:]):
+        expected += 10_000_000_000 * (0.030 - cur["fundingRate"]) * (cur["day"] - prev["day"]) / 365
+    assert body["summary"]["finalCarry"] == pytest.approx(expected, abs=2.0)
+    # Provenance rides the response (SIM2-7): applied, join at the series end.
+    fb = body["fundingBasis"]
+    assert fb["applied"] is True and fb["joinDate"] == "2026-07-16" and fb["stale"] is False
 
 
 def test_funding_omitted_steps_when_stepping_on(client: TestClient) -> None:
@@ -195,8 +203,12 @@ def test_funding_omitted_steps_when_stepping_on(client: TestClient) -> None:
     stepped = [p for p in fc if p["date"] >= "2026-07-20"]
     flat = [p for p in fc if p["date"] < "2026-07-20"]
     assert stepped and flat, "window must straddle the event"
+    # [CHANGED, SIM2-7] the pre-event base is the HISTORICAL staircase (2.60%
+    # through 07-15, 2.85% from the 07-16 hike); the -25bp user event stacks
+    # on the base governing from 07-20 (2.85% − 25bp = 2.60%).
     for p in flat:
-        assert p["fundingRate"] == pytest.approx(0.0285, abs=1e-12), p
+        want = 0.0260 if p["date"] <= "2026-07-15" else 0.0285
+        assert p["fundingRate"] == pytest.approx(want, abs=1e-12), p
     for p in stepped:
         assert p["fundingRate"] == pytest.approx(0.0260, abs=1e-12), p
     # The isolation identity survives stepping: carry == 운용 − funding per row.

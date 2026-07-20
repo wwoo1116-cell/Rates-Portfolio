@@ -25,7 +25,7 @@ from ..engine.curve import build_curve
 from ..engine.fixings import FixingResolution, dedupe_data_quality_events
 from ..engine.instruments import VanillaSwap
 from ..engine.mtm_valuation import settled_cash_between, value_booked_trade
-from . import market_data_service, mtm_service
+from . import funding_basis, market_data_service, mtm_service
 
 import logging
 
@@ -76,6 +76,28 @@ class NpvTracePoint:
     daily_pnl: float
     cumulative_pnl: float  # clean_npv - entry_npv, filled in a second pass
     delta: float = 0.0
+    # SIM2-7 (additive) — the historical funding basis at this date
+    # (실적 BOK + spread within series coverage, policy constant beyond) and
+    # the cumulative funding COST (negative) accrued on notional over the
+    # calendar gaps between trace points, at each row-date's rate.
+    funding_rate: float = 0.0
+    cumulative_funding: float = 0.0
+
+
+def _fill_funding(points: "list[NpvTracePoint]", notional: float) -> None:
+    """SIM2-7 — per-point funding basis + cumulative funding cost. Strip
+    semantics: a row's rate applies across the calendar gap ENDING at it
+    (mirrors the simulation funding strip); the first point anchors at zero
+    accrual. Cost is negative, same sign convention as Home's funding leg."""
+    cum = 0.0
+    prev_d: date | None = None
+    for p in points:
+        p.funding_rate = funding_basis.funding_rate_at(p.valuation_date)
+        if prev_d is not None:
+            gap_days = (p.valuation_date - prev_d).days
+            cum -= notional * p.funding_rate * gap_days / 365.0
+        p.cumulative_funding = cum
+        prev_d = p.valuation_date
 
 
 @dataclass
@@ -178,6 +200,8 @@ def compute_npv_trace(swap: VanillaSwap, start_date: date, end_date: date) -> Np
     for p in points:
         cum_pnl += p.daily_pnl
         p.cumulative_pnl = cum_pnl
+
+    _fill_funding(points, swap.notional)
 
     fixing_warnings = dedupe_data_quality_events(resolutions)
     if fixing_warnings:
@@ -316,6 +340,8 @@ def compute_npv_trace_for_trade(
             }
         )
     trace_repository.upsert_points(db, trade_id, upsert_rows)
+
+    _fill_funding(points, swap.notional)
 
     return NpvTraceResult(
         trade_date=swap.trade_date,

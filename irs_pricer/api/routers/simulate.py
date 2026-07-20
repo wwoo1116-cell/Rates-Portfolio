@@ -208,6 +208,20 @@ class DecompositionDailyPoint(BaseModel):
     total: float
 
 
+class FundingBasisOut(BaseModel):
+    """SIM2-7 — 조달 기준 출처(프로버넌스). 고정 모드(fundingRate 생략)에서만
+    applied=True: 시리즈 커버리지 내 날짜는 실적(BOK)+스프레드, 조인
+    (joinDate) 이후는 정책 상수+스프레드, SIM2-5 이벤트는 그 위에 스택.
+    stale = 시리즈 최신값 ≠ 정책 상수(시리즈가 결정에 뒤처짐)."""
+    seriesStart: str | None
+    joinDate: str | None
+    seriesLatestRate: float | None
+    policyRate: float
+    spreadBp: int
+    stale: bool
+    applied: bool
+
+
 class SimulateResponse(BaseModel):
     status: str
     chartData: list[SimulationChartPoint]
@@ -224,6 +238,8 @@ class SimulateResponse(BaseModel):
     totalReturnDecomposition: TotalReturnDecomposition
     # HARDEN-1 확장 필드 — 추가 전용: 일별 누적 성분 분해 경로.
     decompositionDaily: list[DecompositionDailyPoint]
+    # SIM2-7 확장 필드 — 추가 전용: 조달 기준 프로버넌스.
+    fundingBasis: FundingBasisOut
 
 
 @router.post("/simulate", response_model=SimulateResponse)
