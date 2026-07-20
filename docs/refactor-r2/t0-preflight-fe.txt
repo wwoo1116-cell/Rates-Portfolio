@@ -1,0 +1,11 @@
+== R2 T0 preflight gates FE @ 94247df 2026-07-20 10:23:58 ==
+ Test Files  33 passed (33)
+      Tests  221 passed (221)
+-- tsc --
+$ tsc --noEmit
+exit=0
+-- eslint --
+✖ 48 problems (21 errors, 27 warnings)
+-- build --
+ƒ  (Dynamic)  server-rendered on demand
+

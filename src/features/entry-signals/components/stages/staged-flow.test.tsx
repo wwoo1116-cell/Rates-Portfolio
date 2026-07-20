@@ -39,7 +39,7 @@ function miniSeries(id: string): BuiltSeries {
 /** Mutable knobs the mocked data hook reads — set BEFORE render per test. */
 const dataState = vi.hoisted(() => ({ isLoading: false, isError: false, ready: true }));
 
-vi.mock("./use-entry-signals-data", () => ({
+vi.mock("../../hooks/use-entry-signals-data", () => ({
   useEntrySignalsData: () => ({
     minDate: "2010-03-02",
     maxDate: "2026-07-15",
@@ -57,16 +57,16 @@ vi.mock("./use-entry-signals-data", () => ({
 }));
 
 // Stage plumbing under test; panel internals are not.
-vi.mock("./price-panel", () => ({ PricePanel: () => <div data-testid="price-preview" /> }));
-vi.mock("./zscore-oscillator-panel", () => ({ ZScoreOscillatorPanel: () => <div data-testid="zscore" /> }));
-vi.mock("./equity-curve-panel", () => ({ EquityCurvePanel: () => <div data-testid="equity" /> }));
-vi.mock("./signal-grid-panel", () => ({ SignalGridPanel: () => <div data-testid="signals" /> }));
-vi.mock("./backtest-panel", () => ({ BacktestPanel: () => <div data-testid="backtest-block" /> }));
+vi.mock("../panels/price-panel", () => ({ PricePanel: () => <div data-testid="price-preview" /> }));
+vi.mock("../panels/zscore-oscillator-panel", () => ({ ZScoreOscillatorPanel: () => <div data-testid="zscore" /> }));
+vi.mock("../panels/equity-curve-panel", () => ({ EquityCurvePanel: () => <div data-testid="equity" /> }));
+vi.mock("../panels/signal-grid-panel", () => ({ SignalGridPanel: () => <div data-testid="signals" /> }));
+vi.mock("../panels/backtest-panel", () => ({ BacktestPanel: () => <div data-testid="backtest-block" /> }));
 vi.mock("@/features/rates-history/instrument-selector", () => ({
   InstrumentSelector: () => <div data-testid="instrument-selector" />,
 }));
 
-import { EntrySignalsWorkspace } from "./entry-signals-workspace";
+import { EntrySignalsWorkspace } from "../../entry-signals-workspace";
 import { useEntrySignalsStore } from "@/stores/entry-signals-store";
 
 const BASE_PARAMS = {

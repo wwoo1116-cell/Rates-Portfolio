@@ -16,8 +16,8 @@ import { InstrumentSelector } from "@/features/rates-history/instrument-selector
 import { deriveSignal, latestStats } from "@/lib/math/rolling-stats";
 import { instrumentLabel } from "@/lib/rv-instruments";
 import { useEntrySignalsStore } from "@/stores/entry-signals-store";
-import { useEntrySignalsData } from "./use-entry-signals-data";
-import { createSignalColumnDefs, type SignalRow } from "./signal-columns";
+import { useEntrySignalsData } from "../../hooks/use-entry-signals-data";
+import { createSignalColumnDefs, type SignalRow } from "../signal-columns";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-balham.css";
 

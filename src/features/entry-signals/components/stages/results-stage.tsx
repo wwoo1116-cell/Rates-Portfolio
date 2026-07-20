@@ -16,11 +16,11 @@
 
 import { Button } from "@/components/ui/button";
 import { useEntrySignalsStore, type EsRunConfig } from "@/stores/entry-signals-store";
-import { BacktestPanel } from "./backtest-panel";
-import { EquityCurvePanel } from "./equity-curve-panel";
-import { SignalGridPanel } from "./signal-grid-panel";
-import { ZScoreOscillatorPanel } from "./zscore-oscillator-panel";
-import { usePinnedBacktest, useRunIsStale } from "./use-pinned-backtest";
+import { BacktestPanel } from "../panels/backtest-panel";
+import { EquityCurvePanel } from "../panels/equity-curve-panel";
+import { SignalGridPanel } from "../panels/signal-grid-panel";
+import { ZScoreOscillatorPanel } from "../panels/zscore-oscillator-panel";
+import { usePinnedBacktest, useRunIsStale } from "../../hooks/use-pinned-backtest";
 
 function Chip({ children }: { children: React.ReactNode }) {
   return (

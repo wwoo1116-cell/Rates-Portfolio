@@ -1,0 +1,8 @@
+== M-gate red-proof, R2 step 7: krw-format-guard vs moved entry-signals slice ==
+-- seed A (mock-seam attachment): green run post-move already shown in step gates; now product violation --
+     × axis formatter and net readout use 억/만, never raw won digits 7ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/components/charts/krw-format-guard.test.tsx > Entry Signals backtest — EquityCurvePanel > axis formatter and net readout use 억/만, never raw won digits
+AssertionError: es-equity: KRW series must carry a custom formatter: expected undefined to be type of 'function'
+      Tests  1 failed | 8 passed (9)
+-- seed reverted --

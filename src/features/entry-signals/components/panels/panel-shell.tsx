@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import type { IChartApi } from "lightweight-charts";
 import { Input } from "@/components/ui/input";
-import { useSharedHoverTime, timeToX } from "./use-synced-time-scales";
+import { useSharedHoverTime, timeToX } from "../../hooks/use-synced-time-scales";
 
 /**
  * Numeric field that keeps its own draft text (so the user can clear it while

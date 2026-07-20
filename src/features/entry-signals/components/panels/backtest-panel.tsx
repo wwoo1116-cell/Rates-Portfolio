@@ -12,8 +12,8 @@ import { useMemo } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, type ColDef } from "ag-grid-community";
 import type { BtSummary, BtTrade } from "@/lib/math/backtest";
-import { usePinnedBacktest } from "./use-pinned-backtest";
-import { createTradeColumnDefs } from "./trades-columns";
+import { usePinnedBacktest } from "../../hooks/use-pinned-backtest";
+import { createTradeColumnDefs } from "../trades-columns";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-balham.css";
 

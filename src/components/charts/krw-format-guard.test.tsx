@@ -107,7 +107,7 @@ vi.mock("@/hooks/use-api", () => ({
 }));
 
 // Entry Signals siblings: the equity fixture exercises only the chart wiring.
-vi.mock("@/features/entry-signals/use-entry-signals-data", () => ({
+vi.mock("@/features/entry-signals/hooks/use-entry-signals-data", () => ({
   useEntrySignalsData: () => ({
     focusedSeries: { id: "irs-3y", kind: "outright", label: "IRS 3Y", lineData: [] },
     isLoading: false,
@@ -116,7 +116,7 @@ vi.mock("@/features/entry-signals/use-entry-signals-data", () => ({
 }));
 // s17: the equity curve is pinned to the run snapshot — same fixture result,
 // now delivered through the pinned seam instead of the live-params hook.
-vi.mock("@/features/entry-signals/use-pinned-backtest", () => ({
+vi.mock("@/features/entry-signals/hooks/use-pinned-backtest", () => ({
   usePinnedBacktest: () => ({
     run: { instrument: { id: "irs-3y" }, ranAt: "2026-07-16T00:00:00Z" },
     label: "IRS 3Y",
@@ -134,12 +134,12 @@ vi.mock("@/features/entry-signals/use-pinned-backtest", () => ({
 vi.mock("@/stores/entry-signals-store", () => ({
   useEntrySignalsStore: (sel: (s: { focused: unknown }) => unknown) => sel({ focused: { id: "irs-3y" } }),
 }));
-vi.mock("@/features/entry-signals/panel-shell", () => ({
+vi.mock("@/features/entry-signals/components/panels/panel-shell", () => ({
   PanelEmptyState: () => null,
   SyncedTimeGuide: () => null,
   NumberField: () => null,
 }));
-vi.mock("@/features/entry-signals/use-synced-time-scales", () => ({
+vi.mock("@/features/entry-signals/hooks/use-synced-time-scales", () => ({
   registerSyncChart: () => {},
   unregisterSyncChart: () => {},
   setSharedHoverTime: () => {},
@@ -150,7 +150,7 @@ import { SeriesChart, type SeriesChartSeriesDef } from "./series-chart";
 import { MtmHistoryChart } from "@/features/portfolio/details-panel";
 import { SpreadPnlChart } from "@/features/home/spread-pnl-chart";
 import { PnlTracePanel } from "@/features/home/pnl-trace-panel";
-import { EquityCurvePanel } from "@/features/entry-signals/equity-curve-panel";
+import { EquityCurvePanel } from "@/features/entry-signals/components/panels/equity-curve-panel";
 
 class FakeResizeObserver {
   observe() {}

@@ -19,9 +19,9 @@
  */
 
 import { useEntrySignalsStore } from "@/stores/entry-signals-store";
-import { ConfigureStage } from "./configure-stage";
-import { RunningStage } from "./running-stage";
-import { ResultsStage } from "./results-stage";
+import { ConfigureStage } from "./components/stages/configure-stage";
+import { RunningStage } from "./components/stages/running-stage";
+import { ResultsStage } from "./components/stages/results-stage";
 
 export function EntrySignalsWorkspace() {
   const stage = useEntrySignalsStore((s) => s.stage);

@@ -20,13 +20,13 @@ import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/chart
 import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";
 import { alignToDates, rollingZScore } from "@/lib/math/rolling-stats";
 import { useEntrySignalsStore } from "@/stores/entry-signals-store";
-import { CHART_COLORS } from "./chart-theme";
-import { ensureFullDomainFit } from "./full-domain-fit";
-import { pinnedOscillatorMarkers } from "./marker-trade-correspondence";
-import { useEntrySignalsData } from "./use-entry-signals-data";
-import { usePinnedBacktest, useRunIsStale } from "./use-pinned-backtest";
+import { CHART_COLORS } from "../../lib/chart-theme";
+import { ensureFullDomainFit } from "../../lib/full-domain-fit";
+import { pinnedOscillatorMarkers } from "../../lib/marker-trade-correspondence";
+import { useEntrySignalsData } from "../../hooks/use-entry-signals-data";
+import { usePinnedBacktest, useRunIsStale } from "../../hooks/use-pinned-backtest";
 import { PanelEmptyState, SyncedTimeGuide } from "./panel-shell";
-import { registerSyncChart, setSharedHoverTime, syncSetLogicalRange, unregisterSyncChart } from "./use-synced-time-scales";
+import { registerSyncChart, setSharedHoverTime, syncSetLogicalRange, unregisterSyncChart } from "../../hooks/use-synced-time-scales";
 
 const PANEL_ID = "es-zscore";
 const zFormatter = (v: number) => `${v.toFixed(2)}σ`;

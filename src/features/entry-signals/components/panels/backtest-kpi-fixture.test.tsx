@@ -57,7 +57,7 @@ function fixtureSeries(): BuiltSeries {
 
 const SERIES = fixtureSeries();
 
-vi.mock("./use-entry-signals-data", () => ({
+vi.mock("../../hooks/use-entry-signals-data", () => ({
   useEntrySignalsData: () => ({
     minDate: "2025-01-01",
     maxDate: "2025-11-16",

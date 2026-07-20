@@ -1,0 +1,8 @@
+== S-gate red-proof, R2 step 7: no_raw_hex scope follows moved lightweight-charts importer + repointed ALLOWLIST ==
+     × chart components contain no literal hex colors 8ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  scripts/no_raw_hex_in_charts.test.ts > no-raw-hex guard for chart components (S7) > chart components contain no literal hex colors
++   "features\\entry-signals\\components\\panels\\price-panel.tsx: #ff0000",
+      Tests  1 failed | 1 passed (2)
+-- seed reverted (sed) --
+0

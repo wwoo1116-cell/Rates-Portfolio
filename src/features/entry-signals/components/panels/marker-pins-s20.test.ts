@@ -22,7 +22,7 @@ import {
   equityMarkersFromTrades,
   pinnedOscillatorMarkers,
   type MarkerTuple,
-} from "./marker-trade-correspondence";
+} from "../../lib/marker-trade-correspondence";
 
 /** Same deterministic fixture as backtest-defect-s19.test.ts (s17 KPI recipe). */
 function fixture(): { dates: string[]; values: number[] } {

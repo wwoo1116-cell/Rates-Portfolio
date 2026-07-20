@@ -15,9 +15,9 @@ import { instrumentLabel } from "@/lib/rv-instruments";
 import { LOOKBACK_PRESETS, useEntrySignalsStore } from "@/stores/entry-signals-store";
 import { cn } from "@/lib/utils";
 import { SegmentedButtons, StepperField } from "./config-controls";
-import { NumberField } from "./panel-shell";
-import { PricePanel } from "./price-panel";
-import { useEntrySignalsData } from "./use-entry-signals-data";
+import { NumberField } from "../panels/panel-shell";
+import { PricePanel } from "../panels/price-panel";
+import { useEntrySignalsData } from "../../hooks/use-entry-signals-data";
 
 function GroupLabel({ children }: { children: React.ReactNode }) {
   return (

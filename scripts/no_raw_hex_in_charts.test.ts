@@ -10,7 +10,7 @@
  *  - src/lib/chart-colors.ts               (the mapping module / canvas mirrors)
  *  - src/features/simulation/lib/chart-theme.ts  (slice's sanctioned mirror file,
  *    same status in eslint.config.mjs rule C)
- *  - src/features/entry-signals/chart-theme.ts   (same pattern, pre-existing)
+ *  - src/features/entry-signals/lib/chart-theme.ts  (same pattern, pre-existing)
  *  - src/components/charts/lw-chart-base.tsx     (the canvas base theme:
  *    background/grid/text literals that BASE_CHART_OPTIONS feeds createChart)
  */
@@ -24,7 +24,7 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const ALLOWLIST = new Set([
   "lib/chart-colors.ts",
   "features/simulation/lib/chart-theme.ts",
-  "features/entry-signals/chart-theme.ts",
+  "features/entry-signals/lib/chart-theme.ts",
   "components/charts/lw-chart-base.tsx",
 ]);
 

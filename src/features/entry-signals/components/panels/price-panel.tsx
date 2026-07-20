@@ -23,16 +23,16 @@ import { alignToDates, rollingSeries } from "@/lib/math/rolling-stats";
 import { instrumentLabel } from "@/lib/rv-instruments";
 import { useEntrySignalsStore } from "@/stores/entry-signals-store";
 import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
-import { CHART_COLORS } from "./chart-theme";
-import { ensureFullDomainFit } from "./full-domain-fit";
-import { useEntrySignalsData } from "./use-entry-signals-data";
+import { CHART_COLORS } from "../../lib/chart-theme";
+import { ensureFullDomainFit } from "../../lib/full-domain-fit";
+import { useEntrySignalsData } from "../../hooks/use-entry-signals-data";
 import { PanelEmptyState, SyncedTimeGuide } from "./panel-shell";
 import {
   registerSyncChart,
   setSharedHoverTime,
   syncSetLogicalRange,
   unregisterSyncChart,
-} from "./use-synced-time-scales";
+} from "../../hooks/use-synced-time-scales";
 
 const PANEL_ID = "es-price";
 

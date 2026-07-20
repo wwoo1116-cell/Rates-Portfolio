@@ -1,0 +1,4 @@
+== R2 T0 preflight gates BE @ 82d5b69 2026-07-20 10:24:00 ==
+336 passed, 4 xfailed, 1 warning in 56.73s
+-- anchors --
+42 passed, 1 warning in 14.25s

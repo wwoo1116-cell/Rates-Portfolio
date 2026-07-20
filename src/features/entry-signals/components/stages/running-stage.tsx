@@ -16,7 +16,7 @@ import { Spinner } from "@blueprintjs/core";
 import { Button } from "@/components/ui/button";
 import { instrumentLabel } from "@/lib/rv-instruments";
 import { useEntrySignalsStore } from "@/stores/entry-signals-store";
-import { useEntrySignalsData } from "./use-entry-signals-data";
+import { useEntrySignalsData } from "../../hooks/use-entry-signals-data";
 
 export function RunningStage() {
   const pendingRun = useEntrySignalsStore((s) => s.pendingRun);

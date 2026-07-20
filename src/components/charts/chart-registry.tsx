@@ -33,9 +33,9 @@ import {
   type AllocationDetachState,
 } from "@/features/home/portfolio-overview";
 import { MtmHistoryChart } from "@/features/portfolio/details-panel";
-import { PricePanel } from "@/features/entry-signals/price-panel";
-import { ZScoreOscillatorPanel } from "@/features/entry-signals/zscore-oscillator-panel";
-import { EquityCurvePanel } from "@/features/entry-signals/equity-curve-panel";
+import { PricePanel } from "@/features/entry-signals/components/panels/price-panel";
+import { ZScoreOscillatorPanel } from "@/features/entry-signals/components/panels/zscore-oscillator-panel";
+import { EquityCurvePanel } from "@/features/entry-signals/components/panels/equity-curve-panel";
 import type { NpvTracePointOut } from "@/lib/api-client";
 
 export interface DetachedChartEntry {

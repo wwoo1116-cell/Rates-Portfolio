@@ -17,11 +17,11 @@ import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX } from "@/components/charts/snap-reticle";
 import { formatKrwAxisSigned } from "@/lib/format";
-import { CHART_COLORS } from "./chart-theme";
-import { ensureFullDomainFit } from "./full-domain-fit";
-import { usePinnedBacktest } from "./use-pinned-backtest";
+import { CHART_COLORS } from "../../lib/chart-theme";
+import { ensureFullDomainFit } from "../../lib/full-domain-fit";
+import { usePinnedBacktest } from "../../hooks/use-pinned-backtest";
 import { PanelEmptyState, SyncedTimeGuide } from "./panel-shell";
-import { registerSyncChart, setSharedHoverTime, syncSetLogicalRange, unregisterSyncChart } from "./use-synced-time-scales";
+import { registerSyncChart, setSharedHoverTime, syncSetLogicalRange, unregisterSyncChart } from "../../hooks/use-synced-time-scales";
 
 const PANEL_ID = "es-equity";
 
