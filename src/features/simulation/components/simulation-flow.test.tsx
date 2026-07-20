@@ -137,8 +137,8 @@ describe("SimulationFlow (s15 staged flow)", () => {
     act(() => useSimulationDataStore.getState().markRunning());
     act(() => useSimulationDataStore.getState().ingestResult(steppedReq, steppedResult));
 
-    expect(screen.getByText("Funding(만기)")).toBeTruthy();
-    expect(screen.getByText("2.85%→2.60%")).toBeTruthy();
+    expect(screen.getByText("Funding(범위)")).toBeTruthy();
+    expect(screen.getByText("2.60~2.85%")).toBeTruthy();
     expect(screen.queryByText(/^2\.60%$/)).toBeNull(); // no bare single number
   });
 

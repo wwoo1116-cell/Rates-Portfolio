@@ -67,16 +67,15 @@ export function ResultsStage({ onEdit }: { onEdit: () => void }) {
     // ITSELF (any variation), not the request flag; historical and event
     // stairs render identically — the provenance line below the chips says
     // which sources applied.
-    const firstFunding = lastRun.fundingCurve?.[0] ?? null;
-    const stepped =
-      firstFunding !== null &&
-      (lastRun.fundingCurve ?? []).some((p) => p.fundingRate !== firstFunding.fundingRate);
+    const stripRates = (lastRun.fundingCurve ?? []).map((p) => p.fundingRate);
+    const stepped = stripRates.length > 0 && new Set(stripRates).size > 1;
+    // min~max, not first→last: a non-monotone staircase (historical 2.60→2.85
+    // then an event back to 2.60) would otherwise read as a constant.
     chips.push({
-      label: stepped ? "Funding(만기)" : "Funding",
-      value:
-        stepped && firstFunding
-          ? `${(firstFunding.fundingRate * 100).toFixed(2)}%→${(lastFunding.fundingRate * 100).toFixed(2)}%`
-          : `${(lastFunding.fundingRate * 100).toFixed(2)}%`,
+      label: stepped ? "Funding(범위)" : "Funding",
+      value: stepped
+        ? `${(Math.min(...stripRates) * 100).toFixed(2)}~${(Math.max(...stripRates) * 100).toFixed(2)}%`
+        : `${(lastFunding.fundingRate * 100).toFixed(2)}%`,
     });
     if (lastFunding.carryBp !== null) {
       chips.push({
