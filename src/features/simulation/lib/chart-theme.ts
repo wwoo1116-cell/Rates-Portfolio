@@ -41,6 +41,7 @@ export interface SimulationChartTheme {
     /** 스왑세타 — was #8A9BA8. */ swapTheta: string;
     /** 스왑평가 — was #D9822B. */ swapValuation: string;
     /** Total Return — was #137CBD. */ total: string;
+    /** 조달비용 (HARDEN-1 component-curves hero). */ funding: string;
   };
   /** Preview-chart categorical palette — was ['#2B95D6','#91CCF1','#D9822B','#E75353','#8A9BA8','#137CBD']. */
   previewPalette: string[];
@@ -80,6 +81,7 @@ export function getSimulationChartTheme(): SimulationChartTheme {
       swapTheta: resolveCssVar("--chart-series-swaptheta", SIM_SERIES_COLORS.swapTheta),
       swapValuation: resolveCssVar("--chart-series-swapmtm", SIM_SERIES_COLORS.swapValuation),
       total: resolveCssVar("--chart-series-total", SIM_SERIES_COLORS.total),
+      funding: resolveCssVar("--chart-series-funding", SIM_SERIES_COLORS.funding),
     },
     previewPalette: [ocean, aqua, tangerine, berry, purple, accent],
     pnl: {

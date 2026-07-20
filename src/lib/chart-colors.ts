@@ -242,4 +242,11 @@ export const SIM_SERIES_COLORS = {
   carry: MS.aqua,             // --chart-series-carry      캐리
   swapTheta: MS.purple40,     // --chart-series-swaptheta  스왑세타 (exception 1)
   swapValuation: MS.tangerine80, // --chart-series-swapmtm 스왑평가 (exception 1)
+  // HARDEN-1 — the fifth component line (조달비용) for the Results
+  // component-curves hero. Navy-40: master-palette, non-reserved (Jade/Berry
+  // are sign-locked and untouched; the cool-family sector rule scopes to
+  // SECTOR encodings), ~6.0:1 vs --bg-surface so the contrast gate passes
+  // with no allowlist entry, and desaturated on purpose — funding is a
+  // financing-cost line, visually secondary to the four P&L components.
+  funding: MS.navy40,         // --chart-series-funding    조달비용
 } as const;

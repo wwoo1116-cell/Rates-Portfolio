@@ -71,9 +71,12 @@ describe("PNL_COLORS / SIM_SERIES_COLORS completeness", () => {
     for (const v of Object.values(PNL_COLORS)) expect(v).toMatch(HEX);
   });
 
-  it("simulation series map is complete for the 5 Total-Return series", () => {
+  it("simulation series map is complete for the Total-Return + component-curve series", () => {
+    // HARDEN-1: `funding` (조달비용, Navy-40) joins for the Results
+    // component-curves hero — the five component lines are funding/mtm/carry/
+    // swapValuation/swapTheta; `total` remains for the legacy five-series view.
     expect(Object.keys(SIM_SERIES_COLORS).sort()).toEqual(
-      ["carry", "mtm", "swapTheta", "swapValuation", "total"],
+      ["carry", "funding", "mtm", "swapTheta", "swapValuation", "total"],
     );
     for (const v of Object.values(SIM_SERIES_COLORS)) expect(v).toMatch(HEX);
     // distinct hues — the composite hierarchy fails if two series merge

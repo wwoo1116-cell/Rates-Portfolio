@@ -56,7 +56,11 @@ export interface SeriesChartSeriesDef {
   id: string;
   label: string;
   color: string;
-  data: readonly { time: string | Time; value: number }[];
+  /** Value points, optionally interleaved with WHITESPACE points ({ time }
+   * only — the s15 calendar rule: weekend/holiday slots keep their true axis
+   * width). Whitespace passes straight through to setData; never invent a
+   * value for a missing day. */
+  data: readonly ({ time: string | Time; value: number } | { time: string | Time })[];
   lineWidth?: 1 | 2 | 3 | 4;
   dashed?: boolean;
   /** "right" (default) or "left" — the left scale shows only while a series uses it. */

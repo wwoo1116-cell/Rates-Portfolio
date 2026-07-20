@@ -54,9 +54,10 @@ describe("slice-local chart hosts keep vertical gridlines off (iv4 T2.1 pin)", (
   // s18 set vertLines off locally; this pin keeps any future host or edit
   // from re-enabling a vertical grid anywhere in src/.
   const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  // HARDEN-1: rate-fan-chart.tsx left with the quantile-fan removal — the
+  // remaining slice-local host is the line-chart wrapper.
   const SLICE_HOSTS = [
     "features/simulation/components/charts/lw-line-chart.tsx",
-    "features/simulation/components/charts/rate-fan-chart.tsx",
   ];
 
   it("every vertLines config in the slice hosts resolves visible: false", () => {

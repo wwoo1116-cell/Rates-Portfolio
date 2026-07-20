@@ -67,9 +67,12 @@ describe("z-order formatter-capture guard (iv4, LWC defect family #4)", () => {
   const files = walk(SRC);
   const reordering = files.filter((p) => stripComments(readFileSync(p, "utf8")).includes("setSeriesOrder"));
 
-  it("scans at least the known reordering host (guard sanity)", () => {
-    // rate-fan-chart.tsx pushes its fan fills behind the center line.
-    expect(reordering.length).toBeGreaterThanOrEqual(1);
+  it("scans a plausible surface (guard sanity)", () => {
+    // HARDEN-1: rate-fan-chart.tsx (the original reordering host) left with
+    // the quantile-fan removal, so ZERO reordering files is now a legitimate
+    // state — the guard stays armed for any future setSeriesOrder user. The
+    // sanity floor moves to the walker itself.
+    expect(files.length).toBeGreaterThanOrEqual(50);
   });
 
   it("every series created in a setSeriesOrder-using file carries a priceFormat", () => {

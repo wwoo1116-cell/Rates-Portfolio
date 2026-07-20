@@ -19,8 +19,9 @@ import { SimulationFlow } from "./simulation-flow";
 vi.mock("./panels/curve-view-panel", () => ({
   CurveViewPanel: () => <div data-testid="curve-preview" />,
 }));
-vi.mock("./panels/distribution-chart-panel", () => ({
-  DistributionChartPanel: () => <div data-testid="fan-hero" />,
+// HARDEN-1: the Results hero is the component-curves panel (fan removed).
+vi.mock("./panels/component-curves-panel", () => ({
+  ComponentCurvesPanel: () => <div data-testid="curves-hero" />,
 }));
 
 const REQUEST = {
@@ -103,7 +104,7 @@ describe("SimulationFlow (s15 staged flow)", () => {
     act(() => useSimulationDataStore.getState().markRunning());
     act(() => useSimulationDataStore.getState().ingestResult(REQUEST, RESULT));
 
-    expect(screen.getByTestId("fan-hero")).toBeTruthy();
+    expect(screen.getByTestId("curves-hero")).toBeTruthy();
     expect(screen.getByText("D+180")).toBeTruthy();       // 기간 chip
     expect(screen.getByText("+30bp")).toBeTruthy();       // 목표 변동 chip
     expect(screen.getByText("2.85%")).toBeTruthy();       // Funding chip (constant)

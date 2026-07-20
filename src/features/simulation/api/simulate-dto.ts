@@ -120,6 +120,19 @@ export interface SimulationExclusion {
  * bondMtm + bondCarry + fundingCost + swapMtm + swapCarry === final totalPnL
  * (±₩1, pinned server-side). swapMtm/swapCarry are null when swaps were
  * excluded (unknown, not zero). */
+/** HARDEN-1 — one day of the cumulative component decomposition (unrounded
+ * KRW floats, swap split on the theta/valuation axis like the final
+ * decomposition). swapMtm/swapCarry are null when swaps were excluded. */
+export interface DecompositionDailyPoint {
+  day: number;
+  fundingCost: number;
+  bondMtm: number;
+  bondCarry: number;
+  swapMtm: number | null;
+  swapCarry: number | null;
+  total: number;
+}
+
 export interface TotalReturnDecomposition {
   bondMtm: number;
   bondCarry: number;
@@ -143,4 +156,10 @@ export interface SimulateResponse {
   // s15 additive fields — same optionality rationale.
   exclusions?: SimulationExclusion[];
   totalReturnDecomposition?: TotalReturnDecomposition;
+  // HARDEN-1 additive field — per-day cumulative five-component paths (the
+  // Results component-curves hero). Same accumulators as the decomposition:
+  // per day fundingCost + bondMtm + bondCarry + swapMtm + swapCarry == total
+  // (±₩1 pinned server-side); final day == totalReturnDecomposition. Swap
+  // components are null per day when swaps were excluded (blank policy).
+  decompositionDaily?: DecompositionDailyPoint[];
 }

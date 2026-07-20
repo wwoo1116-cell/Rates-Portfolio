@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { formatKrwAxisSigned } from "@/lib/format";
 
 import { useSimulationPort } from "../../hooks/use-simulation";
-import { DistributionChartPanel } from "../panels/distribution-chart-panel";
+import { ComponentCurvesPanel } from "../panels/component-curves-panel";
 import { PnlWaterfall, type WaterfallItem } from "../charts/pnl-waterfall";
 
 /** Marquee two-tone chip: uppercase label segment on bg-tertiary, mixed-case
@@ -56,9 +56,9 @@ export function ResultsStage({ onEdit }: { onEdit: () => void }) {
       label: "목표 변동",
       value: `${lastRunRequest.baseShockBp >= 0 ? "+" : ""}${lastRunRequest.baseShockBp}bp`,
     });
-    if (lastRunRequest.sigma_bp !== undefined) {
-      chips.push({ label: "σ", value: `${lastRunRequest.sigma_bp.toFixed(1)}bp/√일` });
-    }
+    // HARDEN-1 (owner ruling): the σ/fan design left the Simulation surface —
+    // no σ chip. The REQUEST still carries sigma_bp (default 2.0, pinned by
+    // scenario-curves tests); only the display is gone.
   }
   if (lastFunding) {
     chips.push({ label: "Funding", value: `${(lastFunding.fundingRate * 100).toFixed(2)}%` });
@@ -125,9 +125,11 @@ export function ResultsStage({ onEdit }: { onEdit: () => void }) {
         </Button>
       </div>
 
-      {/* ── Hero: percentile fan + funding strip ── */}
+      {/* ── Hero: five cumulative component curves (HARDEN-1 — the quantile
+             fan/scenario panel left this surface; curves show the PATH, the
+             waterfall below shows the DESTINATION, same payload). ── */}
       <div className="min-h-[360px] flex-1 bg-bg-secondary">
-        <DistributionChartPanel />
+        <ComponentCurvesPanel />
       </div>
 
       {/* ── Total Return summary card ── */}

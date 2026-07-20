@@ -56,4 +56,7 @@ export { simulationApi, SIMULATION_API_BASE } from "./api/simulation-api";
 // panel bodies; the chart panels remain exported for direct reuse/testing.
 export { SimulationFlow } from "./components/simulation-flow";
 export { CurveViewPanel } from "./components/panels/curve-view-panel";
-export { DistributionChartPanel } from "./components/panels/distribution-chart-panel";
+// HARDEN-1: DistributionChartPanel (quantile fan) left the Results surface —
+// replaced by the component-curves hero. Engine-side quantile capability and
+// the sigma_bp request contract are untouched.
+export { ComponentCurvesPanel } from "./components/panels/component-curves-panel";

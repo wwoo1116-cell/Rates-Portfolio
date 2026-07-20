@@ -128,6 +128,7 @@
   --chart-series-carry:     var(--ms-aqua);
   --chart-series-swaptheta: var(--ms-purple-40);
   --chart-series-swapmtm:   var(--ms-tangerine-80);
+  --chart-series-funding:   var(--ms-navy-40);    /* 조달비용 (HARDEN-1) */
 
   /* ── Typography (Fixed rem-scale for accessibility) ── */
   --font-ui:   'Inter', system-ui, sans-serif;

@@ -96,6 +96,9 @@ vi.mock("@/components/charts/snap-reticle", () => ({
 
 vi.mock("@/hooks/use-api", () => ({
   useMarketDataRange: () => ({ data: { max_date: "2026-07-15" }, isLoading: false, isError: false }),
+  // HARDEN-1: PnlTracePanel now consumes the par-prefill hook — no data here
+  // (the guard exercises formatting, not the prefill).
+  useHistoricalQuote: () => ({ data: null, isLoading: false }),
   useNpvTrace: () => ({
     mutate: () => {},
     data: { points: tracePoints },
