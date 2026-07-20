@@ -1,7 +1,7 @@
-# KRW IRS NPV Pricer — Backend (IRS Pricer_Mock)
+# KRW IRS NPV Pricer — Backend (krw-fi-pms-backend)
 
 원화 이자율스왑(KRW IRS)·국고채 프라이싱 및 리스크 관리 백엔드입니다.
-커브 부트스트래핑부터 NPV / KRD / PVBP / MtM / 일별 PnL까지 계산하며, FastAPI로 프론트엔드(`../UIUX_test`)에 제공합니다.
+커브 부트스트래핑부터 NPV / KRD / PVBP / MtM / 일별 PnL까지 계산하며, FastAPI로 프론트엔드(`../krw-fi-pms`)에 제공합니다.
 
 ## 🏗️ 아키텍처
 
@@ -29,7 +29,7 @@ Factory 패턴(`factory.py`)으로 `True Data.xlsx` / `Total Data.xlsx` / CSV �
 
 ### 프론트엔드
 
-프로덕션 UI는 형제 저장소 **`../UIUX_test`** (Next.js 16 / React 19) — 설치·실행은 그쪽 README 참고.
+프로덕션 UI는 형제 저장소 **`../krw-fi-pms`** (Next.js 16 / React 19) — 설치·실행은 그쪽 README 참고.
 이 저장소의 `web/`은 구형 Vite + React 레퍼런스 클라이언트로, 동작은 하지만(:5173) UI 작업 장소가 아닙니다.
 
 ### CLI (`scripts/`)
@@ -45,8 +45,8 @@ Factory 패턴(`factory.py`)으로 `True Data.xlsx` / `Total Data.xlsx` / CSV �
 ```
 Rates Portfolio/
   Data/                 <- True Data.xlsx, Credit Matrix Data.xlsx, BOK Base Rate.xlsx, ...
-  IRS Pricer_Mock/      <- 이 저장소 (백엔드)
-  UIUX_test/            <- 프론트엔드 저장소
+  krw-fi-pms-backend/   <- 이 저장소 (백엔드)
+  krw-fi-pms/           <- 프론트엔드 저장소
 ```
 
 업로드 페이지가 로더가 읽는 파일을 그대로 덮어쓰는 구조라, 저장소 안에 두면 업로드마다 워킹트리가 더러워지고 41MB 블랍이 히스토리에 쌓이기 때문입니다. 경로는 `irs_pricer/config.py`가 해석하며, `IRS_PRICER_DATA_DIR` 환경변수로 바꿀 수 있습니다 (업로드가 원자적 `os.replace`에 의존하므로 같은 파일시스템이어야 함).
@@ -67,7 +67,7 @@ API 문서: http://127.0.0.1:8000/docs
 ### 2. 프론트엔드 실행
 
 ```bash
-cd ../UIUX_test
+cd ../krw-fi-pms
 pnpm install
 pnpm dev        # http://localhost:3000
 ```
