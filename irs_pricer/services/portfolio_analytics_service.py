@@ -15,7 +15,8 @@ from . import allocation_history_service
 from . import credit_curve_service
 from . import market_data_service
 from . import portfolio_service
-from .funding_basis import POLICY_BASE_RATE_KRW  # R3B-PLUS T2a: shared module, not the simulation facade
+from . import funding_basis  # R3B-PLUS T2a: shared module, not the simulation facade
+from .funding_basis import POLICY_BASE_RATE_KRW
 from ..loaders import credit_matrix
 
 logger = logging.getLogger(__name__)
@@ -520,7 +521,7 @@ def _bond_pnl(
     return out
 
 
-def home_funding_rate(funding_spread_bp: float | None) -> float:
+def home_funding_rate(funding_spread_bp: float | None, as_of: date | None = None) -> float:
     """Home(Daily P&L by Book)의 조달금리 — 시뮬레이션과 같은 단일 원천.
 
     오너 룰링(s18 T1, 전역 적용): 조달 기준금리는 수동 관리 상수
@@ -529,8 +530,18 @@ def home_funding_rate(funding_spread_bp: float | None) -> float:
     2.50%였고 상수는 2.75%). iv4 T5에서 Home이 시리즈를 읽던 것을 이 함수로
     재배선했다. 드리프트 가드: tests/test_simulate_s15.py
     ::test_home_funding_rate_uses_policy_constant.
+
+    R3B-PLUS T2b: 과거 평가일 지원 — ``as_of``가 주어지면 기준금리는 상수가
+    아니라 funding_basis.base_rate_at(as_of)(SIM2-7 계단: 시리즈 커버리지
+    안에서는 실제 과거 기준금리, 조인 이후에는 정확히 위의 정책 상수)를 쓴다.
+    s18 룰링과 모순되지 않는다: 상수가 금지한 것은 "시리즈의 지연이 미래/오늘
+    표시를 오염시키는 것"이고, 조인 이후 base_rate_at == 상수이므로 오늘의 기본
+    경로는 바이트 동일하다. ``as_of=None``은 종전 상수 경로 그대로(설정 기본값
+    표시 등). 핀: tests/test_portfolio_analytics_service.py
+    ::test_funding_rate_today_is_byte_identical_to_the_constant_path.
     """
-    return POLICY_BASE_RATE_KRW + (funding_spread_bp or 0.0) / 10000.0
+    base = POLICY_BASE_RATE_KRW if as_of is None else funding_basis.base_rate_at(as_of)
+    return base + (funding_spread_bp or 0.0) / 10000.0
 
 
 def build_book_daily_pnl(
@@ -588,13 +599,12 @@ def build_book_daily_pnl(
     has_credit = next(s["has_as_of"] for s in sources if s["source"] == _SOURCE_CREDIT)
     today_snapshot = _snapshot_or_none(as_of) if has_irs else None
 
-    # Funding rate = 정책 기준금리 상수 + spread(bp). iv4 T5: 오너 룰링(s18 T1,
-    # 전역)에 따라 수동 관리 상수 POLICY_BASE_RATE_KRW를 쓴다 — 예전처럼
-    # Data/BOK Base Rate.xlsx에서 읽으면 시리즈가 금통위 결정에 뒤처져(결정일에
-    # 2.50%) 시뮬레이션 탭(2.85%)과 25bp 화면 모순이 생긴다. 스프레드 기본값은
-    # +10bp (대시보드 Settings에서 조정 가능). BOK 시리즈 자체는 Rates History
-    # 차트 표시용으로만 남는다.
-    funding_rate = home_funding_rate(funding_spread_bp)
+    # Funding rate = 기준금리(T 시점) + spread(bp). R3B-PLUS T2b: 과거 종가를
+    # 보내는 과거 조회에서는 그 시점의 실제 기준금리(SIM2-7 계단)가 맞고, 오늘의
+    # 기본 경로(as_of > 시리즈 조인)에서는 base_rate_at == POLICY_BASE_RATE_KRW
+    # 상수라 iv4 T5/s18 룰링의 종전 동작과 바이트 동일하다. 스프레드 기본값은
+    # +10bp (대시보드 Settings에서 조정 가능).
+    funding_rate = home_funding_rate(funding_spread_bp, as_of)
 
     irs_positions = [p for p in positions if p.instrument_type == "irs"]
     bond_positions = [p for p in positions if p.instrument_type == "bond"]

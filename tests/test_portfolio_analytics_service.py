@@ -9,13 +9,14 @@ into one.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
 from irs_pricer.core import ttl_cache
 from irs_pricer.core.market_data import MarketSnapshot, RateQuote
 from irs_pricer.engine.instruments import VanillaSwap
+from irs_pricer.services import funding_basis
 from irs_pricer.services import portfolio_analytics_service as pas
 from irs_pricer.services import portfolio_service
 from irs_pricer.services.portfolio_analytics_service import PositionData
@@ -388,6 +389,44 @@ def test_funding_is_excluded_from_total(monkeypatch):
     row = res["by_book"][0]
     assert row["funding"] < 0, "a funded bond position should show a financing cost"
     assert row["total"] == row["theta"]
+
+
+# ---------------------------------------------------------------------------
+# R3B-PLUS T2b: date-aware funding base (past-as_of support for Daily P&L)
+# ---------------------------------------------------------------------------
+
+def test_funding_rate_past_as_of_uses_the_historical_staircase():
+    """과거 평가일 T의 조달 기준금리는 오늘의 정책 상수가 아니라 그 날짜의 실제
+    BOK 기준금리(SIM2-7 계단)여야 한다. 2026-06-30은 7/16 인상 이전(2.50%)이고
+    상수는 인상 이후(2.75%) — 상수를 쓰면 모든 과거 조달 레그가 25bp 과대계상된다."""
+    assert pas.home_funding_rate(10.0, as_of=date(2026, 6, 30)) == pytest.approx(
+        0.0250 + 0.0010, abs=1e-15
+    )
+
+
+def test_funding_rate_today_is_byte_identical_to_the_constant_path():
+    """T2b no-op 핀: 시리즈 조인 이후의 as_of에서는 base_rate_at이 정확히
+    POLICY_BASE_RATE_KRW를 돌려주므로(funding_basis 계약, test_simulate_sim2에
+    핀됨) 날짜 인지 호출은 s15 상수식과 바이트 동일하다. 오늘의 기본 요청
+    (최신 종가 → as_of > join)에서 T2b가 아무것도 바꾸지 않았다는 주장을 지킨다."""
+    beyond = funding_basis.join_date() + timedelta(days=1)
+    for spread in (10.0, 0.0, None):
+        assert pas.home_funding_rate(spread, as_of=beyond) == pas.home_funding_rate(spread)
+    assert pas.home_funding_rate(10.0, as_of=date(2026, 12, 31)) == pas.home_funding_rate(10.0)
+
+
+def test_build_book_daily_pnl_funding_leg_is_date_aware(monkeypatch):
+    """엔드투엔드: 종가 2026-06-29 픽스처는 as_of 2026-06-30(인상 전)으로
+    굴러가므로 채권 조달 레그는 상수 2.75%+스프레드가 아니라 2.50%+스프레드로
+    경과해야 한다."""
+    _pin_sources(monkeypatch, irs=False, credit=False)
+    res = pas.build_book_daily_pnl([_bond("B1")], _snapshot(), {}, funding_spread_bp=10.0)
+    row = res["by_book"][0]
+    eval_amt = 1_010_000_000.0
+    accrual_days = (_AS_OF - _VALUATION_DATE).days
+    assert row["funding"] == pytest.approx(
+        -eval_amt * 0.0260 * accrual_days / 365.0, rel=1e-12
+    )
 
 
 # --- per-position behaviour, asserted on the leg builder directly -------------
