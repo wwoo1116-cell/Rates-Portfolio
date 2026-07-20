@@ -2,6 +2,14 @@
 
 Corners cut for the 2-hour demo-first sprint. Each entry: what / where / how to revive.
 
+## Task 1 — PnL waterfall
+
+1. **Waterfall requires `totalReturnDecomposition` in the response.**
+   `src/features/simulation/components/stages/results-stage.tsx` — older/cached responses without the s15 decomposition fall back to the previous 3-line summary card with NO waterfall: the funding component is not separately available in that payload, and per sprint rules it is flagged here rather than derived. A fresh run always carries the decomposition.
+
+2. **Excluded-swap slots render "—" with the running level carried through.**
+   `src/features/simulation/components/charts/pnl-waterfall.tsx` — when swapMtm/swapCarry are null the identity shown is the server's bond+funding = total; no client-side re-summing anywhere (Total bar = `decomp.total` verbatim).
+
 ## Task 2 — Simulation two-pane live preview
 
 1. **σ input removed from Configure UI only.**

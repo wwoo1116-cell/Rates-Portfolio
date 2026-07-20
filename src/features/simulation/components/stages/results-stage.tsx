@@ -20,6 +20,7 @@ import { formatKrwAxisSigned } from "@/lib/format";
 
 import { useSimulationPort } from "../../hooks/use-simulation";
 import { DistributionChartPanel } from "../panels/distribution-chart-panel";
+import { PnlWaterfall, type WaterfallItem } from "../charts/pnl-waterfall";
 
 /** Marquee two-tone chip: uppercase label segment on bg-tertiary, mixed-case
  * value segment on bg-secondary — the fill pair IS the boundary (no border). */
@@ -70,9 +71,13 @@ export function ResultsStage({ onEdit }: { onEdit: () => void }) {
     }
   }
 
-  // Total Return card lines. With the s15 decomposition present the funding
-  // cost is split out of bond carry; older cached responses fall back to the
-  // 3-line summary. Excluded swaps render blank (—), never +0.
+  // Total Return card lines — demo sprint (trader feedback): the decomposition
+  // renders as an ordered WATERFALL, 조달비용 → 채권평가 → 채권캐리 → 스왑평가
+  // → 스왑캐리 → 토탈, plus the same six rows beneath (numbers legible). Pure
+  // display mapping of the server identity (components sum to total, pinned
+  // server-side ±₩1) — nothing recomputed. Older cached responses without the
+  // decomposition keep the 3-line summary fallback (no waterfall — the funding
+  // component is not separately available there; see DEMO_DEBT.md).
   const money = (v: number) => formatKrwAxisSigned(v);
   const rows: { label: string; text: string; tone: "pos" | "neg" | "dim"; strong?: boolean }[] = [];
   const push = (label: string, v: number | null, strong = false, blankNote?: string) => {
@@ -82,13 +87,23 @@ export function ResultsStage({ onEdit }: { onEdit: () => void }) {
       rows.push({ label, text: money(v), tone: v >= 0 ? "pos" : "neg", strong });
     }
   };
+  let waterfall: { items: WaterfallItem[]; total: number } | null = null;
   if (decomp) {
-    push("채권 MTM", decomp.bondMtm);
-    push("채권 캐리 (조달 차감 전)", decomp.bondCarry);
-    push("조달 비용", decomp.fundingCost);
-    push("스왑 MTM", decomp.swapMtm, false, swapExclusion ? "제외" : undefined);
-    push("스왑 캐리", decomp.swapCarry, false, swapExclusion ? "제외" : undefined);
-    push("Total Return", decomp.total, true);
+    const excludedNote = swapExclusion ? "제외" : undefined;
+    const items: WaterfallItem[] = [
+      { label: "조달비용", value: decomp.fundingCost },
+      { label: "채권평가", value: decomp.bondMtm },
+      { label: "채권캐리", value: decomp.bondCarry },
+      { label: "스왑평가", value: decomp.swapMtm },
+      { label: "스왑캐리", value: decomp.swapCarry },
+    ];
+    waterfall = { items, total: decomp.total };
+    push("조달비용", decomp.fundingCost);
+    push("채권평가", decomp.bondMtm);
+    push("채권캐리", decomp.bondCarry);
+    push("스왑평가", decomp.swapMtm, false, excludedNote);
+    push("스왑캐리", decomp.swapCarry, false, excludedNote);
+    push("토탈", decomp.total, true);
   } else {
     push("채권 MTM", s.finalMTM);
     push("채권 캐리", s.finalCarry);
@@ -125,6 +140,11 @@ export function ResultsStage({ onEdit }: { onEdit: () => void }) {
             </span>
           )}
         </div>
+        {waterfall && (
+          <div className="mb-3 h-56 w-full">
+            <PnlWaterfall items={waterfall.items} total={waterfall.total} totalLabel="토탈" />
+          </div>
+        )}
         <table data-num className="w-full text-body">
           <tbody>
             {rows.map((r) => (

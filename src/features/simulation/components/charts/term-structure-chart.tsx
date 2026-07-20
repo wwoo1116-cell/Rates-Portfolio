@@ -34,7 +34,9 @@ export function TermStructureChart({ pillarLabels, curves }: TermStructureChartP
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
+    // jsdom (vitest) has no ResizeObserver; the chart then renders its empty
+    // state (component tests mock this panel anyway).
+    if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver((entries) => {
       const e = entries[0];
       if (e) setSize({ w: e.contentRect.width, h: e.contentRect.height });

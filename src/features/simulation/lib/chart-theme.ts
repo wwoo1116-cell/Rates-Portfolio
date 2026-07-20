@@ -44,6 +44,9 @@ export interface SimulationChartTheme {
   };
   /** Preview-chart categorical palette — was ['#2B95D6','#91CCF1','#D9822B','#E75353','#8A9BA8','#137CBD']. */
   previewPalette: string[];
+  /** Signed P&L pair (Jade/Berry, S7/iv3 universal): pos/neg for lines &
+   * labels, posFill/negFill (the 40-step) for bar/area bodies. */
+  pnl: { pos: string; neg: string; posFill: string; negFill: string };
 }
 
 export function getSimulationChartTheme(): SimulationChartTheme {
@@ -79,5 +82,11 @@ export function getSimulationChartTheme(): SimulationChartTheme {
       total: resolveCssVar("--chart-series-total", SIM_SERIES_COLORS.total),
     },
     previewPalette: [ocean, aqua, tangerine, berry, purple, accent],
+    pnl: {
+      pos: resolveCssVar("--chart-pnl-pos", PNL_COLORS.pos),
+      neg: resolveCssVar("--chart-pnl-neg", PNL_COLORS.neg),
+      posFill: resolveCssVar("--chart-pnl-pos-fill", PNL_COLORS.posFill),
+      negFill: resolveCssVar("--chart-pnl-neg-fill", PNL_COLORS.negFill),
+    },
   };
 }
