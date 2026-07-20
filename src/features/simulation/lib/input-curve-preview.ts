@@ -68,9 +68,11 @@ export interface BaseQuote {
 export interface InputCurvePreview {
   /** Union of both curves' pillars, ascending — the shared x-axis. */
   pillars: CurvePillar[];
-  /** Shocked rates in %, aligned to `pillars`; null = no quote (—). */
-  bondPct: (number | null)[];
-  swapPct: (number | null)[];
+  /** Shocked rates in %, aligned to `pillars`. undefined = this source does
+   * not carry the pillar (the line connects through); null = carried but no
+   * value on the date (a gap + "—", blank policy). */
+  bondPct: (number | null | undefined)[];
+  swapPct: (number | null | undefined)[];
   /** Final short-end (BOK) cumulative shock actually applied, in bp. */
   shortEndBp: number;
 }
@@ -110,11 +112,15 @@ export function buildInputCurvePreview(
   }
   const pillars = [...byT.values()].sort((a, b) => a.t - b.t);
 
-  const shocked = (base: BaseQuote[], nodes: { t: number; val: number }[]): (number | null)[] => {
+  const shocked = (
+    base: BaseQuote[],
+    nodes: { t: number; val: number }[],
+  ): (number | null | undefined)[] => {
     const rateByT = new Map(base.map((q) => [q.t, q.rate]));
     return pillars.map(({ t }) => {
+      if (!rateByT.has(t)) return undefined; // pillar from the other curve
       const rate = rateByT.get(t);
-      if (rate === undefined || rate === null) return null;
+      if (rate === null || rate === undefined) return null; // carried, no value
       return rate * 100 + shockAtTenor(nodes, t) / 100;
     });
   };

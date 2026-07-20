@@ -16,8 +16,10 @@ import { getSimulationChartTheme } from "../../lib/chart-theme";
 export interface TermCurveDef {
   label: string;
   color: string;
-  /** % values aligned to `pillarLabels`; null = missing quote (gap). */
-  points: (number | null)[];
+  /** % values aligned to `pillarLabels`. undefined = pillar not carried by
+   * this curve's source (line connects through); null = carried but missing
+   * on the date (segment break — blank policy, no bridge). */
+  points: (number | null | undefined)[];
   dashed?: boolean;
 }
 
@@ -51,7 +53,7 @@ export function TermStructureChart({ pillarLabels, curves }: TermStructureChartP
   const plotH = Math.max(h - PAD.top - PAD.bottom, 0);
   const n = pillarLabels.length;
 
-  const values = curves.flatMap((c) => c.points).filter((v): v is number => v !== null);
+  const values = curves.flatMap((c) => c.points).filter((v): v is number => typeof v === "number");
   const hasData = n > 0 && values.length > 0 && plotW > 0 && plotH > 0;
 
   let content: React.ReactNode = null;
@@ -67,15 +69,16 @@ export function TermStructureChart({ pillarLabels, curves }: TermStructureChartP
     const tickCount = 4;
     const ticks = Array.from({ length: tickCount + 1 }, (_, i) => yMin + ((yMax - yMin) * i) / tickCount);
 
-    // Consecutive non-null runs → separate polyline segments (gap on missing).
-    const segmentsOf = (points: (number | null)[]): { i: number; v: number }[][] => {
+    // Polyline segments: undefined pillars are skipped (the line connects
+    // through them), null breaks the segment (true missing quote → gap).
+    const segmentsOf = (points: (number | null | undefined)[]): { i: number; v: number }[][] => {
       const segs: { i: number; v: number }[][] = [];
       let cur: { i: number; v: number }[] = [];
       points.forEach((v, i) => {
         if (v === null) {
           if (cur.length) segs.push(cur);
           cur = [];
-        } else {
+        } else if (v !== undefined) {
           cur.push({ i, v });
         }
       });
@@ -128,7 +131,9 @@ export function TermStructureChart({ pillarLabels, curves }: TermStructureChartP
               ),
             )}
             {c.points.map((v, i) =>
-              v === null ? null : <circle key={i} cx={x(i)} cy={y(v)} r={2.5} fill={c.color} stroke={t.dotStroke} strokeWidth={1} />,
+              typeof v !== "number" ? null : (
+                <circle key={i} cx={x(i)} cy={y(v)} r={2.5} fill={c.color} stroke={t.dotStroke} strokeWidth={1} />
+              ),
             )}
           </g>
         ))}

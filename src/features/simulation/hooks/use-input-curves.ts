@@ -49,7 +49,10 @@ export function useSwapInputQuotes(baseDate: string) {
       const snap = await marketDataApi.snapshot(baseDate);
       const quotes: BaseQuote[] = [{ t: 0.25, label: "3M", rate: snap.cd_rate ?? null }];
       for (const q of snap.swap_quotes) {
-        quotes.push({ t: q.tenor_years, label: yearsToTenorLabel(q.tenor_years), rate: q.rate ?? null });
+        // Sub-1Y quotes arrive as tenor_years:1 + tenor_months (6M/9M) — the
+        // months field is the real tenor; ignoring it would stack them on 1Y.
+        const t = q.tenor_months != null ? q.tenor_months / 12 : q.tenor_years;
+        quotes.push({ t, label: yearsToTenorLabel(t), rate: q.rate ?? null });
       }
       return quotes.sort((a, b) => a.t - b.t);
     },

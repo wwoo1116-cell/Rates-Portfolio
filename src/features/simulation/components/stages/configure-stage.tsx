@@ -291,6 +291,7 @@ export function ConfigureStage() {
                 <Input
                   type="text"
                   inputMode="decimal"
+                  aria-label="국채 3Y 목표 변동"
                   value={params.baseShockBp}
                   onChange={(e) => patchParams({ baseShockBp: e.target.value })}
                   data-num
