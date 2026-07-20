@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IChartApi, IPriceLine, ISeriesApi, ISeriesMarkersPluginApi, MouseEventParams, SeriesMarker, Time } from "lightweight-charts";
 import { LineSeries, LineStyle, createSeriesMarkers } from "lightweight-charts";
-import { ChartFrame } from "@/components/chart/ChartFrame";
+import { ChartFrame } from "@/components/charts/ChartFrame";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";

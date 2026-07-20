@@ -1,0 +1,6 @@
+== S-gate red-proof, R2 step 4: seeded raw hex in components/charts/ChartFrame.tsx (moved into scope this commit) ==
+     × chart components contain no literal hex colors 7ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  scripts/no_raw_hex_in_charts.test.ts > no-raw-hex guard for chart components (S7) > chart components contain no literal hex colors
++   "components\\charts\\ChartFrame.tsx: #ff0000",
+      Tests  1 failed | 1 passed (2)

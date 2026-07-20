@@ -12,7 +12,7 @@ import type { IChartApi, ISeriesApi, MouseEventParams, SeriesMarker, ISeriesMark
 import { LineSeries, createSeriesMarkers } from "lightweight-charts";
 import type { IDockviewPanelProps } from "dockview-react";
 import { Button } from "@/components/ui/button";
-import { ChartFrame } from "@/components/chart/ChartFrame";
+import { ChartFrame } from "@/components/charts/ChartFrame";
 import { LwChartBase } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, formatCrosshairDate } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";

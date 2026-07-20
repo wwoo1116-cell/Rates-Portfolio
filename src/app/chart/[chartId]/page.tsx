@@ -16,8 +16,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { DETACHED_CHARTS } from "@/components/chart/chart-registry";
-import { readDetachedSnapshot } from "@/components/chart/detach";
+import { DETACHED_CHARTS } from "@/components/charts/chart-registry";
+import { readDetachedSnapshot } from "@/components/charts/detach";
 import { useAuthStore } from "@/stores/auth-store";
 
 function CenteredNote({ children }: { children: React.ReactNode }) {

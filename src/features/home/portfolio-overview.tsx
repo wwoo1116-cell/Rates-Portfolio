@@ -22,7 +22,7 @@ import { formatDuration, formatKrwCompact } from "@/lib/format";
 import { usePortfolioAnalytics } from "@/hooks/use-portfolio-analytics";
 import { useAllocationHistory } from "@/hooks/use-allocation-history";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChartFrame } from "@/components/chart/ChartFrame";
+import { ChartFrame } from "@/components/charts/ChartFrame";
 import { StackedBar100, type StackedBar100Column } from "@/components/charts/stacked-bar-100";
 import type { AllocationSeries } from "@/lib/api-types";
 

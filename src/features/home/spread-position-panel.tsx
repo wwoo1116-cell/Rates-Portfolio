@@ -16,7 +16,7 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { SegmentedControl } from "@blueprintjs/core";
 
-import { ChartFrame } from "@/components/chart/ChartFrame";
+import { ChartFrame } from "@/components/charts/ChartFrame";
 import { useCreditCurveSeries, useMarketDataRange, useRateHistory } from "@/hooks/use-api";
 import { formatKrwAxisSigned } from "@/lib/format";
 import { formatPnlKrw } from "./pnl-format";
