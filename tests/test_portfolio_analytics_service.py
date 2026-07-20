@@ -549,3 +549,53 @@ def test_bond_theta_survives_a_coupon_crossing(monkeypatch):
     assert abs(theta) < coupon_cash, (
         f"theta {theta:,.0f} still craters by the detached coupon ({coupon_cash:,.0f})"
     )
+
+
+# ---------------------------------------------------------------------------
+# HARDEN-1: per-class (채권/스왑) sub-aggregates on by_book rows
+# ---------------------------------------------------------------------------
+
+def test_by_class_sums_reconcile_to_the_book_row(monkeypatch):
+    """Owner feedback: Home splits each book into 채권/스왑. The split is a
+    re-grouping of the SAME legs, so per cell bond+swap must equal the existing
+    book value — the row-level fields themselves are computed exactly as
+    before (additive contract)."""
+    _pin_sources(monkeypatch, irs=True, credit=True,
+                 today_snapshot=_snapshot(cd_rate=0.0335))
+    res = pas.build_book_daily_pnl([_irs("P1"), _irs("P2"), _bond("B1")], _snapshot(), {})
+
+    for row in res["by_book"]:
+        bc = row["by_class"]
+        assert set(bc) == {"bond", "swap"}
+        for key in ("theta", "mtm", "total", "funding", "realized_cash"):
+            assert bc["bond"][key] + bc["swap"][key] == pytest.approx(
+                row[key], abs=1e-6
+            ), (row["book"], key)
+        assert bc["bond"]["mtm_complete"] and bc["swap"]["mtm_complete"]
+        assert row["mtm_complete"] is True
+
+
+def test_by_class_blank_policy_stale_swap_source(monkeypatch):
+    """The real mixed case (Credit has as_of, IRS doesn't): the bond class
+    keeps its known MtM, the swap class shows None (—, never 0), and both the
+    class and the row are flagged partial."""
+    _pin_sources(monkeypatch, irs=False, credit=True)
+    res = pas.build_book_daily_pnl([_irs("P1"), _bond("B1")], _snapshot(), {})
+
+    row = res["by_book"][0]
+    bc = row["by_class"]
+    assert bc["bond"]["mtm"] is not None
+    assert bc["bond"]["mtm_complete"] is True
+    assert bc["swap"]["mtm"] is None, "stale swap source must be None, not 0"
+    assert bc["swap"]["mtm_complete"] is False
+    assert row["mtm"] == pytest.approx(bc["bond"]["mtm"], abs=1e-9)
+    assert row["mtm_complete"] is False
+
+
+def test_by_class_absent_class_has_no_key(monkeypatch):
+    """A bond-only book carries no 'swap' key at all — absence of a class is
+    not a zero-valued class."""
+    _pin_sources(monkeypatch, irs=False, credit=True)
+    res = pas.build_book_daily_pnl([_bond("B1")], _snapshot(), {})
+    row = res["by_book"][0]
+    assert set(row["by_class"]) == {"bond"}

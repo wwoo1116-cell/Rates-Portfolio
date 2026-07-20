@@ -625,23 +625,36 @@ def build_book_daily_pnl(
         드러난다. 0으로 치환해 더하면 부분합이 완성된 총액처럼 보인다.
         하나도 모르면 mtm은 None -- 0이 아니라 "—"로 나가야 하기 때문이다.
         """
-        known = [l.mtm for l in group if l.mtm is not None]
-        complete = len(known) == len(group)
-        theta = sum(l.theta for l in group)
-        mtm = sum(known) if known else None
-        return {
-            label_key: label,
-            "theta": theta,
-            "mtm": mtm,
-            # total은 아는 것만 더한 값이다. complete=False면 ΔNPV 전체가 아니라
-            # "세타 + 지금까지 들어온 MtM"이라는 뜻.
-            "total": theta + (mtm or 0.0),
-            "funding": sum(l.funding for l in group),
-            # 세타에 포함된 (close, T] 실현 순현금. 소비자가 항등식을 재구성할 수
-            # 있게 하는 값: complete=True면 ΔNPV(dirty) = total - realized_cash.
-            "realized_cash": sum(l.realized_cash for l in group),
-            "mtm_complete": complete,
+        def _sums(sub: list[_PositionPnl]) -> dict:
+            known = [l.mtm for l in sub if l.mtm is not None]
+            complete = len(known) == len(sub)
+            theta = sum(l.theta for l in sub)
+            mtm = sum(known) if known else None
+            return {
+                "theta": theta,
+                "mtm": mtm,
+                # total은 아는 것만 더한 값이다. complete=False면 ΔNPV 전체가
+                # 아니라 "세타 + 지금까지 들어온 MtM"이라는 뜻.
+                "total": theta + (mtm or 0.0),
+                "funding": sum(l.funding for l in sub),
+                # 세타에 포함된 (close, T] 실현 순현금. 소비자가 항등식을
+                # 재구성할 수 있게 하는 값: complete=True면
+                # ΔNPV(dirty) = total - realized_cash.
+                "realized_cash": sum(l.realized_cash for l in sub),
+                "mtm_complete": complete,
+            }
+
+        row = {label_key: label, **_sums(group)}
+        # HARDEN-1 (오너 피드백): 채권/스왑 자산군별 부분 집계 — 추가 전용 필드.
+        # 클래스별 blank 정책은 행 레벨과 동일하다(모름=None, 부분합은
+        # mtm_complete=False). 그 북에 없는 클래스는 키 자체가 빠진다(0 아님).
+        # 기존 행 레벨 필드는 종전 계산 그대로다(바이트 불변).
+        row["by_class"] = {
+            cls_out: _sums(sub)
+            for cls_in, cls_out in (("bond", "bond"), ("irs", "swap"))
+            if (sub := [l for l in group if l.instrument_type == cls_in])
         }
+        return row
 
     by_book = sorted(
         (_aggregate([l for l in legs if l.book == b], "book", b) for b in {p.book for p in positions}),
