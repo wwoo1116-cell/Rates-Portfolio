@@ -1,0 +1,50 @@
+== FE import graph (src/, 193 files, 507 edges) ==
+
+-- circular dependency SCCs: 0 --
+
+-- top fan-in (most-imported files) --
+   22  lib/chart-colors.ts
+   20  lib/api-client.ts
+   19  components/ui/button.tsx
+   17  lib/constants.ts
+   15  lib/rv-instruments.ts
+   12  lib/utils.ts
+   12  stores/entry-signals-store.ts
+   11  lib/format.ts
+   10  stores/bond-positions-store.ts
+   10  stores/manual-positions-store.ts
+   10  hooks/use-api.ts
+    9  components/charts/lw-chart-base.tsx
+    9  features/simulation/api/simulate-dto.ts
+    9  features/simulation/types/simulation-port.ts
+    8  components/ui/input.tsx
+    8  lib/api-types.ts
+    8  components/chart/ChartFrame.tsx
+    7  components/data/price-display.tsx
+    7  components/ui/badge.tsx
+    7  components/charts/snap-reticle.ts
+    7  types/portfolio.ts
+    7  features/simulation/hooks/use-simulation.ts
+    6  stores/toast-store.ts
+    6  components/charts/crosshair-reticle.tsx
+    6  lib/workspace-panels.ts
+
+-- top fan-out --
+   14  features/entry-signals/price-panel.tsx
+   13  features/entry-signals/zscore-oscillator-panel.tsx
+   13  features/portfolio/details-panel.tsx
+   12  app/dev/components/component-gallery.tsx
+   11  components/chart/chart-registry.tsx
+   10  features/entry-signals/equity-curve-panel.tsx
+   10  features/home/pnl-trace-panel.tsx
+   10  features/portfolio/positions-grid.tsx
+    9  app/upload/page.tsx
+    9  features/entry-signals/configure-stage.tsx
+    9  features/portfolio/filter-bar.tsx
+    9  features/simulation/index.ts
+    8  features/home/portfolio-overview.tsx
+    8  features/portfolio/columns.tsx
+    8  features/portfolio/use-portfolio-positions.ts
+
+-- unresolved internal specifiers (1) --
+  app/layout.tsx -> ./globals.css

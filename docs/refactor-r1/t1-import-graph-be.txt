@@ -1,0 +1,215 @@
+== BE import graph (irs_pricer, 73 modules, 185 edges) ==
+
+-- circular dependency SCCs: 0 --
+
+-- top fan-in --
+   23  irs_pricer.services
+   15  irs_pricer.api.models
+   14  irs_pricer.engine.instruments
+   13  irs_pricer.core.errors
+   13  irs_pricer.core.market_data
+   10  irs_pricer.engine.quant_engine
+    8  irs_pricer.engine.curve
+    7  irs_pricer.config
+    6  irs_pricer.core
+    6  irs_pricer.engine
+    6  irs_pricer.db
+    6  irs_pricer.db.models
+    6  irs_pricer.engine.mtm_valuation
+    6  irs_pricer.loaders.cache
+    5  irs_pricer.db.database
+    4  irs_pricer
+    4  irs_pricer.engine.fixings
+    4  irs_pricer.loaders
+    3  irs_pricer.db.connection_settings
+    3  irs_pricer.services.market_data_service
+
+-- layering violations (engine/core importing services/api/loaders) --
+  (none)
+
+-- full edge list --
+  irs_pricer.api -> irs_pricer
+  irs_pricer.api.app -> irs_pricer.api.routers
+  irs_pricer.api.app -> irs_pricer.core
+  irs_pricer.api.app -> irs_pricer.core.errors
+  irs_pricer.api.app -> irs_pricer.db.connection_settings
+  irs_pricer.api.app -> irs_pricer.engine
+  irs_pricer.api.models -> irs_pricer.core.market_data
+  irs_pricer.api.routers.bond_cashflows -> irs_pricer.api.models
+  irs_pricer.api.routers.bond_cashflows -> irs_pricer.services
+  irs_pricer.api.routers.calendar -> irs_pricer.api.models
+  irs_pricer.api.routers.calendar -> irs_pricer.core.errors
+  irs_pricer.api.routers.calendar -> irs_pricer.services
+  irs_pricer.api.routers.credit_curve -> irs_pricer.api.models
+  irs_pricer.api.routers.credit_curve -> irs_pricer.services
+  irs_pricer.api.routers.db_settings -> irs_pricer.api.models
+  irs_pricer.api.routers.db_settings -> irs_pricer.db
+  irs_pricer.api.routers.db_settings -> irs_pricer.db.connection_settings
+  irs_pricer.api.routers.db_settings -> irs_pricer.services.market_data_service
+  irs_pricer.api.routers.historical_pnl -> irs_pricer.api.models
+  irs_pricer.api.routers.historical_pnl -> irs_pricer.db.database
+  irs_pricer.api.routers.historical_pnl -> irs_pricer.engine.instruments
+  irs_pricer.api.routers.historical_pnl -> irs_pricer.services.historical_pnl_service
+  irs_pricer.api.routers.market_data -> irs_pricer.api.models
+  irs_pricer.api.routers.market_data -> irs_pricer.core.errors
+  irs_pricer.api.routers.market_data -> irs_pricer.services
+  irs_pricer.api.routers.mtm -> irs_pricer.api.models
+  irs_pricer.api.routers.mtm -> irs_pricer.engine.instruments
+  irs_pricer.api.routers.mtm -> irs_pricer.services
+  irs_pricer.api.routers.mtm -> irs_pricer.services.market_data_service
+  irs_pricer.api.routers.npv_trace -> irs_pricer.api.models
+  irs_pricer.api.routers.npv_trace -> irs_pricer.db.database
+  irs_pricer.api.routers.npv_trace -> irs_pricer.engine.instruments
+  irs_pricer.api.routers.npv_trace -> irs_pricer.services
+  irs_pricer.api.routers.npv_trace -> irs_pricer.services.npv_trace_service
+  irs_pricer.api.routers.portfolio -> irs_pricer.api.models
+  irs_pricer.api.routers.portfolio -> irs_pricer.core.errors
+  irs_pricer.api.routers.portfolio -> irs_pricer.engine.instruments
+  irs_pricer.api.routers.portfolio -> irs_pricer.services
+  irs_pricer.api.routers.portfolio -> irs_pricer.services.market_data_service
+  irs_pricer.api.routers.portfolio_analytics -> irs_pricer.api.models
+  irs_pricer.api.routers.portfolio_analytics -> irs_pricer.services
+  irs_pricer.api.routers.portfolio_analytics -> irs_pricer.services.allocation_history_service
+  irs_pricer.api.routers.portfolio_analytics -> irs_pricer.services.portfolio_analytics_service
+  irs_pricer.api.routers.pricing -> irs_pricer.api.models
+  irs_pricer.api.routers.pricing -> irs_pricer.engine.instruments
+  irs_pricer.api.routers.pricing -> irs_pricer.services
+  irs_pricer.api.routers.rate_history -> irs_pricer.api.models
+  irs_pricer.api.routers.rate_history -> irs_pricer.services.rate_history_service
+  irs_pricer.api.routers.simulate -> irs_pricer.services
+  irs_pricer.api.routers.simulate -> irs_pricer.services.simulation_service
+  irs_pricer.api.routers.spread_backtest -> irs_pricer.api.models
+  irs_pricer.api.routers.spread_backtest -> irs_pricer.services.spread_backtest_service
+  irs_pricer.api.routers.trades -> irs_pricer.api.models
+  irs_pricer.api.routers.trades -> irs_pricer.db.database
+  irs_pricer.api.routers.trades -> irs_pricer.db.models
+  irs_pricer.api.routers.trades -> irs_pricer.services
+  irs_pricer.api.routers.upload -> irs_pricer.api.models
+  irs_pricer.api.routers.upload -> irs_pricer.core
+  irs_pricer.api.routers.upload -> irs_pricer.engine
+  irs_pricer.api.routers.upload -> irs_pricer.services
+  irs_pricer.core -> irs_pricer
+  irs_pricer.db.connection_settings -> irs_pricer.config
+  irs_pricer.db.database -> irs_pricer.db
+  irs_pricer.db.models -> irs_pricer.db.database
+  irs_pricer.db.repository -> irs_pricer.core.market_data
+  irs_pricer.db.repository -> irs_pricer.db.models
+  irs_pricer.db.trace_repository -> irs_pricer.db.models
+  irs_pricer.db.trade_repository -> irs_pricer.db.models
+  irs_pricer.engine -> irs_pricer
+  irs_pricer.engine.bond_valuation -> irs_pricer.engine.mtm_valuation
+  irs_pricer.engine.bond_valuation -> irs_pricer.engine.quant_engine
+  irs_pricer.engine.curve -> irs_pricer.core.market_data
+  irs_pricer.engine.curve -> irs_pricer.engine.quant_engine
+  irs_pricer.engine.curve_cache -> irs_pricer.engine
+  irs_pricer.engine.fixings -> irs_pricer.engine.quant_engine
+  irs_pricer.engine.instruments -> irs_pricer.engine.quant_engine
+  irs_pricer.engine.mtm_valuation -> irs_pricer.engine.curve
+  irs_pricer.engine.mtm_valuation -> irs_pricer.engine.fixings
+  irs_pricer.engine.mtm_valuation -> irs_pricer.engine.instruments
+  irs_pricer.engine.mtm_valuation -> irs_pricer.engine.quant_engine
+  irs_pricer.engine.pricing -> irs_pricer.engine.curve
+  irs_pricer.engine.pricing -> irs_pricer.engine.instruments
+  irs_pricer.engine.pricing -> irs_pricer.engine.quant_engine
+  irs_pricer.engine.risk -> irs_pricer.engine.curve
+  irs_pricer.engine.risk -> irs_pricer.engine.instruments
+  irs_pricer.engine.risk -> irs_pricer.engine.quant_engine
+  irs_pricer.loaders.base_rate -> irs_pricer.loaders.cache
+  irs_pricer.loaders.call_rate -> irs_pricer.loaders.cache
+  irs_pricer.loaders.credit_matrix -> irs_pricer.loaders.cache
+  irs_pricer.loaders.csv_loader -> irs_pricer.core.errors
+  irs_pricer.loaders.csv_loader -> irs_pricer.core.market_data
+  irs_pricer.loaders.factory -> irs_pricer.core.errors
+  irs_pricer.loaders.factory -> irs_pricer.core.market_data
+  irs_pricer.loaders.factory -> irs_pricer.loaders.cache
+  irs_pricer.loaders.factory -> irs_pricer.loaders.csv_loader
+  irs_pricer.loaders.factory -> irs_pricer.loaders.total_data
+  irs_pricer.loaders.factory -> irs_pricer.loaders.true_data
+  irs_pricer.loaders.total_data -> irs_pricer.core.errors
+  irs_pricer.loaders.total_data -> irs_pricer.core.market_data
+  irs_pricer.loaders.total_data -> irs_pricer.loaders.cache
+  irs_pricer.loaders.true_data -> irs_pricer.core.errors
+  irs_pricer.loaders.true_data -> irs_pricer.core.market_data
+  irs_pricer.loaders.true_data -> irs_pricer.loaders.cache
+  irs_pricer.loaders.true_data -> irs_pricer.loaders.call_rate
+  irs_pricer.loaders.true_data -> irs_pricer.loaders.infomax_schema
+  irs_pricer.services -> irs_pricer
+  irs_pricer.services.allocation_history_service -> irs_pricer.engine
+  irs_pricer.services.allocation_history_service -> irs_pricer.services
+  irs_pricer.services.bond_cashflow_service -> irs_pricer.config
+  irs_pricer.services.bond_cashflow_service -> irs_pricer.engine.bond_valuation
+  irs_pricer.services.bond_cashflow_service -> irs_pricer.engine.mtm_valuation
+  irs_pricer.services.bond_cashflow_service -> irs_pricer.loaders
+  irs_pricer.services.bond_cashflow_service -> irs_pricer.services
+  irs_pricer.services.calendar_service -> irs_pricer.core.errors
+  irs_pricer.services.calendar_service -> irs_pricer.engine.quant_engine
+  irs_pricer.services.credit_curve_service -> irs_pricer.config
+  irs_pricer.services.credit_curve_service -> irs_pricer.core
+  irs_pricer.services.credit_curve_service -> irs_pricer.loaders
+  irs_pricer.services.historical_pnl_service -> irs_pricer.core.errors
+  irs_pricer.services.historical_pnl_service -> irs_pricer.db
+  irs_pricer.services.historical_pnl_service -> irs_pricer.engine.instruments
+  irs_pricer.services.historical_pnl_service -> irs_pricer.engine.mtm_valuation
+  irs_pricer.services.historical_pnl_service -> irs_pricer.services
+  irs_pricer.services.historical_pnl_service -> irs_pricer.services.portfolio_service
+  irs_pricer.services.market_data_service -> irs_pricer.config
+  irs_pricer.services.market_data_service -> irs_pricer.core
+  irs_pricer.services.market_data_service -> irs_pricer.core.errors
+  irs_pricer.services.market_data_service -> irs_pricer.core.market_data
+  irs_pricer.services.market_data_service -> irs_pricer.db
+  irs_pricer.services.market_data_service -> irs_pricer.db.connection_settings
+  irs_pricer.services.market_data_service -> irs_pricer.db.database
+  irs_pricer.services.market_data_service -> irs_pricer.db.models
+  irs_pricer.services.market_data_service -> irs_pricer.loaders.factory
+  irs_pricer.services.mtm_service -> irs_pricer.core.market_data
+  irs_pricer.services.mtm_service -> irs_pricer.engine.curve
+  irs_pricer.services.mtm_service -> irs_pricer.engine.instruments
+  irs_pricer.services.mtm_service -> irs_pricer.engine.mtm_valuation
+  irs_pricer.services.mtm_service -> irs_pricer.services
+  irs_pricer.services.npv_trace_service -> irs_pricer.core.errors
+  irs_pricer.services.npv_trace_service -> irs_pricer.core.market_data
+  irs_pricer.services.npv_trace_service -> irs_pricer.db
+  irs_pricer.services.npv_trace_service -> irs_pricer.engine.curve
+  irs_pricer.services.npv_trace_service -> irs_pricer.engine.fixings
+  irs_pricer.services.npv_trace_service -> irs_pricer.engine.instruments
+  irs_pricer.services.npv_trace_service -> irs_pricer.engine.mtm_valuation
+  irs_pricer.services.npv_trace_service -> irs_pricer.services
+  irs_pricer.services.portfolio_analytics_service -> irs_pricer.config
+  irs_pricer.services.portfolio_analytics_service -> irs_pricer.core
+  irs_pricer.services.portfolio_analytics_service -> irs_pricer.core.market_data
+  irs_pricer.services.portfolio_analytics_service -> irs_pricer.engine
+  irs_pricer.services.portfolio_analytics_service -> irs_pricer.engine.instruments
+  irs_pricer.services.portfolio_analytics_service -> irs_pricer.engine.quant_engine
+  irs_pricer.services.portfolio_analytics_service -> irs_pricer.loaders
+  irs_pricer.services.portfolio_analytics_service -> irs_pricer.services
+  irs_pricer.services.portfolio_analytics_service -> irs_pricer.services.simulation_service
+  irs_pricer.services.portfolio_service -> irs_pricer.core.market_data
+  irs_pricer.services.portfolio_service -> irs_pricer.engine.curve
+  irs_pricer.services.portfolio_service -> irs_pricer.engine.fixings
+  irs_pricer.services.portfolio_service -> irs_pricer.engine.instruments
+  irs_pricer.services.portfolio_service -> irs_pricer.engine.mtm_valuation
+  irs_pricer.services.portfolio_service -> irs_pricer.engine.pricing
+  irs_pricer.services.portfolio_service -> irs_pricer.engine.risk
+  irs_pricer.services.portfolio_service -> irs_pricer.services
+  irs_pricer.services.portfolio_service -> irs_pricer.services.pricing_service
+  irs_pricer.services.pricing_service -> irs_pricer.core.market_data
+  irs_pricer.services.pricing_service -> irs_pricer.engine.curve
+  irs_pricer.services.pricing_service -> irs_pricer.engine.instruments
+  irs_pricer.services.pricing_service -> irs_pricer.engine.pricing
+  irs_pricer.services.pricing_service -> irs_pricer.engine.quant_engine
+  irs_pricer.services.pricing_service -> irs_pricer.engine.risk
+  irs_pricer.services.rate_history_service -> irs_pricer.config
+  irs_pricer.services.rate_history_service -> irs_pricer.core
+  irs_pricer.services.rate_history_service -> irs_pricer.engine.curve
+  irs_pricer.services.rate_history_service -> irs_pricer.loaders.base_rate
+  irs_pricer.services.rate_history_service -> irs_pricer.services
+  irs_pricer.services.simulation_service -> irs_pricer.core.errors
+  irs_pricer.services.simulation_service -> irs_pricer.engine
+  irs_pricer.services.simulation_service -> irs_pricer.engine.fixings
+  irs_pricer.services.simulation_service -> irs_pricer.services
+  irs_pricer.services.spread_backtest_service -> irs_pricer.services
+  irs_pricer.services.trade_service -> irs_pricer.db
+  irs_pricer.services.trade_service -> irs_pricer.db.models
+  irs_pricer.services.trade_service -> irs_pricer.services
+  irs_pricer.services.upload_service -> irs_pricer.config
+  irs_pricer.services.upload_service -> irs_pricer.loaders

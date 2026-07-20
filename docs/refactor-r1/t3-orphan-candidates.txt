@@ -1,0 +1,22 @@
+== T3 orphan candidates: fan-in 0, non-route, non-test (from t1 import graph) ==
+FE done
+BE done
+  components/charts/portfolio-heatmap.tsx
+  components/charts/sparkline.tsx
+  components/charts/tenor-curve-chart.tsx
+  components/data/data-grid.tsx
+  components/layout/tab-dockview.tsx
+  components/layout/theme-provider.tsx
+  components/layout/theme-script.tsx
+  components/ui/segmented-control.tsx
+  components/ui/select.tsx
+  components/ui/slider.tsx
+  components/ui/toast.tsx
+  components/ui/tooltip.tsx
+  features/portfolio/columns.tsx
+  features/simulation/simulation-workspace.tsx
+  hooks/use-manual-portfolio-metrics.ts
+  mocks/backtest-snapshot.ts
+  mocks/backtest.ts
+
+== caveat: import-graph only — string registries, next conventions, dynamic imports not seen; every entry carries a verify-before-delete rule in the plan ==

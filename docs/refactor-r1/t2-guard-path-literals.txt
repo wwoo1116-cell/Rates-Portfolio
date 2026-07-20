@@ -1,0 +1,112 @@
+== T2 path-coupled guard census: raw path literals (compiled 2026-07-20 09:51:13 @ 45008ea) ==
+
+=== src/features/entry-signals/marker-pins-s20.test.ts ===
+15:import { readFileSync } from "node:fs";
+99:  const panelPath = join(
+105:    const code = readFileSync(panelPath, "utf8");
+
+=== src/components/charts/chart-defaults.test.ts ===
+16:import { readFileSync } from "node:fs";
+57:  const SLICE_HOSTS = [
+58:    "features/simulation/components/charts/lw-line-chart.tsx",
+59:    "features/simulation/components/charts/rate-fan-chart.tsx",
+63:    for (const rel of SLICE_HOSTS) {
+64:      const code = readFileSync(join(SRC, rel), "utf8");
+
+=== scripts/check_zorder_priceformat.test.ts ===
+22:import { readFileSync, readdirSync, statSync } from "node:fs";
+27:const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+30:  for (const name of readdirSync(dir)) {
+68:  const reordering = files.filter((p) => stripComments(readFileSync(p, "utf8")).includes("setSeriesOrder"));
+78:      const code = stripComments(readFileSync(p, "utf8"));
+
+=== src/features/simulation/lib/fan-labels.test.ts ===
+1:import { readFileSync } from "node:fs";
+41:    const src = readFileSync(
+42:      join(here, "../components/panels/distribution-chart-panel.tsx"),
+
+=== src/lib/direction-color.test.ts ===
+1:import { readFileSync } from "node:fs";
+24:      "features/portfolio/positions-grid.tsx",
+25:      "features/portfolio/details-panel.tsx",
+27:      const code = readFileSync(join(SRC, rel), "utf8");
+
+=== scripts/check_canvas_var_colors.test.ts ===
+26: * Scope: every file importing lightweight-charts, plus src/components/charts/**.
+28:import { readFileSync, readdirSync, statSync } from "node:fs";
+33:const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+40:  for (const name of readdirSync(dir)) {
+76:    if (rel.startsWith("components/charts/")) return true;
+77:    return readFileSync(p, "utf8").includes('from "lightweight-charts"');
+87:      const code = stripComments(readFileSync(p, "utf8"));
+103:      const code = stripComments(readFileSync(p, "utf8"));
+
+=== scripts/check_semantic_color_lockdown.test.ts ===
+18: *     only as tokens.css's --sem-danger (error semantic — never directional).
+20: * ALLOWLIST (deliberately tiny — the two homes of color truth):
+22: *  - src/app/tokens.css       (token layer)
+29:import { readFileSync, readdirSync, statSync } from "node:fs";
+35:const SRC = join(ROOT, "src");
+37:const SEMANTIC_HOMES = new Set(["src/lib/chart-colors.ts", "src/app/tokens.css"]);
+53:  for (const name of readdirSync(dir)) {
+76:    out.push({ rel, code: stripComments(readFileSync(p, "utf8")) });
+101:    expect(files.some((f) => f.rel.includes("features/simulation"))).toBe(true);
+105:    expect(offendersOf(files, FAMILY_HEX, SEMANTIC_HOMES)).toEqual([]);
+106:    expect(offendersOf(files, FAMILY_RGB, SEMANTIC_HOMES)).toEqual([]);
+110:    expect(offendersOf(files, RAW_LAYER_TOKENS, SEMANTIC_HOMES)).toEqual([]);
+121:  it("Blueprint green #0F9960 is gone; #DB3737 survives only as tokens.css's --sem-danger", () => {
+123:    expect(offendersOf(files, BLUEPRINT_RED, new Set(["src/app/tokens.css"]))).toEqual([]);
+
+=== scripts/check_heat_ramp_contrast.test.ts ===
+10: * Also pins the tokens.css mirror (--chart-heat-*) to the chart-colors
+13:import { readFileSync } from "node:fs";
+32:const props = parseCustomProps(readFileSync(defaultTokensCssPath(), "utf8"));
+97:  it("tokens.css --chart-heat-* mirrors the chart-colors constants", () => {
+
+=== scripts/no_raw_hex_in_charts.test.ts ===
+5: * Scope: everything under src/components/charts/ plus any src file that
+9: *  - src/app/tokens.css (the token layer itself; not scanned here anyway)
+11: *  - src/features/simulation/lib/chart-theme.ts  (slice's sanctioned mirror file,
+13: *  - src/features/entry-signals/chart-theme.ts   (same pattern, pre-existing)
+14: *  - src/components/charts/lw-chart-base.tsx     (the canvas base theme:
+17:import { readFileSync, readdirSync, statSync } from "node:fs";
+22:const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+24:const ALLOWLIST = new Set([
+26:  "features/simulation/lib/chart-theme.ts",
+27:  "features/entry-signals/chart-theme.ts",
+28:  "components/charts/lw-chart-base.tsx",
+32:  for (const name of readdirSync(dir)) {
+48:    if (ALLOWLIST.has(rel)) return false;
+49:    if (rel.startsWith("components/charts/")) return true;
+
+=== scripts/check_chart_contrast.ts ===
+3: * `--chart-*` token in src/app/tokens.css against `--bg-surface` and fails
+7: * LARGE-FILL-ONLY ALLOWLIST: tokens sanctioned to sit below the gate because
+17:import { readFileSync } from "node:fs";
+23:export const LARGE_FILL_ONLY_ALLOWLIST: readonly string[] = [
+79:  const props = parseCustomProps(readFileSync(cssPath, "utf8"));
+87:    const allowlisted = LARGE_FILL_ONLY_ALLOWLIST.includes(name);
+101:  return join(dirname(fileURLToPath(import.meta.url)), "..", "src", "app", "tokens.css");
+108:      ? `ALLOWLISTED (large-fill-only, ${r.ratio.toFixed(2)} < ${CONTRAST_FLOOR})`
+
+=== src/components/charts/krw-format-guard.test.tsx ===
+33:vi.mock("lightweight-charts", () => {
+91:vi.mock("@/components/charts/snap-reticle", () => ({
+97:vi.mock("@/hooks/use-api", () => ({
+110:vi.mock("@/features/entry-signals/use-entry-signals-data", () => ({
+119:vi.mock("@/features/entry-signals/use-pinned-backtest", () => ({
+134:vi.mock("@/stores/entry-signals-store", () => ({
+137:vi.mock("@/features/entry-signals/panel-shell", () => ({
+142:vi.mock("@/features/entry-signals/use-synced-time-scales", () => ({
+150:import { MtmHistoryChart } from "@/features/portfolio/details-panel";
+151:import { SpreadPnlChart } from "@/features/home/spread-pnl-chart";
+152:import { PnlTracePanel } from "@/features/home/pnl-trace-panel";
+153:import { EquityCurvePanel } from "@/features/entry-signals/equity-curve-panel";
+
+=== BE tests with path literals ===
+../IRS Pricer_Mock/tests/test_curve_cache.py:169:    p = Path(__file__).parent / "data" / "fan_non_monotone_request.json"
+../IRS Pricer_Mock/tests/test_curve_cache.py:264:    return json.loads((Path(__file__).parent / "data" / name).read_text(encoding="utf-8"))
+../IRS Pricer_Mock/tests/test_portfolio_loader.py:18:REAL_XLSX = Path(__file__).resolve().parents[2] / "Data" / portfolio.XLSX_NAME
+../IRS Pricer_Mock/tests/test_simulate_api.py:43:DATA = Path(__file__).parent / "data"
+../IRS Pricer_Mock/tests/test_simulate_s15.py:36:DATA = Path(__file__).parent / "data"
+../IRS Pricer_Mock/tests/test_simulate_s18.py:31:DATA = Path(__file__).parent / "data"

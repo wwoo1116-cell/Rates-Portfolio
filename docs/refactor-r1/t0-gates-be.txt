@@ -1,0 +1,9 @@
+== T0 BE gates @ 82d5b69 2026-07-20 09:43:39 ==
+
+== pytest tests (full suite) ==
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+336 passed, 4 xfailed, 1 warning in 61.16s (0:01:01)
+
+== frozen-market anchor suites (test_simulate_api + s15 + s18 + npv_identity_guard + historical_basis_guard) ==
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+42 passed, 1 warning in 14.81s

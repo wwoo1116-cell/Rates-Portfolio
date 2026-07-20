@@ -1,0 +1,20 @@
+== T0 FE gates @ 45008ea 2026-07-20 09:43:41 ==
+
+== vitest ==
+ Test Files  33 passed (33)
+      Tests  221 passed (221)
+
+== tsc --noEmit ==
+$ tsc --noEmit
+clean (exit 0)
+
+== eslint repo-wide ==
+  226:38  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  614:22  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+✖ 48 problems (21 errors, 27 warnings)
+
+== next build ==
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
