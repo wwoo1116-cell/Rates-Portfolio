@@ -166,7 +166,10 @@ function BaseDateControl({ baseDate }: { baseDate: string }) {
     if (dates[i] <= baseDate) anchor = i;
     else break;
   }
-  const prevDate = anchor > 0 ? dates[anchor - 1] : null;
+  // ◀ from a date with no snapshot (e.g. today before quotes land) goes to the
+  // latest QUOTED date first, not past it; from a quoted date it steps back one.
+  const prevDate =
+    anchor === -1 ? null : dates[anchor] < baseDate ? dates[anchor] : anchor > 0 ? dates[anchor - 1] : null;
   const next = anchor >= 0 && anchor < dates.length - 1 ? dates[anchor + 1] : null;
 
   return (
