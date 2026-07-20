@@ -53,9 +53,9 @@ The two lanes touch disjoint repos; no cross-lane file interaction existed to ch
 |---|---|---|---|
 | B — IRS 10Y−3Y, defaults, entry 2σ | 92 trades / net 71,450,000 | trades=92 net=71,450,000 win=64% sharpe=0.26 | **PASS, exact** |
 | C — IRS 3Y outright, defaults, entry 2σ | 69 trades / net −432,400,000 | trades=69 net=−432,400,000 win=43% sharpe=−0.59 | **PASS, exact** |
-| A — 국고 10Y−3Y, lookback 60, entry 3σ | **24 / 10,600,000** (s19-corrected; the historical 35 / 70.4M capture is retired as non-reproducible, per s19 diagnosis and s20's exclusion ruling) | trades=24 net=10,600,000 | **PASS against the corrected baseline** — the evidence file's header still says "expect 35 trades / 70.4M"; that is the retired label, kept verbatim as capture history |
+| A — 국고 10Y−3Y, lookback 60, entry 3σ | **none** — config A carries no gate; the historical 35 / 70.4M capture remains **intentionally excluded** (non-reproducible, per the s19 diagnosis and s20's exclusion ruling) | trades=24 net=10,600,000 | **OBSERVED, not a gate** — 24 / 10,600,000 is recorded as a fresh v5-head observation only. The evidence file's header still says "expect 35 trades / 70.4M"; that is the excluded capture's label, kept verbatim as capture history |
 
-- **Retired-anchor sweep**: `grep` over `src/` for `70.4M / 70,400,000 / 70400000` = **zero hits** — no product or test code still expects the retired capture. Documentary mentions remain only in historical reports (iv2/iv3, s19/s20), which is correct.
+- **Excluded-capture sweep** (`retired-anchor-sweep.txt` — filename kept as captured): `grep` over `src/` for `70.4M / 70,400,000 / 70400000` = **zero hits** — no product or test code expects the excluded 35-trade capture. Documentary mentions remain only in historical reports (iv2/iv3, s19/s20), which is correct.
 - **Console sweep**: zero console errors across all routes/contexts (`t5-console-sweep.txt`); `t5-optimal.png`, `t5-settings.png` — Settings funding hero still reads the backend policy constant (2.85%), iv4's T5 contract intact.
 
 ## s21 at the merged head (BE)
