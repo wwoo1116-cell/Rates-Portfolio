@@ -39,6 +39,15 @@ const HORIZON_CHOICES = [30, 60, 90, 180, 270, 365] as const;
 
 const WAYPOINT_STEP_BP = 5;
 
+/** SIM2-2 — the on-the-line default for an untouched intermediate waypoint:
+ * target × day/simDays, rounded to 0.1bp so grid defaults stay legible
+ * (≤0.05bp off the exact line — buildTimePath/_factor lerp between waypoints,
+ * so the rendered/priced path stays smooth). */
+export function lerpDefaultBp(targetBp: number, day: number, simDays: number): number {
+  if (simDays <= 0) return 0;
+  return Math.round(((targetBp * day) / simDays) * 10) / 10;
+}
+
 /**
  * Numeric bp field with a local draft so partial input ("-", "1.") can be typed:
  * every keystroke commits toNum(text) clamped to [min, max], the draft renders
@@ -182,23 +191,47 @@ export function ConfigureStage() {
   const { params, inputs, status, patchParams, runCurrent } = useSimulationPort();
   const canRun = inputs.positions.length > 0 && status !== "running";
 
-  // Regenerate intermediate waypoints (every 30d) when horizon/target changes,
-  // preserving edited bp values — the source's waypoints useEffect. Reads fresh
+  // Regenerate intermediate waypoints (every 30d) when horizon/target changes.
+  // SIM2-2 (ruling ①): an UNTOUCHED intermediate defaults to the on-the-line
+  // lerp toward {simDays, baseShockBp} — the default path is a smooth ramp,
+  // not the old back-loaded 0-pin. TOUCHED waypoints (explicit flags in
+  // params.touchedWaypointDays, set by stepper/typed/drag edits — never
+  // value-equality inference) are byte-preserved while their day stays on the
+  // grid; flags for days that fall off the grid are pruned. Terminal pin
+  // {simDays, baseShockBp} and the D+0 zero pin are unchanged. Reads fresh
   // store state to avoid a stale-closure over waypoints.
   useEffect(() => {
     const { params: p, patchParams: patch } = useSimulationDataStore.getState();
-    const result: { day: number; bp: number }[] = [{ day: 0, bp: 0 }];
+    const target = toNum(p.baseShockBp);
+    const touched = new Set(p.touchedWaypointDays);
+    const grid: number[] = [];
     const numSteps = Math.floor(p.simDays / 30);
-    for (let i = 1; i < numSteps; i++) {
-      const day = i * 30;
-      result.push({ day, bp: p.waypoints.find((w) => w.day === day)?.bp ?? 0 });
+    for (let i = 1; i < numSteps; i++) grid.push(i * 30);
+
+    const result: { day: number; bp: number }[] = [{ day: 0, bp: 0 }];
+    for (const day of grid) {
+      const prev = p.waypoints.find((w) => w.day === day);
+      result.push({
+        day,
+        bp: touched.has(day) && prev !== undefined ? prev.bp : lerpDefaultBp(target, day, p.simDays),
+      });
     }
-    result.push({ day: p.simDays, bp: toNum(p.baseShockBp) });
-    patch({ waypoints: result });
+    result.push({ day: p.simDays, bp: target });
+    patch({
+      waypoints: result,
+      touchedWaypointDays: p.touchedWaypointDays.filter((d) => grid.includes(d)),
+    });
   }, [params.simDays, params.baseShockBp]);
 
+  // Any user edit (stepper, typed commit — and SIM2-3 drag, which calls this
+  // same function) marks the day touched so regen never re-lerps it.
   const setWaypoint = (day: number, bp: number) =>
-    patchParams({ waypoints: params.waypoints.map((w) => (w.day === day ? { ...w, bp } : w)) });
+    patchParams({
+      waypoints: params.waypoints.map((w) => (w.day === day ? { ...w, bp } : w)),
+      touchedWaypointDays: params.touchedWaypointDays.includes(day)
+        ? params.touchedWaypointDays
+        : [...params.touchedWaypointDays, day],
+    });
 
   const bpTone = (bp: number) =>
     // iv3: Jade/Berry universal pair, sign convention preserved from the old
@@ -207,7 +240,9 @@ export function ConfigureStage() {
 
   const eventCount = params.shortEndEvents.filter((e) => e.date).length;
   const nextEventId = () => (params.shortEndEvents.reduce((m, e) => Math.max(m, e.id), -1) + 1);
-  const waypointCount = params.waypoints.slice(1, -1).filter((w) => w.bp !== 0).length;
+  // SIM2-2: "adjusted" now means USER-touched — under lerp defaults every
+  // intermediate is nonzero, so the old bp!==0 census would always read full.
+  const waypointCount = params.touchedWaypointDays.length;
 
   return (
     <div className="flex h-full w-full flex-col p-4">

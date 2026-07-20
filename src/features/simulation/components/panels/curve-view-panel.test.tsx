@@ -39,16 +39,21 @@ vi.mock("../charts/lw-line-chart", async (importOriginal) => {
 const snapshotSpy = vi.fn(async () => ({ valuation_date: "2026-07-15", cd_rate: 0.029, swap_quotes: [] }));
 const taxonomySpy = vi.fn(async () => ({ sectors: [] }));
 const seriesSpy = vi.fn(async () => ({ results: [] }));
-vi.mock("@/lib/api-client", () => ({
-  marketDataApi: {
-    snapshot: (...a: unknown[]) => snapshotSpy(...(a as [])),
-    dateRange: async () => ({ min_date: "", max_date: "", available_dates: [] }),
-  },
-  creditCurveApi: {
-    taxonomy: (...a: unknown[]) => taxonomySpy(...(a as [])),
-    series: (...a: unknown[]) => seriesSpy(...(a as [])),
-  },
-}));
+vi.mock("@/lib/api-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api-client")>();
+  return {
+    ...actual,
+    marketDataApi: {
+      ...actual.marketDataApi,
+      snapshot: (...a: unknown[]) => snapshotSpy(...(a as [])),
+      dateRange: async () => ({ min_date: "", max_date: "", available_dates: [] }),
+    },
+    creditCurveApi: {
+      taxonomy: (...a: unknown[]) => taxonomySpy(...(a as [])),
+      series: (...a: unknown[]) => seriesSpy(...(a as [])),
+    },
+  };
+});
 
 const { CurveViewPanel } = await import("./curve-view-panel");
 
@@ -79,10 +84,12 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
-  it("defaults to 커브형: term-structure chart + pressed segment", () => {
+  it("defaults to 커브형: term-structure chart + pressed segment", async () => {
     seed("curve");
     render(<CurveViewPanel />);
-    expect(screen.getByTestId("term-structure")).toBeTruthy();
+    // findBy: the quote queries start pending (loading placeholder) and
+    // resolve in a microtask — the chart mounts once they settle.
+    expect(await screen.findByTestId("term-structure")).toBeTruthy();
     expect(screen.queryByTestId("lw-path-chart")).toBeNull();
     expect(
       (screen.getByRole("button", { name: "커브형" }) as HTMLButtonElement).getAttribute("aria-pressed"),

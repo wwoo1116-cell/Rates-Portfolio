@@ -49,6 +49,12 @@ export interface ScenarioParams {
   /** s13 — fan-chart σ in bp/√business-day (free-text like the other numeric
    * params; sanitized to (0, 25] at request-build time, backend default 2.0). */
   sigmaBp: string;
+  /** SIM2-2 (ruling ①) — the intermediate waypoint days the USER has edited
+   * (stepper, typed commit, or drag). Explicit flags, never value-equality
+   * inference: an untouched waypoint re-lerps onto the line toward
+   * {simDays, baseShockBp} on every horizon/target change; a touched one is
+   * byte-preserved. Not read by buildSimulateRequest (payload unchanged). */
+  touchedWaypointDays: number[];
 }
 
 export interface SimulationDataPort {
@@ -101,6 +107,7 @@ export const DEFAULT_SCENARIO_PARAMS: ScenarioParams = {
   irsSpread: "0",
   shortEndEvents: [],
   sigmaBp: "2.0",
+  touchedWaypointDays: [],
 };
 
 export const EMPTY_SIMULATION_INPUTS: SimulationInputs = {

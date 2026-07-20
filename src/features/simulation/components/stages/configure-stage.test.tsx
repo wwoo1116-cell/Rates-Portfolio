@@ -93,16 +93,23 @@ describe("ConfigureStage (s15 staged flow — configure)", () => {
   });
 
   it("steps a waypoint with the ∓/± buttons and accepts typed values", () => {
+    // [CHANGED, SIM2-2 ruling] — untouched D+30 now starts at the on-line lerp
+    // (30×30/180 = 5bp), not 0; one +5 step lands at 10. The old pin froze the
+    // back-loaded 0-default.
     renderStage();
-    fireEvent.click(screen.getByRole("button", { name: "D+30 변동폭 5bp 증가" }));
     expect(
       useSimulationDataStore.getState().params.waypoints.find((w) => w.day === 30)?.bp,
     ).toBe(5);
+    fireEvent.click(screen.getByRole("button", { name: "D+30 변동폭 5bp 증가" }));
+    expect(
+      useSimulationDataStore.getState().params.waypoints.find((w) => w.day === 30)?.bp,
+    ).toBe(10);
 
     fireEvent.change(screen.getByLabelText("D+60 변동폭"), { target: { value: "-12" } });
     expect(
       useSimulationDataStore.getState().params.waypoints.find((w) => w.day === 60)?.bp,
     ).toBe(-12);
+    expect(useSimulationDataStore.getState().params.touchedWaypointDays.sort()).toEqual([30, 60]);
   });
 
   // HARDEN-1 (supersedes the DEMO-DEBT σ-test skip): the σ/fan design left
@@ -123,8 +130,9 @@ describe("ConfigureStage (s15 staged flow — configure)", () => {
   });
 
   it("keeps waypoint state semantics identical for equivalent selections (payload parity)", () => {
-    // The same {simDays, waypoints} the sliders would have produced: the store
-    // shape is unchanged, so buildSimulateRequest sees identical params.
+    // [CHANGED, SIM2-2 ruling] — the untouched D+60 is the on-line lerp
+    // (30×60/90 = 20bp), not the old 0-pin. The touched D+30 carries the
+    // user's 10 exactly; terminal pin unchanged.
     renderStage();
     fireEvent.click(screen.getByRole("button", { name: "90D" }));
     fireEvent.change(screen.getByLabelText("D+30 변동폭"), { target: { value: "10" } });
@@ -133,8 +141,55 @@ describe("ConfigureStage (s15 staged flow — configure)", () => {
     expect(params.waypoints).toEqual([
       { day: 0, bp: 0 },
       { day: 30, bp: 10 },
-      { day: 60, bp: 0 },
+      { day: 60, bp: 20 },
       { day: 90, bp: 30 },
     ]);
+  });
+
+  // ── SIM2-2 (ruling ①) — untouched = on-line lerp, touched = byte-preserved ──
+
+  it("untouched intermediates re-lerp when the target changes", () => {
+    renderStage();
+    fireEvent.change(screen.getByDisplayValue("30"), { target: { value: "60" } });
+    const wps = useSimulationDataStore.getState().params.waypoints;
+    // 180D grid: D+30 = 60×30/180 = 10 … D+150 = 50; terminal pinned at 60.
+    expect(wps.find((w) => w.day === 30)?.bp).toBe(10);
+    expect(wps.find((w) => w.day === 90)?.bp).toBe(30);
+    expect(wps.find((w) => w.day === 150)?.bp).toBe(50);
+    expect(wps.at(-1)).toEqual({ day: 180, bp: 60 });
+  });
+
+  it("touched waypoints are byte-preserved across a target change", () => {
+    renderStage();
+    fireEvent.change(screen.getByLabelText("D+30 변동폭"), { target: { value: "7" } });
+    fireEvent.change(screen.getByDisplayValue("30"), { target: { value: "60" } });
+    const wps = useSimulationDataStore.getState().params.waypoints;
+    expect(wps.find((w) => w.day === 30)?.bp).toBe(7); // user value, not re-lerped
+    expect(wps.find((w) => w.day === 60)?.bp).toBe(20); // untouched: 60×60/180
+  });
+
+  it("touched is an explicit flag, not value-equality: a round-trip edit back TO the lerp value still pins it", () => {
+    renderStage();
+    // D+30's lerp default at 180D/30bp is exactly 5. Step +5 then −5: the
+    // value ends back AT the lerp default, but the day is now flagged —
+    // value-equality inference would wrongly treat it as untouched.
+    fireEvent.click(screen.getByRole("button", { name: "D+30 변동폭 5bp 증가" }));
+    fireEvent.click(screen.getByRole("button", { name: "D+30 변동폭 5bp 감소" }));
+    expect(useSimulationDataStore.getState().params.waypoints.find((w) => w.day === 30)?.bp).toBe(5);
+    expect(useSimulationDataStore.getState().params.touchedWaypointDays).toContain(30);
+
+    fireEvent.change(screen.getByDisplayValue("30"), { target: { value: "60" } });
+    const wps = useSimulationDataStore.getState().params.waypoints;
+    expect(wps.find((w) => w.day === 30)?.bp).toBe(5); // pinned; lerp would be 10
+  });
+
+  it("prunes touched flags for days that fall off the grid on horizon shrink", () => {
+    renderStage();
+    fireEvent.change(screen.getByLabelText("D+120 변동폭"), { target: { value: "9" } });
+    expect(useSimulationDataStore.getState().params.touchedWaypointDays).toContain(120);
+    fireEvent.click(screen.getByRole("button", { name: "90D" }));
+    const { params } = useSimulationDataStore.getState();
+    expect(params.touchedWaypointDays).not.toContain(120);
+    expect(params.waypoints.some((w) => w.day === 120)).toBe(false);
   });
 });
