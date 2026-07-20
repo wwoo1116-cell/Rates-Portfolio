@@ -46,7 +46,6 @@ from .routers import (
     pricing,
     rate_history,
     simulate,
-    spread_backtest,
     trades,
     upload,
     portfolio_analytics,
@@ -203,7 +202,6 @@ app.include_router(portfolio.router)
 app.include_router(historical_pnl.router)
 app.include_router(calendar.router)
 app.include_router(rate_history.router)
-app.include_router(spread_backtest.router)
 app.include_router(npv_trace.router)
 app.include_router(db_settings.router)
 app.include_router(trades.router)

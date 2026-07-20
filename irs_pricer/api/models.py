@@ -506,49 +506,6 @@ class CreditSeriesResponse(BaseModel):
     results: list[CreditSeriesResultOut]
 
 
-class BacktestPointOut(BaseModel):
-    valuation_date: date
-    spread_bp: float
-    z_score: float | None = None
-    position: int
-    daily_pnl: float
-    cumulative_pnl: float
-
-
-class BacktestTradeOut(BaseModel):
-    entry_date: date
-    exit_date: date
-    direction: int
-    entry_z: float
-    exit_z: float
-    entry_spread_bp: float
-    exit_spread_bp: float
-    pnl: float
-    exit_reason: str
-
-
-class BacktestSummaryOut(BaseModel):
-    total_pnl: float
-    max_drawdown: float
-    win_rate: float | None = None
-    sharpe_ratio: float | None = None
-    num_trades: int
-
-
-class SpreadBacktestResponse(BaseModel):
-    short: str
-    long: str
-    lookback: int
-    entry_z: float
-    exit_z: float
-    stop_z: float
-    cost_bp: float
-    notional: float
-    points: list[BacktestPointOut]
-    trades: list[BacktestTradeOut]
-    summary: BacktestSummaryOut
-
-
 class HistoricalPnlRequest(BaseModel):
     positions: list[PortfolioPositionIn] = Field(min_length=1)
     start_date: date
