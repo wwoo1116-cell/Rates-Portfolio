@@ -14,7 +14,7 @@ import {
   PRICER_INPUTS,
   computePricerResults,
   type PricerInput,
-} from "@/mocks/pricer";
+} from "@/lib/placeholder-data/pricer";
 
 // Reticle tooltip state
 interface TooltipState {

@@ -1,0 +1,5 @@
+== R2 step 6 eslint baseline change 21 -> 20, stash-control evidence ==
+PRE-MOVE (stashed state): pricer-page.tsx:12 '@/mocks/pricer' restricted-import error present
+POST-MOVE: error absent — @/lib/* is sanctioned by the slice-isolation rule; all other 20 errors byte-identical
+
+post-move error census: 20 errors (pnl-trace any x4, pvbp-table any x2, impact-grid x3, pricer-page x1, trade-entry x2, sim types any x2, api-client any x5, api-types any x1)
