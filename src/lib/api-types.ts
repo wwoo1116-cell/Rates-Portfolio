@@ -490,6 +490,16 @@ export interface ParsedPositionOut {
   entry_yield: number | null;
   mtm_yield: number | null;
   duration: number | null;
+  // KRW change in value per +1bp of market yield, SIGNED so that a long
+  // position is positive (this is the convention `_bond_pnl` in
+  // portfolio_analytics_service.py consumes for every FE reader of this
+  // field). Note this is the OPPOSITE sign convention from the backend's
+  // internal-only `revalue_bond` (allocation_history_service.py) helper,
+  // which returns negative-for-long and is neutralized with abs() before
+  // it ever reaches an aggregate — that helper's output never populates
+  // this field, so the two conventions don't collide in practice, but they
+  // share the name "pvbp" (F-04; sign unification is a logic change, left
+  // for a future pass — see REFACTOR_PLAN.md Appendix A).
   pvbp: number | null;
   // Static bond params. Needed for the backend to build a coupon schedule and
   // therefore to revalue a bond at a rolled valuation date (= compute theta).
