@@ -56,10 +56,10 @@ pnpm check:contrast     # 차트 색상 대비 게이트만 단독 실행
 ## 테스트·문서
 
 - 단위/가드 테스트: `vitest` (`scripts/`의 대비·hex 게이트 포함). E2E 확인은 Playwright 스크린샷 패턴 사용.
-- 개발 히스토리: `SESSION*_REPORT.md`, `REPORT_s10~s20.md`, 통합 기준선은 **`REPORT_integration_v5.md`** (최신), 마이그레이션 계획은 `MIGRATION_PLAN.md`.
+- 개발 히스토리: `docs/history/` (세션·통합 리포트 전부), 통합 기준선은 **`docs/history/REPORT_integration_v5.md`** (최신), 마이그레이션 계획은 `MIGRATION_PLAN.md`, 리팩터 계획은 `REFACTOR_PLAN.md`.
 
 ## 알려진 이슈
 
 - `/api/spread-backtest`는 UI에서 사용되지 않음(백테스트는 클라이언트 사이드 시뮬레이션).
 
-(ES 백테스트 차트가 꼬리 구간만 렌더링되던 마운트 레이스는 s20에서 수정 — 전체 구간 fit + 트레이드 마커, `REPORT_s20.md` 참고. s19의 xfail 수용 테스트는 통과로 전환됨.)
+(ES 백테스트 차트가 꼬리 구간만 렌더링되던 마운트 레이스는 s20에서 수정 — 전체 구간 fit + 트레이드 마커, `docs/history/REPORT_s20.md` 참고. s19의 xfail 수용 테스트는 통과로 전환됨.)
