@@ -28,8 +28,26 @@
  *    left past the midpoint), never over the legend and never clipped by the
  *    panel boundary — it used to render translate-y-full above the column,
  *    which put it on top of the legend and outside the panel.
+ *
+ * R3B-PLUS B2: each segment tall enough to hold it shows its own percentage,
+ * using the SAME `formatValue` the tooltip already uses (no new math — each
+ * segment's label is just its own already-rendered `pct`, independently
+ * rounded; the column's labels are not force-adjusted to sum to 100.0).
+ * Segments under MIN_LABEL_SEGMENT_PCT omit the label (text wouldn't fit
+ * legibly) and fall back to the existing hover tooltip. Label color is
+ * chosen per-fill via resolveSegmentLabelColor (chart-colors.ts) — light or
+ * dark text, whichever clears the 3:1 contrast floor against that segment's
+ * resolved color; verified for the live palette in
+ * scripts/check_allocation_label_contrast.test.ts.
  */
 import { useRef, useState } from "react";
+import { resolveSegmentLabelColor } from "@/lib/chart-colors";
+
+/** Below this height, a one-line micro-text label doesn't fit legibly inside
+ * the segment (clips or collides with the border). Percent-of-column-height
+ * threshold, not px, since the column height itself is layout-fluid (flex,
+ * `h-full` parent) — the tooltip is the fallback for anything smaller. */
+export const MIN_LABEL_SEGMENT_PCT = 6;
 
 export interface StackedBar100Column {
   /** Stable identity for React keys. */
@@ -126,6 +144,7 @@ export function StackedBar100({
                     // DOM order is bottom-up; every slice's top edge is a
                     // slice boundary except the visual-top (DOM-last) one.
                     const isTop = i === rendered.length - 1;
+                    const fill = colorFor(s);
                     return (
                       <div
                         key={s}
@@ -133,12 +152,21 @@ export function StackedBar100({
                         onMouseMove={trackHover(col.key, s)}
                         style={{
                           height: `${pct}%`,
-                          backgroundColor: colorFor(s),
+                          backgroundColor: fill,
                           opacity: dimmed ? 0.45 : 1,
                           borderTop: isTop ? undefined : "1px solid var(--border-subtle)",
                         }}
-                        className="w-full transition-opacity duration-100"
-                      />
+                        className="flex w-full items-center justify-center overflow-hidden transition-opacity duration-100"
+                      >
+                        {pct >= MIN_LABEL_SEGMENT_PCT && (
+                          <span
+                            className="pointer-events-none select-none truncate text-micro tabular-nums"
+                            style={{ color: resolveSegmentLabelColor(fill) }}
+                          >
+                            {formatValue(pct)}
+                          </span>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

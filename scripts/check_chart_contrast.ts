@@ -13,10 +13,20 @@
  *
  * Enforced in the test suite via scripts/check_chart_contrast.test.ts; also
  * runnable standalone (`pnpm check:contrast`) for the report table.
+ *
+ * Contrast math (relativeLuminance/contrastRatio) lives in
+ * @/lib/color-contrast (R3B-PLUS B2 extraction) — pure, no Node deps — so the
+ * runtime allocation-bar label-color picker can share it without pulling
+ * node:fs into a client bundle. Re-exported here for the existing test
+ * imports (scripts/check_chart_contrast.test.ts, check_heat_ramp_contrast
+ * .test.ts) to keep working unchanged.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { contrastRatio, relativeLuminance } from "@/lib/color-contrast";
+
+export { contrastRatio, relativeLuminance };
 
 export const CONTRAST_FLOOR = 3.0;
 
@@ -50,29 +60,6 @@ export function resolveProp(props: Map<string, string>, name: string, depth = 0)
   if (raw == null) throw new Error(`unknown custom property ${name}`);
   const m = /^var\((--[\w-]+)\)$/.exec(raw);
   return m ? resolveProp(props, m[1], depth + 1) : raw;
-}
-
-function srgbChannel(v: number): number {
-  const c = v / 255;
-  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-}
-
-export function relativeLuminance(hex: string): number {
-  const m = /^#([0-9a-fA-F]{6})$/.exec(hex.trim());
-  if (!m) throw new Error(`expected #RRGGBB, got "${hex}"`);
-  const n = parseInt(m[1], 16);
-  return (
-    0.2126 * srgbChannel((n >> 16) & 0xff) +
-    0.7152 * srgbChannel((n >> 8) & 0xff) +
-    0.0722 * srgbChannel(n & 0xff)
-  );
-}
-
-export function contrastRatio(hexA: string, hexB: string): number {
-  const la = relativeLuminance(hexA);
-  const lb = relativeLuminance(hexB);
-  const [hi, lo] = la >= lb ? [la, lb] : [lb, la];
-  return (hi + 0.05) / (lo + 0.05);
 }
 
 export function runContrastGate(cssPath: string): { rows: ContrastRow[]; failures: ContrastRow[] } {

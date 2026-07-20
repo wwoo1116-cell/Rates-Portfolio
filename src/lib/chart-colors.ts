@@ -5,6 +5,8 @@
  * hardcodes its own colors for the same reason. Single dark theme, no
  * light/dark split for these tokens, so a static literal is safe.
  */
+import { contrastRatio } from "./color-contrast";
+
 export const CHART_SERIES_COLORS = [
   "#2B95D6", // --chart-ocean
   "#91CCF1", // --chart-aqua
@@ -175,6 +177,30 @@ export function maturityColor(key: string): string {
   if (c) return c;
   warnUnknownKey("maturity", key);
   return UNKNOWN_KEY_COLOR;
+}
+
+/** In-segment label text candidates (R3B-PLUS B2) — the two ends of the
+ * --fg-primary/--bg-surface pair, hoisted as literals for the same
+ * canvas-can't-resolve-CSS-vars reason as CHART_CHROME_COLORS above (these
+ * segments ARE DOM, not canvas, but resolveSegmentLabelColor is shared with
+ * the contrast gate, which reads tokens.css directly and needs a comparable
+ * literal, not a var()). Sector/maturity fills span Navy-80 (dark) to
+ * Aqua-60/Navy-20 (near-white), so a single fixed color (unlike
+ * HEAT_TEXT_COLOR's fixed white on a narrower, owner-ruled ramp) can't clear
+ * 3:1 everywhere — pick whichever end wins per fill instead. */
+export const LABEL_ON_FILL_LIGHT = "#F5F8FA"; // --fg-primary
+export const LABEL_ON_FILL_DARK = "#202B33"; // --bg-surface
+
+/** Picks whichever of LABEL_ON_FILL_LIGHT/DARK has the higher contrast ratio
+ * against a resolved (opaque, solid-hex) segment fill. Verified for every
+ * sector + maturity fill in scripts/check_allocation_label_contrast.test.ts:
+ * the winner clears the 3:1 floor in all cases (worst case 4.34:1, MS.blue),
+ * so this never needs an allowlist the way the heat ramp's fixed-white policy
+ * did. Ties (contrived, not hit by the live palette) prefer light. */
+export function resolveSegmentLabelColor(fillHex: string): string {
+  const light = contrastRatio(LABEL_ON_FILL_LIGHT, fillHex);
+  const dark = contrastRatio(LABEL_ON_FILL_DARK, fillHex);
+  return dark > light ? LABEL_ON_FILL_DARK : LABEL_ON_FILL_LIGHT;
 }
 
 /** P&L semantic pair — replaces green/red on every chart surface.
