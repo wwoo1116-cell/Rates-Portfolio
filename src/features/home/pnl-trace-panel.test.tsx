@@ -20,9 +20,18 @@ const npvTraceState = {
   isPending: false,
 };
 
+// HARDEN-1 — controllable historical-quote state for the par-prefill tests.
+// Default: no data (the pre-prefill world), so the original form tests keep
+// their exact semantics (rate field starts empty).
+const historicalQuoteState = {
+  data: null as { historical_rate: number } | null,
+  isLoading: false,
+};
+
 vi.mock("@/hooks/use-api", () => ({
   useMarketDataRange: () => ({ data: { max_date: "2026-07-15" } }),
   useNpvTrace: () => npvTraceState,
+  useHistoricalQuote: () => historicalQuoteState,
 }));
 vi.mock("@/components/charts/lw-chart-base", () => ({
   LwChartBase: () => <div data-testid="chart-stub" />,
@@ -71,6 +80,8 @@ beforeEach(() => {
   npvTraceState.isError = false;
   npvTraceState.error = null;
   npvTraceState.isPending = false;
+  historicalQuoteState.data = null;
+  historicalQuoteState.isLoading = false;
 });
 
 afterEach(cleanup);
@@ -191,5 +202,60 @@ describe("async states", () => {
     expect(
       screen.getByText(/confirm the pricing server is reachable/),
     ).toBeTruthy();
+  });
+});
+
+/**
+ * HARDEN-1 — par-rate prefill (GET /api/portfolio/historical-quote via
+ * useHistoricalQuote). Rules under test: prefill lands in the empty field with
+ * provenance, recomputes on Start/Maturity change, NEVER overwrites a typed
+ * value (dirty-field), and the no-data case is an honest blank, not 0.
+ */
+describe("IRS Rate par prefill", () => {
+  const rateField = () => screen.getByLabelText(/IRS Rate/) as HTMLInputElement;
+
+  it("prefills the pristine field with the par rate and shows provenance (2021-11-05 → 2026-07-03)", () => {
+    historicalQuoteState.data = { historical_rate: 0.021234 };
+    renderPanel();
+    fireEvent.change(screen.getByLabelText(/Start Date/), { target: { value: "2021-11-05" } });
+    fireEvent.change(screen.getByLabelText(/Maturity Date/), { target: { value: "2026-07-03" } });
+
+    expect(rateField().value).toBe("2.1234");
+    expect(screen.getByTestId("par-provenance").textContent).toContain("당일 par 2.1234%");
+    expect(screen.getByTestId("par-provenance").textContent).toContain("2021-11-05");
+  });
+
+  it("never overwrites a user-typed rate (dirty-field guard)", () => {
+    historicalQuoteState.data = { historical_rate: 0.021234 };
+    renderPanel();
+    fireEvent.change(screen.getByLabelText(/Maturity Date/), { target: { value: "2026-07-03" } });
+    expect(rateField().value).toBe("2.1234"); // prefilled while pristine
+
+    fireEvent.change(rateField(), { target: { value: "3.5" } }); // user types → dirty
+    // A new quote arrives (start date moves → different par) …
+    historicalQuoteState.data = { historical_rate: 0.031111 };
+    fireEvent.change(screen.getByLabelText(/Start Date/), { target: { value: "2021-11-05" } });
+    // … but the typed value stands.
+    expect(rateField().value).toBe("3.5");
+  });
+
+  it("recomputes for the pristine field when the schedule changes", () => {
+    historicalQuoteState.data = { historical_rate: 0.021234 };
+    renderPanel();
+    fireEvent.change(screen.getByLabelText(/Maturity Date/), { target: { value: "2026-07-03" } });
+    expect(rateField().value).toBe("2.1234");
+
+    historicalQuoteState.data = { historical_rate: 0.024567 };
+    fireEvent.change(screen.getByLabelText(/Maturity Date/), { target: { value: "2027-07-03" } });
+    expect(rateField().value).toBe("2.4567");
+  });
+
+  it("no par data: field stays empty (never 0) and the provenance says so", () => {
+    historicalQuoteState.data = null;
+    renderPanel();
+    fireEvent.change(screen.getByLabelText(/Maturity Date/), { target: { value: "2026-07-03" } });
+
+    expect(rateField().value).toBe("");
+    expect(screen.getByTestId("par-provenance").textContent).toBe("당일 par 없음 — 직접 입력");
   });
 });

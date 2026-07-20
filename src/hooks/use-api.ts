@@ -38,6 +38,8 @@ const queryKeys = {
   creditTaxonomy: () => ["credit-curve", "taxonomy"] as const,
   creditSeries: (legs: CreditSeriesLegIn[], start: string, end: string) =>
     ["credit-curve", "series", legs, start, end] as const,
+  historicalQuote: (start: string, maturity: string) =>
+    ["portfolio", "historical-quote", start, maturity] as const,
 };
 
 /**
@@ -93,6 +95,23 @@ export function useMarketDataRange() {
     queryKey: queryKeys.marketDataRange(),
     queryFn: () => marketDataApi.dateRange(),
     staleTime: 5 * 60_000,
+  });
+}
+
+/** HARDEN-1 — historical spot par rate for a schedule quoted ON start_date
+ * (GET /api/portfolio/historical-quote): the PnL Trace prefill source. This is
+ * the backend's real par-at-tenor answer (that day's own snapshot, that exact
+ * schedule) — no client-side pillar interpolation needed. A 400 (non-business
+ * day) or 404 (no data) is an honest "no prefill", not an error to retry. */
+export function useHistoricalQuote(startDate: string, maturityDate: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.historicalQuote(startDate, maturityDate),
+    // Notional is required by the endpoint signature but the par rate does not
+    // depend on it; a fixed 100억 keeps the cache key free of form noise.
+    queryFn: () => portfolioApi.historicalQuote(startDate, maturityDate, 10_000_000_000),
+    enabled,
+    staleTime: Infinity,
+    retry: false,
   });
 }
 

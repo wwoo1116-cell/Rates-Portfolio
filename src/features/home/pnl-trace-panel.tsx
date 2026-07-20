@@ -20,7 +20,7 @@ import { CHART_CHROME_COLORS, PNL_COLORS } from "@/lib/chart-colors";
 // Chart surfaces (axis, markers, tooltip, final badge) carry the signed 억/만
 // formatter since s14 — full-digit strings were the pre-s14 formatPnlKrw.
 import { formatKrwAxisSigned } from "@/lib/format";
-import { useMarketDataRange, useNpvTrace } from "@/hooks/use-api";
+import { useHistoricalQuote, useMarketDataRange, useNpvTrace } from "@/hooks/use-api";
 import { RATE_SERIES_OPTIONS, rateValue } from "@/lib/rate-history-helpers";
 import type { RateHistoryPointOut, NpvTracePointOut } from "@/lib/api-client";
 
@@ -36,6 +36,10 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
   const [startDate, setStartDate] = useState(point.valuation_date);
   const [maturityDate, setMaturityDate] = useState("");
   const [irsRatePct, setIrsRatePct] = useState("");
+  // HARDEN-1 — dirty-field guard for the par prefill: once the user has typed
+  // in the IRS Rate field, no prefill may ever overwrite it (their number is
+  // the experiment). Prefill only writes while the field is still pristine.
+  const [irsRateDirty, setIrsRateDirty] = useState(false);
   const [notional100M, setNotional100M] = useState("100"); // 100억 (10B KRW) default
   const [payFixed, setPayFixed] = useState(true);
 
@@ -52,6 +56,24 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
     const days = differenceInCalendarDays(parseISO(maturityDate), parseISO(startDate));
     return days > 0 ? days / 365 : null;
   }, [startDate, maturityDate]);
+
+  // HARDEN-1 — par-rate prefill: GET /api/portfolio/historical-quote is the
+  // backend's par-at-tenor source (start_date's own snapshot, this exact
+  // schedule — no client-side pillar interpolation, no new math). Recomputes
+  // whenever Start/Maturity changes; writes the field only while pristine.
+  const parQuote = useHistoricalQuote(startDate, maturityDate, tenorYears != null);
+  const parRatePct = parQuote.data ? parQuote.data.historical_rate * 100 : null;
+  useEffect(() => {
+    if (irsRateDirty || parRatePct == null) return;
+    setIrsRatePct(parRatePct.toFixed(4));
+  }, [parRatePct, irsRateDirty]);
+  // Provenance line under the field: where the number came from, or why there
+  // is none (a blank prefill is "no data", never a silent 0).
+  const parProvenance =
+    tenorYears == null ? null
+    : parQuote.isLoading ? "par 조회 중…"
+    : parRatePct != null ? `당일 par ${parRatePct.toFixed(4)}% (${startDate} 종가)`
+    : "당일 par 없음 — 직접 입력";
 
   const fixedRate = irsRatePct === "" ? null : Number(irsRatePct);
   const notional = notional100M === "" ? null : Number(notional100M);
@@ -237,9 +259,21 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
             type="number"
             step="0.001"
             value={irsRatePct}
-            onChange={(e) => setIrsRatePct(e.target.value)}
+            // A user edit marks the field dirty: prefill never overwrites a
+            // typed value afterwards (HARDEN-1 dirty-field rule). The field
+            // stays fully editable either way.
+            onChange={(e) => {
+              setIrsRateDirty(true);
+              setIrsRatePct(e.target.value);
+            }}
+            placeholder={parQuote.isLoading ? "par…" : undefined}
             className="h-7 w-24 border border-border-subtle bg-bg-elevated px-2 text-body font-normal text-fg-primary"
           />
+          {parProvenance && (
+            <span className="text-micro font-normal text-fg-dim" data-testid="par-provenance">
+              {parProvenance}
+            </span>
+          )}
         </label>
         <label className="flex flex-col gap-1 text-micro font-bold text-fg-muted">
           Notional (억)
