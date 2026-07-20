@@ -104,7 +104,10 @@ describe("ConfigureStage (s15 staged flow — configure)", () => {
     ).toBe(-12);
   });
 
-  it("edits the fan σ with the stepper and clamps typed values to (0, 25] (s13)", () => {
+  // DEMO-DEBT (demo sprint 2026-07-20): σ input removed from the Configure UI
+  // for the two-pane preview (trader feedback). Store key sigmaBp + payload
+  // default (2.0) remain — revive this test when the σ control returns.
+  it.skip("edits the fan σ with the stepper and clamps typed values to (0, 25] (s13)", () => {
     renderStage();
     fireEvent.click(screen.getByRole("button", { name: "분포 σ 0.5bp 증가" }));
     expect(useSimulationDataStore.getState().params.sigmaBp).toBe("2.5");

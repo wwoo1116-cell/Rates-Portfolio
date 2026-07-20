@@ -1,66 +1,110 @@
 "use client";
 
 /**
- * Curve View panel (S5) — the source ScenarioPreviewChart's time-path view,
- * rewritten from recharts onto lightweight-charts. Shows the 국채 3Y bp path from the
- * waypoints (+ the 기준금리 cumulative path when 금통위 events exist). Colors come from
- * chart-theme.ts. Loaded via next/dynamic({ ssr:false }) at the mount.
+ * Curve View panel — demo-sprint two-pane preview (trader feedback): the LIVE
+ * shocked INPUT-curve view. Draws the 국고채 par-yield curve and the IRS par
+ * curve (base quotes for inputs.baseDate + the scenario's horizon-end shock)
+ * as two lines on one tenor axis, redrawn synchronously on every left-pane
+ * change — pure display math (lib/input-curve-preview), never an engine run.
+ * Base quotes are fetched once per baseDate (hooks/use-input-curves) and
+ * cached, so slider moves cost no network.
  *
- * Deferred (needs the S5 visual-baseline pass): the 커브형/term-structure toggle and the
- * per-sector selector — the term-structure (tenor-axis) view doesn't map to lightweight-
- * charts' time axis and will use a small d3 render instead.
+ * Blank-quote policy: a missing pillar is a line gap + a "—" notice below,
+ * never a silent +0; a missing snapshot renders the whole curve as absent
+ * with an explicit notice.
+ *
+ * The previous time-path view (국채 3Y bp 경로) is no longer rendered here;
+ * lib/scenario-preview.ts stays intact for revival (see DEMO_DEBT.md).
  */
 import { useMemo } from "react";
 
 import { getSimulationChartTheme } from "../../lib/chart-theme";
-import { buildTimePath } from "../../lib/scenario-preview";
+import { buildInputCurvePreview } from "../../lib/input-curve-preview";
+import { useBondInputQuotes, useSwapInputQuotes } from "../../hooks/use-input-curves";
 import { useSimulationPort } from "../../hooks/use-simulation";
-import { LwLineChart, dayToTime, type LwSeriesDef } from "../charts/lw-line-chart";
+import { TermStructureChart, type TermCurveDef } from "../charts/term-structure-chart";
 
 export function CurveViewPanel() {
   const { params, inputs } = useSimulationPort();
+  const baseDate = inputs.baseDate;
 
-  const series = useMemo<LwSeriesDef[]>(() => {
-    const t = getSimulationChartTheme();
-    const points = buildTimePath(params, inputs.baseDate);
-    const gov: LwSeriesDef = {
-      // Ocean (previewPalette[0]) — this panel used to lean on series.carry
-      // back when carry WAS ocean; S7 moved carry onto Jade (P&L-reserved),
-      // and a rates path must not wear a P&L hue, so it pins the original
-      // blue explicitly instead of riding the Total-Return series tokens.
-      color: t.previewPalette[0],
-      lineWidth: 2,
-      data: points.map((p) => ({ time: dayToTime(inputs.baseDate, p.day), value: p.gov3y })),
-    };
-    const defs: LwSeriesDef[] = [gov];
-    if (points.some((p) => p.policyRate !== null)) {
-      defs.push({
-        color: t.axis,
-        lineWidth: 2,
-        dashed: true,
-        data: points.map((p) => ({ time: dayToTime(inputs.baseDate, p.day), value: p.policyRate ?? 0 })),
-      });
-    }
-    return defs;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.waypoints, params.simDays, params.baseShockBp, params.shortEndEvents, inputs.baseDate]);
+  const bond = useBondInputQuotes(baseDate);
+  const swap = useSwapInputQuotes(baseDate);
 
-  const hasPolicy = series.length > 1;
+  const bondBase = useMemo(() => (bond.isError ? [] : bond.data ?? []), [bond.data, bond.isError]);
+  const swapBase = useMemo(() => (swap.isError ? [] : swap.data ?? []), [swap.data, swap.isError]);
+
+  const preview = useMemo(
+    () => buildInputCurvePreview(params, baseDate, bondBase, swapBase),
+    [params, baseDate, bondBase, swapBase],
+  );
+
+  const t = getSimulationChartTheme();
+  const bondColor = t.previewPalette[0]; // Ocean — rates curves never wear P&L hues (S7).
+  const swapColor = t.previewPalette[2]; // Tangerine — distinct from Ocean at a glance.
+
+  const curves: TermCurveDef[] = [
+    { label: "국고채", color: bondColor, points: preview.bondPct },
+    { label: "IRS", color: swapColor, points: preview.swapPct },
+  ];
+
+  // A pillar the other curve contributed (e.g. IRS has no 20Y) is a normal
+  // gap, not a hole — the notice lists only tenors the source itself carries
+  // with no value on this date.
+  const bondMissing = bondBase.filter((q) => q.rate === null).map((q) => q.label);
+  const swapMissing = swapBase.filter((q) => q.rate === null).map((q) => q.label);
+
+  const loading = bond.isLoading || swap.isLoading;
 
   return (
     <div className="flex h-full w-full flex-col p-3">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-body-strong text-fg-primary">시나리오 커브 미리보기</h3>
+        <h3 className="text-body-strong text-fg-primary">인풋 커브 미리보기</h3>
         <span data-num className="text-micro text-fg-muted">
-          D+{params.simDays} · 최종 {params.baseShockBp}bp
+          {baseDate || "기준일 —"} · D+{params.simDays} {toSigned(params.baseShockBp)}bp
         </span>
       </div>
+
       <div className="min-h-0 flex-1">
-        <LwLineChart series={series} zeroLine />
+        {loading ? (
+          <div className="flex h-full items-center justify-center text-micro text-fg-dim">호가 로딩 중…</div>
+        ) : (
+          <TermStructureChart pillarLabels={preview.pillars.map((p) => p.label)} curves={curves} />
+        )}
       </div>
-      <p className="mt-1.5 text-center text-micro text-fg-dim">
-        국채 3Y 경로{hasPolicy ? " · 점선 = 기준금리 누적 변동" : ""}
-      </p>
+
+      {/* Legend + blank-policy notices */}
+      <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-micro">
+        <span className="inline-flex items-center gap-1.5 text-fg-muted">
+          <span className="inline-block h-0.5 w-4" style={{ backgroundColor: bondColor }} />
+          국고채
+          {bond.isError && <span className="text-fg-dim">호가 없음 —</span>}
+        </span>
+        <span className="inline-flex items-center gap-1.5 text-fg-muted">
+          <span className="inline-block h-0.5 w-4" style={{ backgroundColor: swapColor }} />
+          IRS
+          {swap.isError && <span className="text-fg-dim">호가 없음 —</span>}
+        </span>
+        {preview.shortEndBp !== 0 && (
+          <span data-num className="text-fg-dim">
+            단기 {toSigned(String(preview.shortEndBp))}bp (금통위)
+          </span>
+        )}
+      </div>
+      {(bondMissing.length > 0 || swapMissing.length > 0) && (
+        <p data-num className="mt-0.5 text-center text-micro text-fg-dim">
+          결측 호가:
+          {bondMissing.length > 0 && ` 국고채 ${bondMissing.join("/")} —`}
+          {swapMissing.length > 0 && ` IRS ${swapMissing.join("/")} —`}
+        </p>
+      )}
     </div>
   );
+}
+
+/** "+30" / "-25" / "0" from the free-text bp param. */
+function toSigned(raw: string): string {
+  const v = parseFloat(raw);
+  if (isNaN(v)) return "0";
+  return v > 0 ? `+${raw.trim()}` : raw.trim();
 }

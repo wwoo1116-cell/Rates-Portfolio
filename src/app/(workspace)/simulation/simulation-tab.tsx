@@ -43,9 +43,12 @@ function useSimulationInputsBridge() {
   const bonds = useBondPositionsStore((s) => s.positions);
   const swaps = useManualPositionsStore((s) => s.positions);
   const setInputs = useSimulationDataStore((s) => s.setInputs);
+  // Demo sprint (two-pane): the analyst's explicit valuation-date override
+  // participates in input assembly, so a ledger refresh keeps the chosen date.
+  const userBaseDate = useSimulationDataStore((s) => s.userBaseDate);
   useEffect(() => {
-    setInputs(buildSimulationInputs(bonds, swaps));
-  }, [bonds, swaps, setInputs]);
+    setInputs(buildSimulationInputs(bonds, swaps, userBaseDate));
+  }, [bonds, swaps, userBaseDate, setInputs]);
 }
 
 export function SimulationTab() {

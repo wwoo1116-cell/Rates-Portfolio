@@ -126,12 +126,17 @@ export function todayInSeoul(now: Date = new Date()): string {
   }).format(now);
 }
 
-/** Assemble the full ambient inputs the simulation port consumes. */
+/** Assemble the full ambient inputs the simulation port consumes.
+ * `baseDateOverride` (demo sprint, two-pane) is the analyst's explicit
+ * valuation date; absent/blank → today in Seoul as before. Swap filtering and
+ * remainingDays follow whichever date is in force. */
 export function buildSimulationInputs(
   bonds: BondPosition[],
   swaps: ManualPosition[] = [],
+  baseDateOverride?: string | null,
 ): SimulationInputs {
-  const baseDate = todayInSeoul();
+  const baseDate =
+    baseDateOverride && !Number.isNaN(Date.parse(baseDateOverride)) ? baseDateOverride : todayInSeoul();
   return {
     positions: [
       ...bonds.map(bondToSimPosition),

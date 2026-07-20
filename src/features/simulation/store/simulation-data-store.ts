@@ -32,6 +32,12 @@ interface SimulationDataState {
   status: RunStatus;
   error: string | null;
 
+  /** Demo sprint (two-pane) — the analyst's explicit valuation-date override.
+   * null = automatic (today in Seoul). The app-layer bridge reads this when it
+   * assembles inputs, so a ledger refresh never clobbers a user-chosen date. */
+  userBaseDate: string | null;
+  setUserBaseDate: (date: string | null) => void;
+
   setInputs: (inputs: Partial<SimulationInputs>) => void;
   patchParams: (patch: Partial<ScenarioParams>) => void;
   resetParams: () => void;
@@ -52,6 +58,9 @@ export const useSimulationDataStore = create<SimulationDataState>((set) => ({
   lastRunRequest: null,
   status: "idle",
   error: null,
+
+  userBaseDate: null,
+  setUserBaseDate: (date) => set({ userBaseDate: date }),
 
   setInputs: (inputs) => set((state) => ({ inputs: { ...state.inputs, ...inputs } })),
   patchParams: (patch) => set((state) => ({ params: { ...state.params, ...patch } })),

@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { toNum } from "../../lib/scenario-curves";
 import { useSimulationDataStore } from "../../store/simulation-data-store";
 import { useSimulationPort } from "../../hooks/use-simulation";
+import { useMarketDateRange } from "../../hooks/use-input-curves";
 import { CurveViewPanel } from "../panels/curve-view-panel";
 
 const CREDIT_SECTORS = ["특은채", "은행채", "카드채", "회사채"] as const;
@@ -145,6 +146,80 @@ function BpStepperField({
   );
 }
 
+/**
+ * 평가 기준일 control (demo sprint, two-pane) — a date field plus ◀/▶ steppers
+ * over the backend's available market-data dates and an 오늘 reset. Writes the
+ * slice's userBaseDate; the app-layer bridge folds it into inputs.baseDate, so
+ * the preview quotes, swap filtering, and the simulate payload all follow one
+ * date. Stepping is over available_dates only — no fabricated dates.
+ */
+function BaseDateControl({ baseDate }: { baseDate: string }) {
+  const userBaseDate = useSimulationDataStore((s) => s.userBaseDate);
+  const setUserBaseDate = useSimulationDataStore((s) => s.setUserBaseDate);
+  const { data: range } = useMarketDateRange();
+
+  const dates = range?.available_dates ?? [];
+  // Index of the latest available date ≤ current — the step anchor even when
+  // the current date itself (e.g. today, weekend) has no snapshot.
+  let anchor = -1;
+  for (let i = 0; i < dates.length; i++) {
+    if (dates[i] <= baseDate) anchor = i;
+    else break;
+  }
+  const prevDate = anchor > 0 ? dates[anchor - 1] : null;
+  const next = anchor >= 0 && anchor < dates.length - 1 ? dates[anchor + 1] : null;
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <label className="text-label uppercase text-fg-muted">평가 기준일</label>
+        {userBaseDate && (
+          <button
+            type="button"
+            onClick={() => setUserBaseDate(null)}
+            className="border border-sem-info bg-sem-info-ghost px-2 py-0.5 text-micro text-sem-info transition-colors hover:bg-sem-info-soft"
+          >
+            오늘로
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          variant="icon"
+          size="sm"
+          aria-label="이전 영업일"
+          disabled={!prevDate}
+          onClick={() => prevDate && setUserBaseDate(prevDate)}
+        >
+          ◀
+        </Button>
+        <div className="min-w-0 flex-1">
+          <Input
+            type="date"
+            aria-label="평가 기준일"
+            data-num
+            value={baseDate}
+            min={range?.min_date}
+            max={range?.max_date}
+            onChange={(e) => setUserBaseDate(e.target.value || null)}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="icon"
+          size="sm"
+          aria-label="다음 영업일"
+          disabled={!next}
+          onClick={() => next && setUserBaseDate(next)}
+        >
+          ▶
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function ConfigureStage() {
   const { params, inputs, status, patchParams, runCurrent } = useSimulationPort();
   const canRun = inputs.positions.length > 0 && status !== "running";
@@ -186,6 +261,9 @@ export function ConfigureStage() {
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto lg:grid-cols-[minmax(320px,420px)_1fr] lg:overflow-hidden">
         {/* ── Controls column ── */}
         <div className="space-y-5 lg:overflow-y-auto lg:pr-1">
+          {/* 0. 평가 기준일 (demo sprint) — valuation-date toggle on top */}
+          <BaseDateControl baseDate={inputs.baseDate} />
+
           {/* 1. 시뮬레이션 기간 — segmented buttons (s11 T2) */}
           <div>
             <label className="mb-2 block text-label uppercase text-fg-muted">시뮬레이션 기간</label>
@@ -220,21 +298,10 @@ export function ConfigureStage() {
             </div>
           </div>
 
-          {/* 3. 분포 σ — s13: 팬 차트의 bp/√영업일 불확실성, (0, 25] 클램프 */}
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <label className="text-label uppercase text-fg-muted">분포 σ (팬 차트)</label>
-              <span className="text-micro text-fg-dim">bp/√day</span>
-            </div>
-            <BpStepperField
-              value={toNum(params.sigmaBp)}
-              min={0.1}
-              max={25}
-              step={0.5}
-              onCommit={(v) => patchParams({ sigmaBp: String(v) })}
-              ariaLabel="분포 σ"
-            />
-          </div>
+          {/* 분포 σ input removed for the demo two-pane (trader feedback):
+              the preview is a single-curve view. params.sigmaBp stays in the
+              store/payload (default 2.0) — engine σ capability intact. See
+              DEMO_DEBT.md. */}
 
           {/* ── 고급 설정 (collapsed by default) ── */}
           <div className="border-t border-border-subtle pt-4">
