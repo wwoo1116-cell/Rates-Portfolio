@@ -319,9 +319,13 @@ export function BookDailyPnlTable() {
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-h2 text-fg-primary">Daily P&amp;L by Book</span>
-        <div className="flex items-center gap-2">
+      {/* flex-wrap (T2b): the date control widened the right cluster past what
+          narrow dockview widths can fit on one line — without wrap the title
+          gets crushed into a vertical word stack. Wrapping drops the whole
+          control cluster under the title instead. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <span className="text-h2 text-fg-primary whitespace-nowrap">Daily P&amp;L by Book</span>
+        <div className="flex flex-wrap items-center gap-2">
           {/* T2b — which close to price off; the label to its right stays the
               backend's as_of (T), so past picks label themselves honestly. */}
           {hasPositions && dailyPnlCloseDate && <CloseDateControl closeDate={dailyPnlCloseDate} />}
