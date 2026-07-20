@@ -73,9 +73,15 @@ export function PnlWaterfall({ items, total, totalLabel }: PnlWaterfallProps) {
   const yMax = rawMax + span * 0.12;
   const y = (v: number) => PAD.top + ((yMax - v) / (yMax - yMin)) * plotH;
 
-  const slotW = n > 0 ? plotW / n : 0;
-  const barW = Math.max(slotW * 0.55, 8);
-  const xCenter = (i: number) => PAD.left + slotW * i + slotW / 2;
+  // HARDEN-1 layout fix (owner: bars too far apart to read as a waterfall).
+  // Tight category axis: slot width is CAPPED so a wide panel doesn't stretch
+  // the gaps, the whole group centers in the pane, and bar:gap is 0.72:0.28
+  // ≈ 2.6:1 (≥2:1 spec; Home stacked-bar 1:1 is the floor). Numbers untouched.
+  const slotW = n > 0 ? Math.min(plotW / n, 120) : 0;
+  const groupW = slotW * n;
+  const xStart = PAD.left + (plotW - groupW) / 2;
+  const barW = Math.max(slotW * 0.72, 8);
+  const xCenter = (i: number) => xStart + slotW * i + slotW / 2;
 
   if (plotW <= 0 || plotH <= 0) return <div ref={containerRef} className="h-full w-full" />;
 
@@ -127,8 +133,8 @@ export function PnlWaterfall({ items, total, totalLabel }: PnlWaterfallProps) {
   return (
     <div ref={containerRef} data-num className="h-full w-full">
       <svg width={w} height={h} role="img" aria-label="손익 워터폴">
-        {/* zero baseline */}
-        <line x1={PAD.left} x2={w - PAD.right} y1={y(0)} y2={y(0)} stroke={t.zeroLine} strokeWidth={1} />
+        {/* zero baseline — spans the (tight, centered) category group */}
+        <line x1={xStart} x2={xStart + groupW} y1={y(0)} y2={y(0)} stroke={t.zeroLine} strokeWidth={1} />
         {/* dashed connectors carrying the running level to the next slot */}
         {slots.map((s, i) => (
           <line
