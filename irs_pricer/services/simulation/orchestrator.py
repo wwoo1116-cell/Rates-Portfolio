@@ -39,6 +39,10 @@ def run_simulation(
     irs_curves: list[dict],
     custom_path: list[dict],
     sigma_bp: float = _DIST_SIGMA_BP_DAILY,
+    # SIM2-5 (ruling ④, 추가 전용): True + fundingRate 생략 → 고정 모드 조달이
+    # 요청의 금통위 이벤트로 스테핑(기존 calc_dynamic_funding_rate 메커니즘,
+    # base = 정책 상수 페어). False(기본) = 종전과 바이트 동일.
+    funding_stepping: bool = False,
 ) -> dict:
     """POST /api/simulate 한 건의 전체 계산. 원본 엔드포인트 본문의 순서 그대로:
     커브 만기일 보정 → IRS 쇼크커브 명시적 빌드 → IRS 프라이싱 주입(enrich) →
@@ -65,6 +69,7 @@ def run_simulation(
             sim_days=sim_days, shock_type=shock_type, shock_mode=shock_mode,
             base_shock_bp=base_shock_bp, base_date=base_date,
             irs_curves=irs_curves, custom_path=custom_path, sigma_bp=sigma_bp,
+            funding_stepping=funding_stepping,
             _prof_t0=_prof_t0,
         )
     finally:
@@ -88,6 +93,7 @@ def _run_simulation_profiled(
     irs_curves: list[dict],
     custom_path: list[dict],
     sigma_bp: float,
+    funding_stepping: bool,
     _prof_t0: float,
 ) -> dict:
 
@@ -142,6 +148,7 @@ def _run_simulation_profiled(
             irs_shock_curve_prebuilt=irs_shock_curve,
             custom_path=custom_path or None,
             funding_rate_fixed=funding_rate_fixed,
+            funding_stepping=funding_stepping,
         )
 
     # HARDEN-1: 일별 분해 경로는 chart가 decomposition dict에 실어 보낸다
@@ -189,6 +196,7 @@ def _run_simulation_profiled(
                 custom_path=custom_path or None,
                 sigma_bp=sigma_bp,
                 funding_rate_fixed=funding_rate_fixed,
+                funding_stepping=funding_stepping,
             )
     except Exception:
         logger.exception("[s11 T3] 분포 밴드 계산 실패 — distribution=null로 응답")

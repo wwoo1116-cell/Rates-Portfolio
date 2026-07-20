@@ -77,6 +77,7 @@ def build_distribution_bands(
     custom_path: list[dict] | None,
     sigma_bp: float = _DIST_SIGMA_BP_DAILY,
     funding_rate_fixed: bool = False,
+    funding_stepping: bool = False,
 ) -> dict:
     """totalPnL의 퍼센타일 팬 밴드. z=0 런은 기본 시나리오와 입력이 동일하므로
     base_chart를 그대로 재사용한다(p50 ≡ 기본 런 바이트 동일 — 중앙선 고정,
@@ -132,6 +133,7 @@ def build_distribution_bands(
             custom_path=_offset_custom_path(custom_path, off, sim_days),
             skip_recon=True,
             funding_rate_fixed=funding_rate_fixed,
+            funding_stepping=funding_stepping,
         )
         runs[pct] = {int(r.get("day", 0)): float(r.get("totalPnL", 0)) for r in chart_p}
         rate_runs[pct] = {int(r.get("day", 0)): float(r.get("bp", 0.0)) for r in rate_path_p}

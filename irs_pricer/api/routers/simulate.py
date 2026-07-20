@@ -59,6 +59,10 @@ class SimulateRequest(BaseModel):
     # 범위 밖(≤0, >25)은 422: σ=0은 폭 0의 "팬"(분포 주장으로서 거짓)이고,
     # 25bp/√일 초과는 어떤 KRW 금리 체계에서도 입력 실수다.
     sigma_bp: float = Field(default=2.0, gt=0, le=25)
+    # SIM2-5 (ruling ④, 추가 전용): True + fundingRate 생략 → 고정 모드 조달이
+    # 요청의 금통위 이벤트로 스테핑(base = 정책 상수 페어). 기본 False = 종전
+    # 동작 바이트 동일. 명시적 fundingRate 경로(레거시 스테핑)에는 영향 없음.
+    fundingStepping: bool = False
 
 
 class SimulationChartPoint(BaseModel):
@@ -238,4 +242,5 @@ def simulate(req: SimulateRequest) -> dict:
         irs_curves=req.irsCurves,
         custom_path=req.customPath,
         sigma_bp=req.sigma_bp,
+        funding_stepping=req.fundingStepping,
     )

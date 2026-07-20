@@ -141,10 +141,13 @@ def test_home_funding_rate_uses_policy_constant(client: TestClient) -> None:
     assert body["funding_rate_default"] == pytest.approx(0.0285, abs=1e-15)
 
 
-def test_funding_omitted_is_constant_everywhere_despite_events(client: TestClient) -> None:
-    """fundingRate omitted + a 금통위 cut configured: the funding strip must be
-    the constant on EVERY row (no event stepping), and the carry chip identity
-    carryBp == (운용 − funding) must hold to 0.1bp."""
+def test_funding_omitted_stays_constant_when_stepping_off(client: TestClient) -> None:
+    """[CHANGED, SIM2-5 ruling ④ — re-specced, assertions unchanged] The old
+    'constant everywhere despite events' pin is now the STEPPING-OFF case:
+    with fundingStepping absent/false (the default), fundingRate omitted + a
+    금통위 cut still yields the constant on EVERY row, and the carry identity
+    carryBp == (운용 − funding) holds to 0.1bp — byte-identical to the
+    pre-SIM2-5 behavior."""
     req = _base_request(
         [dict(BOND)],
         baseShockBp=0,  # no rate shock — isolates the carry arithmetic
@@ -168,6 +171,52 @@ def test_funding_omitted_is_constant_everywhere_despite_events(client: TestClien
     # 30 calendar days × 1e10 × (0.030 − 0.0285) / 365, despite the -25bp event.
     expected = round(30 * 10_000_000_000 * 0.0015 / 365)
     assert body["summary"]["finalCarry"] == expected
+
+
+def test_funding_omitted_steps_when_stepping_on(client: TestClient) -> None:
+    """[SIM2-5 ruling ④ — the stepping-ON case] fundingStepping=true + omitted
+    fundingRate: fixed-mode funding STEPS at the 금통위 date via the existing
+    calc_dynamic_funding_rate mechanism, base = the policy constant pair
+    (0.0285 before the event, 0.0260 from it). The per-row carry identity —
+    the funding-only isolation — must survive on stepped rows, and finalCarry
+    equals the two-segment accrual arithmetic."""
+    req = _base_request(
+        [dict(BOND)],
+        baseShockBp=0,
+        fundingEvents=[{"date": "2026-07-20", "shiftBp": -25}],
+        fundingStepping=True,
+    )
+    r = client.post("/api/simulate", json=req)
+    assert r.status_code == 200, r.text
+    body = r.json()
+
+    fc = body["fundingCurve"]
+    assert len(fc) > 1
+    stepped = [p for p in fc if p["date"] >= "2026-07-20"]
+    flat = [p for p in fc if p["date"] < "2026-07-20"]
+    assert stepped and flat, "window must straddle the event"
+    for p in flat:
+        assert p["fundingRate"] == pytest.approx(0.0285, abs=1e-12), p
+    for p in stepped:
+        assert p["fundingRate"] == pytest.approx(0.0260, abs=1e-12), p
+    # The isolation identity survives stepping: carry == 운용 − funding per row.
+    for p in fc:
+        if p["positionRate"] is not None:
+            assert p["carryBp"] == pytest.approx(
+                (p["positionRate"] - p["fundingRate"]) * 10000.0, abs=0.1
+            ), p
+
+    # Strip-integral identity: finalCarry == Σ (mtmYield − fundingRate_row) ×
+    # Δday over the response's own staircase (the business-day loop applies a
+    # row's rate across its calendar gap, so the strip IS the accrual spec —
+    # no parallel reconstruction of the biz-day schedule here).
+    expected = 0.0
+    for prev, cur in zip(fc, fc[1:]):
+        expected += 10_000_000_000 * (0.030 - cur["fundingRate"]) * (cur["day"] - prev["day"]) / 365
+    assert body["summary"]["finalCarry"] == pytest.approx(expected, abs=2.0)
+    # And the staircase genuinely raised carry vs the constant case (a cut
+    # widens the spread): constant-case value from the stepping-off twin.
+    assert body["summary"]["finalCarry"] > round(30 * 10_000_000_000 * 0.0015 / 365)
 
 
 def test_funding_explicit_value_keeps_source_stepping(client: TestClient) -> None:

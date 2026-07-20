@@ -143,3 +143,69 @@ def test_shaped_path_recon_table_rides_the_same_path(client) -> None:
         # dailyDbp is per-tenor; every tenor's Δbp must be zero in the window.
         assert all(v == pytest.approx(0.0, abs=0.11) for v in r["dailyDbp"].values()), r
         assert r["totalEstPnl"] == pytest.approx(0.0, abs=1.0), r
+
+
+# ── SIM2-5 (ruling ④) — fundingStepping A/B pins ────────────────────────────
+
+def _stepping_ab_request(with_events: bool) -> dict:
+    req = _fan_request()
+    req["fundingEvents"] = (
+        [{"date": "2026-07-20", "shiftBp": -25}] if with_events else []
+    )
+    return req
+
+
+def test_funding_stepping_flag_is_inert_without_events(client) -> None:
+    """Same request ± fundingStepping, NO 금통위 events: byte-identical —
+    the flag alone must change nothing."""
+    off = _stepping_ab_request(with_events=False)
+    on = json.loads(json.dumps(off))
+    on["fundingStepping"] = True
+    r_off = client.post("/api/simulate", json=off)
+    r_on = client.post("/api/simulate", json=on)
+    assert r_off.status_code == r_on.status_code == 200
+    assert r_off.content == r_on.content
+
+
+def test_funding_stepping_moves_only_funding_side_fields(client) -> None:
+    """Same request ± the flag, WITH an event: the moved field set is exactly
+    the funding side — fundingCurve rates/carry, the carry/total accumulators
+    (chartData cumulativeCarry/totalPnL, summary finalCarry/finalTotal,
+    decomposition fundingCost/total + their daily paths, distribution return
+    bands). Valuation (MTM/swap), rate paths, PVBP, book P&L and exclusions
+    must be byte-identical."""
+    off = _stepping_ab_request(with_events=True)
+    on = json.loads(json.dumps(off))
+    on["fundingStepping"] = True
+    a = client.post("/api/simulate", json=off).json()
+    b = client.post("/api/simulate", json=on).json()
+
+    # Funding side genuinely moved (staircase materialized).
+    assert a["fundingCurve"] != b["fundingCurve"]
+    assert any(p["fundingRate"] == pytest.approx(0.0260, abs=1e-12) for p in b["fundingCurve"])
+    assert a["summary"]["finalCarry"] != b["summary"]["finalCarry"]
+
+    # Everything valuation-side is byte-identical.
+    assert a["pvbpSensitivity"] == b["pvbpSensitivity"]
+    assert a["bookDailyPnLs"] == b["bookDailyPnLs"]
+    assert a["exclusions"] == b["exclusions"]
+    assert a["irsSettlementEvents"] == b["irsSettlementEvents"]
+    assert a["irsDailyReconciliation"] == b["irsDailyReconciliation"]
+    assert a["distribution"]["ratePaths"] == b["distribution"]["ratePaths"]
+    for ra, rb in zip(a["chartData"], b["chartData"]):
+        assert ra["mtmPnL"] == rb["mtmPnL"]
+        assert ra["swapPnL"] == rb["swapPnL"]
+        assert ra["swapThetaPnL"] == rb["swapThetaPnL"]
+        assert ra["swapValuationPnL"] == rb["swapValuationPnL"]
+    assert a["summary"]["finalMTM"] == b["summary"]["finalMTM"]
+    assert a["summary"]["finalSwap"] == b["summary"]["finalSwap"]
+    da, db = a["totalReturnDecomposition"], b["totalReturnDecomposition"]
+    assert da["bondMtm"] == db["bondMtm"]
+    assert da["swapMtm"] == db["swapMtm"]
+    assert da["swapCarry"] == db["swapCarry"]
+    assert da["fundingCost"] != db["fundingCost"]
+
+    # The identity still closes on the stepped side, per day and at horizon.
+    for row in b["decompositionDaily"]:
+        s = row["fundingCost"] + row["bondMtm"] + row["bondCarry"] + (row["swapMtm"] or 0) + (row["swapCarry"] or 0)
+        assert s == pytest.approx(row["total"], abs=1.0)

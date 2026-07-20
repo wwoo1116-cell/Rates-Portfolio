@@ -78,6 +78,7 @@ def build_chart_data(
     custom_path: list[dict] | None = None,
     skip_recon: bool = False,
     funding_rate_fixed: bool = False,
+    funding_stepping: bool = False,
 ) -> tuple[list[dict], dict, list[dict], list[dict], list[dict], dict, list[dict]]:
     """7-튜플 (chart_data, summary, settlement_events, daily_recon, funding_curve,
     decomposition, rate_path).
@@ -122,7 +123,9 @@ def build_chart_data(
 
     # s15 T1: 조달 비용 쪽이 보는 이벤트 목록 — 고정 조달 모드에서는 비운다.
     # 금리 경로(쇼크) 쪽 funding_events 사용은 아래에서 원본 그대로다.
-    _cost_events = [] if funding_rate_fixed else (funding_events or [])
+    # SIM2-5 (ruling ④): 고정 모드에서도 옵트인 시 조달 비용이 금통위 이벤트로
+    # 스테핑한다(base = 정책 상수). 기본(False)은 종전 고정 동작 그대로.
+    _cost_events = [] if (funding_rate_fixed and not funding_stepping) else (funding_events or [])
 
     # 만기 채권을 재투자 Cash Pool로 추적
     bond_positions = [p for p in positions if p.bondType != "swap"]
