@@ -8,8 +8,8 @@
 백엔드를 먼저 띄운 뒤(아래 참고), 프론트를 실행합니다.
 
 ```bash
-# 1. 백엔드 (../IRS Pricer_Mock 에서)
-python -m uvicorn irs_pricer.api.app:app --reload --port 8000
+# 1. 백엔드 (../IRS Pricer_Mock 에서 — 권장은 start-backend.ps1, --reload 금지(F-17))
+python -m uvicorn irs_pricer.api.app:app --port 8000
 
 # 2. 프론트엔드 (이 폴더에서)
 pnpm install
