@@ -1,0 +1,14 @@
+== ls-remote FE (Rates-Portfolio) ==
+c96d74285363d8c720a256cb5c5e85ffd12091ed	HEAD
+a6e954ad09d563ce1229fee07c00c1d878b33e73	refs/heads/feat/simulation-migration
+c96d74285363d8c720a256cb5c5e85ffd12091ed	refs/heads/main
+fc233e25202752caeb6f46adb2361adbf2bab01f	refs/heads/s10/ui-chart-visibility
+eeb94bf0fa680baaa28dfeb3296227cf76b82f93	refs/heads/s11/simulation-redesign
+total refs: 21
+
+== ls-remote BE (CD-IRs-NPV-Pricer -> case-fixed CD-IRS-NPV-Pricer) ==
+4816b79dc3fb3a37ae695225b18e87fba0352d92	HEAD
+4816b79dc3fb3a37ae695225b18e87fba0352d92	refs/heads/main
+d88a9311fdd5f5a9342b8e21366afa6e71e788ef	refs/heads/s11/npv-identity
+008ab2fff6f1b88b5942cb1de05aedbcd4060302	refs/heads/s13/dirty-basis
+total refs: 14

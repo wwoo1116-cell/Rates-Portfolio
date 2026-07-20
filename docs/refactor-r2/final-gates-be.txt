@@ -1,0 +1,4 @@
+== R2 final gates BE @ 4cf96a3 (post folder rename) 2026-07-20 10:50:40 ==
+327 passed, 4 xfailed, 1 warning in 50.87s
+-- anchors --
+42 passed, 1 warning in 14.33s

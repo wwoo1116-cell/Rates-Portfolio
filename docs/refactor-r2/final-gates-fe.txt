@@ -1,0 +1,5 @@
+== R2 final gates FE @ a6e954a (post folder rename, after pnpm relink) 2026-07-20 10:52:47 ==
+vitest:       Tests  221 passed (221)
+tsc: clean
+eslint: ✖ 43 problems (20 errors, 23 warnings)
+build: clean
