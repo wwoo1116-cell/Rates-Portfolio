@@ -142,6 +142,29 @@ describe("SimulationFlow (s15 staged flow)", () => {
     expect(screen.queryByText(/^2\.60%$/)).toBeNull(); // no bare single number
   });
 
+  it("SIM2-7: fixed-mode runs render the funding provenance line", () => {
+    renderFlow();
+    const basisResult = {
+      ...RESULT,
+      fundingBasis: {
+        seriesStart: "2016-01-01",
+        joinDate: "2026-07-16",
+        seriesLatestRate: 0.0275,
+        policyRate: 0.0275,
+        spreadBp: 10,
+        stale: false,
+        applied: true,
+      },
+    } as unknown as SimulateResponse;
+    act(() => useSimulationDataStore.getState().markRunning());
+    act(() => useSimulationDataStore.getState().ingestResult(REQUEST, basisResult));
+
+    const line = screen.getByText(/조달 기준:/);
+    expect(line.textContent).toContain("~2026-07-16 실적(BOK)+10bp");
+    expect(line.textContent).toContain("이후 정책상수 2.85%");
+    expect(line.textContent).not.toContain("시리즈 지연");
+  });
+
   // ── SIM2-6 — stage & result persistence across tab navigation ──
 
   it("unmount → remount restores Results from the persisted snapshot, no new run", () => {

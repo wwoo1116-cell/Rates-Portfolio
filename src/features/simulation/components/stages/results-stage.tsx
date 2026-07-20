@@ -61,19 +61,22 @@ export function ResultsStage({ onEdit }: { onEdit: () => void }) {
     // scenario-curves tests); only the display is gone.
   }
   if (lastFunding) {
-    // SIM2-5 — staircase-aware chip: under stepping a single number would hide
-    // the staircase, so the chip shows the range (시작→만기) whenever the strip
-    // actually moved, labeled 만기 for the terminal figure.
+    // SIM2-5/SIM2-7 — staircase-aware chip: the strip can step from the
+    // HISTORICAL basis (past-date windows) and/or 금통위 events, and a single
+    // number would hide either staircase. Detection is therefore on the strip
+    // ITSELF (any variation), not the request flag; historical and event
+    // stairs render identically — the provenance line below the chips says
+    // which sources applied.
     const firstFunding = lastRun.fundingCurve?.[0] ?? null;
     const stepped =
-      Boolean(lastRunRequest?.fundingStepping) &&
       firstFunding !== null &&
-      firstFunding.fundingRate !== lastFunding.fundingRate;
+      (lastRun.fundingCurve ?? []).some((p) => p.fundingRate !== firstFunding.fundingRate);
     chips.push({
       label: stepped ? "Funding(만기)" : "Funding",
-      value: stepped
-        ? `${(firstFunding.fundingRate * 100).toFixed(2)}%→${(lastFunding.fundingRate * 100).toFixed(2)}%`
-        : `${(lastFunding.fundingRate * 100).toFixed(2)}%`,
+      value:
+        stepped && firstFunding
+          ? `${(firstFunding.fundingRate * 100).toFixed(2)}%→${(lastFunding.fundingRate * 100).toFixed(2)}%`
+          : `${(lastFunding.fundingRate * 100).toFixed(2)}%`,
     });
     if (lastFunding.carryBp !== null) {
       chips.push({
@@ -137,6 +140,19 @@ export function ResultsStage({ onEdit }: { onEdit: () => void }) {
           조건 수정
         </Button>
       </div>
+
+      {/* SIM2-7 — funding provenance: historical vs constant vs user events.
+          The stairs themselves render identically in the strip/chip; this
+          line is where 실적(BOK) and 이벤트 are told apart. */}
+      {lastRun.fundingBasis?.applied && (
+        <p data-num className="text-micro text-fg-dim">
+          조달 기준: ~{lastRun.fundingBasis.joinDate ?? "—"} 실적(BOK)+
+          {lastRun.fundingBasis.spreadBp}bp · 이후 정책상수{" "}
+          {((lastRun.fundingBasis.policyRate + lastRun.fundingBasis.spreadBp / 10000) * 100).toFixed(2)}%
+          {lastRunRequest?.fundingStepping ? " · 금통위 이벤트 반영" : ""}
+          {lastRun.fundingBasis.stale ? " · ⚠ 시리즈 지연(최신값 ≠ 정책상수)" : ""}
+        </p>
+      )}
 
       {/* ── Hero: five cumulative component curves (HARDEN-1 — the quantile
              fan/scenario panel left this surface; curves show the PATH, the

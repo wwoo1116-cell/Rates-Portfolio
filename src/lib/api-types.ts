@@ -424,6 +424,12 @@ export interface NpvTracePointOut {
   daily_pnl: number;
   cumulative_pnl: number;
   delta: number;
+  /** SIM2-7 (additive) — historical funding basis at this date: 실적(BOK) +
+   * spread within series coverage, the policy constant beyond the join. */
+  funding_rate?: number;
+  /** SIM2-7 (additive) — cumulative funding COST (negative) accrued on
+   * notional over the trace's calendar gaps at each date's basis rate. */
+  cumulative_funding?: number;
 }
 
 export interface NpvTraceResponse {

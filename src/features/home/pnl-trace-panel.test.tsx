@@ -259,3 +259,10 @@ describe("IRS Rate par prefill", () => {
     expect(screen.getByTestId("par-provenance").textContent).toBe("당일 par 없음 — 직접 입력");
   });
 });
+
+describe("SIM2-7 funding provenance", () => {
+  it("names the historical basis under the Market Rates block", () => {
+    renderPanel();
+    expect(screen.getByTestId("trace-funding-provenance").textContent).toContain("실적(BOK) + 10bp");
+  });
+});

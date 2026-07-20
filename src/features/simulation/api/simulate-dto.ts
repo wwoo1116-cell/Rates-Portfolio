@@ -124,6 +124,17 @@ export interface SimulationExclusion {
  * bondMtm + bondCarry + fundingCost + swapMtm + swapCarry === final totalPnL
  * (±₩1, pinned server-side). swapMtm/swapCarry are null when swaps were
  * excluded (unknown, not zero). */
+/** SIM2-7 — funding-basis provenance (see SimulateResponse.fundingBasis). */
+export interface FundingBasis {
+  seriesStart: string | null;
+  joinDate: string | null;
+  seriesLatestRate: number | null;
+  policyRate: number;
+  spreadBp: number;
+  stale: boolean;
+  applied: boolean;
+}
+
 /** HARDEN-1 — one day of the cumulative component decomposition (unrounded
  * KRW floats, swap split on the theta/valuation axis like the final
  * decomposition). swapMtm/swapCarry are null when swaps were excluded. */
@@ -166,4 +177,9 @@ export interface SimulateResponse {
   // (±₩1 pinned server-side); final day == totalReturnDecomposition. Swap
   // components are null per day when swaps were excluded (blank policy).
   decompositionDaily?: DecompositionDailyPoint[];
+  // SIM2-7 additive field — funding-basis provenance: historical BOK stairs
+  // within series coverage (through joinDate), the policy constant beyond,
+  // SIM2-5 events on top. `applied` only for fixed-mode (omitted fundingRate)
+  // runs; `stale` = series latest disagrees with the policy constant.
+  fundingBasis?: FundingBasis;
 }

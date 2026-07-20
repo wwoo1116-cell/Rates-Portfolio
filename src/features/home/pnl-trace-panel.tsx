@@ -208,6 +208,12 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
       {/* Top: market rates for the clicked date */}
       <div className="flex flex-col gap-1.5 border-b border-border-subtle pb-3">
         <span className="text-label font-bold text-fg-muted uppercase">Market Rates -- {point.valuation_date}</span>
+        {/* SIM2-7 provenance: the trace's funding leg accrues at each date's
+            ACTUAL BOK base rate + 10bp (historical stairs), not today's
+            constant — 실적(BOK) 기준. */}
+        <span className="text-micro text-fg-dim" data-testid="trace-funding-provenance">
+          조달 기준: 실적(BOK) + 10bp — 과거 일자는 해당 시점 기준금리로 계상
+        </span>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
           {RATE_SERIES_OPTIONS.map((opt) => {
             const value = rateValue(point, opt.key);
@@ -402,6 +408,22 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
                     {formatKrwAxisSigned(hoverData.point.cumulative_pnl)} KRW
                   </span>
                 </div>
+                {/* SIM2-7 — the trace's funding leg: the date's HISTORICAL
+                    basis rate (실적 BOK + 10bp; e.g. 0.85% in the 2021-11
+                    era, never today's constant) + cumulative funding cost. */}
+                {hoverData.point.funding_rate != null && (
+                  <div className="flex items-center justify-between gap-6">
+                    <span className="text-micro font-bold text-fg-muted uppercase">Funding</span>
+                    <span className="text-micro font-normal text-fg-primary">
+                      {(hoverData.point.funding_rate * 100).toFixed(2)}%
+                      {hoverData.point.cumulative_funding != null && (
+                        <span className="text-fg-muted">
+                          {" · "}{formatKrwAxisSigned(hoverData.point.cumulative_funding)} KRW
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </ChartFrame>
