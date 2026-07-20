@@ -7,7 +7,7 @@ which is byte-identical to the source's quant_engine.py -- so every number this
 service produces comes from the same engine code the source service ran.
 
 Deliberate deviations from the source, kept to the glue only:
-- `build_pvbp_sensitivity` is rewritten pandas-free (this deployment does not
+- `build_frontend_pvbp_sensitivity` (renamed R2: same name as the DIFFERENT portfolio_analytics_service builder was a hazard) is rewritten pandas-free (this deployment does not
   ship pandas). The original used a DataFrame group-by-sum; the plain-dict
   aggregation below sums the same values over the same rows.
 - `print()` diagnostics became module-logger calls with the same text.
@@ -1318,7 +1318,7 @@ def build_distribution_bands(
     }
 
 
-def build_pvbp_sensitivity(positions: list[FrontendPosition]) -> list[dict]:
+def build_frontend_pvbp_sensitivity(positions: list[FrontendPosition]) -> list[dict]:
     sectors = ["국고채", "통안채", "특은채", "시은채", "공사채", "여전채", "회사채", "IRS", "OIS"]
     # qe.KRD_NAMES를 그대로 참조(하드코딩된 별도 목록이면 엔진에 새 테너를 추가해도
     # 여기서 누락되어 "합계"가 실제 평행이동 PVBP와 어긋난다 — 6Y/8Y/9Y 추가 시 실제로 발생했던 문제)
@@ -1800,7 +1800,7 @@ def _run_simulation_profiled(
             decomposition["bondMtm"] + decomposition["bondCarry"] + decomposition["fundingCost"]
         )
     with _phase(_prof, "assembly (pvbp+bookPnL)"):
-        pvbp_sensitivity = build_pvbp_sensitivity(positions)
+        pvbp_sensitivity = build_frontend_pvbp_sensitivity(positions)
         # bookDailyPnL: 당일 실제 금리변동만 반영. dailyShockCurves 없으면 shockCurves로 fallback
         daily_curves = daily_shock_curves if daily_shock_curves is not None else shock_curves
         book_daily_pnls = build_book_daily_pnl(positions, daily_curves, funding_rate)
