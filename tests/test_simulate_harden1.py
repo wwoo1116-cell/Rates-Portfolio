@@ -59,21 +59,26 @@ def _row_sum(row: dict) -> float:
 
 def test_swap_carry_nonzero_and_pinned_on_fan_fixture(client) -> None:
     """The point of the fix: swapCarry was 0.0 by engine construction; it is
-    now the theta P&L. Values pinned; sum with swapMtm preserves the old dirty
-    swap total, so total/bond/funding stayed byte-identical."""
+    now the theta P&L.
+
+    [CHANGED, SIM2-4 ruling] the fan fixture's shaped customPath now drives
+    the swap legs too (path-true), so the VALUATION side and total moved:
+    swapMtm 134,446,996.42 → 125,508,190.66 and total 37,128,110.35 →
+    28,189,304.59 (refixings crystallize mid-horizon path effects — the
+    designed behavior, not drift). Theta (swapCarry) is base-curve-driven and
+    unchanged; bond components and funding are untouched by construction."""
     body = _post(client, "fan_non_monotone_request.json")
     d = body["totalReturnDecomposition"]
 
     assert d["swapCarry"] != 0.0
     assert d["swapCarry"] == pytest.approx(-42_393_854.82569349, abs=1.0)
-    assert d["swapMtm"] == pytest.approx(134_446_996.41759253, abs=1.0)
-    # Sum unchanged vs the pre-fix dirty swapMtm (pinned before-value).
-    assert d["swapMtm"] + d["swapCarry"] == pytest.approx(92_053_141.59189904, abs=1.0)
+    assert d["swapMtm"] == pytest.approx(125_508_190.65524912, abs=1.0)
+    assert d["swapMtm"] + d["swapCarry"] == pytest.approx(83_114_335.82955563, abs=1.0)
     # Unchanged components (pre-fix captures, exact to the float).
     assert d["bondMtm"] == pytest.approx(-75_833_596.48720416, abs=1e-3)
     assert d["bondCarry"] == pytest.approx(285_483_035.32653785, abs=1e-3)
     assert d["fundingCost"] == pytest.approx(-264_574_470.08219185, abs=1e-3)
-    assert d["total"] == pytest.approx(37_128_110.349040896, abs=1e-3)
+    assert d["total"] == pytest.approx(28_189_304.58669749, abs=1e-3)
 
 
 def test_swap_carry_pinned_on_representative_fixture(client) -> None:

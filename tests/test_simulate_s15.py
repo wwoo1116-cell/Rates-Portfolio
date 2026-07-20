@@ -332,8 +332,22 @@ def test_fan_scenario_identity_non_monotone_book(client: TestClient) -> None:
     (1) the center band equals the base run BYTE-EQUAL on every day, and
     (2) label-order crossings SURVIVE into the response — under the removed
         per-day sorting they were impossible (bands were always ordered), so
-        their presence pins that runs are no longer migrated across ranks."""
-    r = client.post("/api/simulate", json=FAN_NON_MONOTONE_REQUEST)
+        their presence pins that runs are no longer migrated across ranks.
+
+    [CHANGED, SIM2-4 ruling] path-true swaps made the committed fixture's
+    back-loaded path monotone (the swap legs now ride the same designed path
+    as the bonds, which removed the mid-horizon divergence that crossed the
+    scenarios). Non-monotone coverage is kept with an OVERSHOOT path variant
+    (0 → +60bp@D30 → +30bp@D60 — exactly the kind of shape SIM2-3 drag makes
+    expressible); the committed fixture file itself stays byte-stable for the
+    s21 cache and HARDEN-1 pins."""
+    req = dict(FAN_NON_MONOTONE_REQUEST)
+    req["customPath"] = [
+        {"day": 0, "bp": 0},
+        {"day": 30, "bp": 60.0},
+        {"day": 60, "bp": 30.0},
+    ]
+    r = client.post("/api/simulate", json=req)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["exclusions"] == []

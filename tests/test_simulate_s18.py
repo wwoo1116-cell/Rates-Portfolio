@@ -141,8 +141,20 @@ def test_fixture_rate_bands_ordered_while_return_lines_cross(client: TestClient)
     """The dual-axis pin on the live-book fixture, all in one response:
     (a) rate bands never cross (truthful P-labels on the rate axis),
     (b) the return lines DO cross (the non-monotone information preserved),
-    (c) the center return line is the base run byte-equal (invariant kept)."""
-    r = client.post("/api/simulate", json=FAN_NON_MONOTONE_REQUEST)
+    (c) the center return line is the base run byte-equal (invariant kept).
+
+    [CHANGED, SIM2-4 ruling] same overshoot-path variant as
+    test_fan_scenario_identity_non_monotone_book: path-true swaps made the
+    committed fixture monotone; the crossing coverage now rides an overshoot
+    path (0 → +60bp@D30 → +30bp@D60) while the fixture file stays
+    byte-stable for the cache/HARDEN-1 pins."""
+    req = dict(FAN_NON_MONOTONE_REQUEST)
+    req["customPath"] = [
+        {"day": 0, "bp": 0},
+        {"day": 30, "bp": 60.0},
+        {"day": 60, "bp": 30.0},
+    ]
+    r = client.post("/api/simulate", json=req)
     assert r.status_code == 200, r.text
     body = r.json()
 

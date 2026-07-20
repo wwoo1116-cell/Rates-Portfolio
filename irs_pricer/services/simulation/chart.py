@@ -128,6 +128,41 @@ def build_chart_data(
     bond_positions = [p for p in positions if p.bondType != "swap"]
     irs_positions  = [p for p in positions if p.bondType == "swap"]
 
+    # 커스텀 경로 사전 처리 (웨이포인트 기반 factor 보간) — SIM2-4에서 IRS FM
+    # 사전 계산보다 먼저 쓰이도록 함수 상단으로 이동(동작 불변).
+    _sorted_cp = sorted(
+        [{"day": int(p.get("day", 0)), "bp": float(p.get("bp", 0))} for p in (custom_path or [])],
+        key=lambda x: x["day"],
+    ) if custom_path else []
+
+    def _factor(t: int) -> float:
+        if _sorted_cp and base_shock_bp != 0:
+            if t <= _sorted_cp[0]["day"]:
+                return _sorted_cp[0]["bp"] / base_shock_bp
+            if t >= _sorted_cp[-1]["day"]:
+                return _sorted_cp[-1]["bp"] / base_shock_bp
+            for i in range(len(_sorted_cp) - 1):
+                lo, hi = _sorted_cp[i], _sorted_cp[i + 1]
+                if lo["day"] <= t <= hi["day"]:
+                    if hi["day"] == lo["day"]:
+                        return lo["bp"] / base_shock_bp
+                    r = (t - lo["day"]) / (hi["day"] - lo["day"])
+                    return (lo["bp"] + r * (hi["bp"] - lo["bp"])) / base_shock_bp
+        return (t / sim_days) if shock_type == "ramp" else (1.0 if t > 0 else 0.0)
+
+    # ── SIM2-4 (ruling ③) — 스왑 경로 정합 활성화 조건 ──────────────────────
+    # 경로 팩터는 설계 경로가 '비자명'할 때만 FM 엔진에 전달한다. 비자명 =
+    # 웨이포인트가 캘린더 선형 램프(target × day/simDays)에서 벗어남. 자명한
+    # 경로(빈 customPath, 정확한 선형 램프 — 골든 캡처의 대표 픽스처 포함)는
+    # 종전 step/biz-ramp 레짐과 바이트 동일하게 남는다(절대-파라미터-부재
+    # 바이트 동일성 게이트가 구조적으로 성립). 배열은 채권 쪽과 '같은'
+    # _factor에서 뽑는다 — 병렬 수학 없음.
+    _path_factor_arr: "np.ndarray | None" = None
+    if _sorted_cp and base_shock_bp != 0 and any(
+        abs(p["bp"] - base_shock_bp * p["day"] / sim_days) > 1e-9 for p in _sorted_cp
+    ):
+        _path_factor_arr = np.array([_factor(d) for d in range(sim_days + 1)], dtype=float)
+
     # ── IRS FM(Full Revaluation) 경로 사전 계산 ─────────────────────────────
     par_rates       = qe.parse_irs_curves(irs_curves or [], base_date=base_date)
     irs_fm_mtm      = np.zeros(sim_days + 1)   # 포트폴리오 합산 MTM 궤적 (실제 P&L = 세타+평가)
@@ -179,6 +214,8 @@ def build_chart_data(
                 base_date_str          = base_date_str,
                 start_date_str         = str(p.startDate)[:10] if p.startDate else "",
                 funding_events         = funding_events,
+                # SIM2-4: 비자명 설계 경로일 때만 값이 있다(위 활성화 조건).
+                path_factor            = _path_factor_arr,
             )
             irs_fm_mtm   += mtm_arr
             irs_fm_carry += carry_arr
@@ -252,8 +289,16 @@ def build_chart_data(
         return float(_biz_ranks_r[min(max(day, 0), len(_biz_ranks_r) - 1)]) / _biz_total_r
 
     def _cum_shock_r(tau: float, day: int) -> float:
-        """테너별 누적 충격 bp (계단식 1D/3M → 선형 소멸 at 1Y → ramp 1Y+)."""
-        _fac = _ramp_factor_r(day) if shock_type == "ramp" else (1.0 if day > 0 else 0.0)
+        """테너별 누적 충격 bp (계단식 1D/3M → 선형 소멸 at 1Y → ramp 1Y+).
+
+        SIM2-4: 경로 정합이 활성화된 요청은 1Y+ ramp 성분이 biz-ranked ramp
+        대신 설계 경로 팩터를 따른다 — FM 엔진(irs_fm_mtm)과 같은 기준을 써야
+        "추정"과 "실제"가 일관된다는 기존 원칙 그대로다.
+        """
+        if _path_factor_arr is not None:
+            _fac = float(_path_factor_arr[min(max(day, 0), sim_days)])
+        else:
+            _fac = _ramp_factor_r(day) if shock_type == "ramp" else (1.0 if day > 0 else 0.0)
         _ramp_bp = float(np.interp(tau, _irs_sc_t, _irs_sc_bp)) * _fac
         if not _bok_evts_r:
             return _ramp_bp
@@ -382,26 +427,8 @@ def build_chart_data(
             })
             _prev_cal_r = _cal_day
 
-    # 커스텀 경로 사전 처리 (웨이포인트 기반 factor 보간)
-    _sorted_cp = sorted(
-        [{"day": int(p.get("day", 0)), "bp": float(p.get("bp", 0))} for p in (custom_path or [])],
-        key=lambda x: x["day"],
-    ) if custom_path else []
-
-    def _factor(t: int) -> float:
-        if _sorted_cp and base_shock_bp != 0:
-            if t <= _sorted_cp[0]["day"]:
-                return _sorted_cp[0]["bp"] / base_shock_bp
-            if t >= _sorted_cp[-1]["day"]:
-                return _sorted_cp[-1]["bp"] / base_shock_bp
-            for i in range(len(_sorted_cp) - 1):
-                lo, hi = _sorted_cp[i], _sorted_cp[i + 1]
-                if lo["day"] <= t <= hi["day"]:
-                    if hi["day"] == lo["day"]:
-                        return lo["bp"] / base_shock_bp
-                    r = (t - lo["day"]) / (hi["day"] - lo["day"])
-                    return (lo["bp"] + r * (hi["bp"] - lo["bp"])) / base_shock_bp
-        return (t / sim_days) if shock_type == "ramp" else (1.0 if t > 0 else 0.0)
+    # (SIM2-4: 커스텀 경로 전처리(_sorted_cp/_factor)는 IRS FM 사전 계산보다
+    #  먼저 필요해져 함수 상단으로 이동했다 — 동작 불변, 위치만 이동.)
 
     # 단기 이벤트 계단 함수: funding_events 날짜 → D+N 변환
     try:
@@ -528,10 +555,16 @@ def build_chart_data(
 
             # IRS KRD 구간별 분해: BOK 이벤트 당일 에이징된 par커브로 KRD 재계산
             # 단기(1D/3M): BOK 정책금리 직결 → _bok_event_bp 그대로 사용
-            # 장기(1Y+):  IRS FM은 항상 linear ramp(factor=day/sim_days) 사용
-            #              채권 커스텀 경로(_factor)와 독립적 → IRS 쇼크 커브 × ramp 증분
+            # 장기(1Y+):  [SIM2-4] 비자명 설계 경로가 활성화된 요청은 IRS FM이
+            #              그 경로를 타므로 이 진단도 같은 경로 팩터를 쓴다;
+            #              그 외에는 종전 linear ramp(factor=day/sim_days).
             _bok_event_bp  = sum(e["bp"] for e in _short_evts if prev_cal < e["day"] <= t)
-            _irs_ramp_step = dt_cal / max(sim_days, 1)  # 영업일 기간 ramp 증분 (월요일=3/sim_days)
+            if _path_factor_arr is not None:
+                _irs_ramp_step = float(
+                    _path_factor_arr[min(t, sim_days)] - _path_factor_arr[min(max(prev_cal, 0), sim_days)]
+                )
+            else:
+                _irs_ramp_step = dt_cal / max(sim_days, 1)  # 영업일 기간 ramp 증분 (월요일=3/sim_days)
             _KRD_PAIRS = [
                 ("1D", 1/365), ("3M", 0.25), ("6M", 0.5),  ("9M", 0.75),
                 ("1Y", 1.0),   ("1.5Y", 1.5), ("2Y", 2.0), ("3Y", 3.0),
@@ -539,8 +572,12 @@ def build_chart_data(
             ]
             _irs_1p = _irs_3p = _irs_bp = _irs_lp = 0.0  # PVBP 합산
             _irs_1d = _irs_3d = _irs_bd = _irs_ld = 0.0  # P&L 합산
-            # BOK 이벤트 당일 shocked par 커브 (IRS는 linear ramp)
-            _fac_irs = t / max(sim_days, 1)
+            # BOK 이벤트 당일 shocked par 커브 — [SIM2-4] 경로 활성 시 설계 팩터.
+            _fac_irs = (
+                float(_path_factor_arr[min(t, sim_days)])
+                if _path_factor_arr is not None
+                else t / max(sim_days, 1)
+            )
             _par_t   = [(tau, r + float(np.interp(tau, _irs_sc_t, _irs_sc_bp)) * _fac_irs * 1e-4)
                         for tau, r in par_rates]
             _FLOAT_Q = 0.25  # 분기 픽싱 표준

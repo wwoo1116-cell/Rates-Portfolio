@@ -1088,6 +1088,12 @@ def simulate_irs_path_fm(
     audit: bool = False,               # True 시 Day 0~10 감사 로그를 CSV로 저장
     start_date_str: str = "",          # [NEW] 계약 시작일 (ISDA Forward Schedule 생성용)
     funding_events: "list | None" = None,  # BOK 이벤트 목록 (계단식 1D/3M 충격용)
+    # SIM2-4 (추가 전용 — 이 파라미터 외 본 함수/파일 불변 룰 유지): 호출자가
+    # 설계한 일별 충격 팩터 경로. 길이 days_to_simulate+1, 유한값. None이면
+    # 종전 step/ramp 동작과 바이트 동일. 값이 있으면 매일의 커브 충격 스케일이
+    # 이 배열을 따른다(BOK 계단 브랜치의 ramp 성분 포함) — 스왑 MTM 궤적이
+    # 채권 쪽 _factor(커스텀 경로)와 같은 경로를 타게 하는 정합 파라미터.
+    path_factor: "np.ndarray | list | None" = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict, list]:
     """
     True Path-Dependent FM: IRS_Trade 기반 ISDA 표준 스케줄 적용.
@@ -1143,6 +1149,18 @@ def simulate_irs_path_fm(
     mtm_pnl     = np.zeros(D)
     daily_pvbp  = np.zeros(D)
     daily_carry = np.zeros(D)
+
+    # SIM2-4 — 경로 팩터 검증 (길이 D, 전부 유한). None = 레거시 경로 그대로.
+    _path_factor: Optional[np.ndarray] = None
+    if path_factor is not None:
+        _path_factor = np.asarray(path_factor, dtype=float)
+        if _path_factor.shape != (D,):
+            raise ValueError(
+                f"path_factor 길이 {_path_factor.shape[0] if _path_factor.ndim == 1 else _path_factor.shape}"
+                f" != days_to_simulate+1 ({D})"
+            )
+        if not np.all(np.isfinite(_path_factor)):
+            raise ValueError("path_factor에 비유한(NaN/Inf) 값이 있습니다")
 
     zc_base = _zc(0.0)
 
@@ -1298,7 +1316,12 @@ def simulate_irs_path_fm(
             flt_s_old    = flt_s
             flt_b_old    = flt_b
 
-            factor = _ramp_factor(day) if shock_type == "ramp" else 1.0
+            # SIM2-4: 경로 팩터가 있으면 step/ramp 대신 그 날의 설계 팩터를 쓴다.
+            factor = (
+                float(_path_factor[day])
+                if _path_factor is not None
+                else (_ramp_factor(day) if shock_type == "ramp" else 1.0)
+            )
             if _bok_evts_fm:
                 # BOK 계단식: t≤3M=100%, 3M<t<1Y=선형 소멸, t≥1Y=IRS ramp만
                 _bok_cum = _cum_bok_fm(day)
@@ -1314,7 +1337,7 @@ def simulate_irs_path_fm(
                 _shocked_par = [(t, r + _day_shock(t) * SHIFT) for t, r in par_anch]
                 zc_s  = bootstrap_zero_curve(_shocked_par)
                 zc_s1 = bootstrap_zero_curve([(t, r + SHIFT) for t, r in _shocked_par])
-            elif shock_type == "step":
+            elif shock_type == "step" and _path_factor is None:
                 zc_s  = _zc_full
                 zc_s1 = _zc_full1b
             else:
