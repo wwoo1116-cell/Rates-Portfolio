@@ -15,7 +15,7 @@ from . import allocation_history_service
 from . import credit_curve_service
 from . import market_data_service
 from . import portfolio_service
-from .simulation_service import POLICY_BASE_RATE_KRW
+from .funding_basis import POLICY_BASE_RATE_KRW  # R3B-PLUS T2a: shared module, not the simulation facade
 from ..loaders import credit_matrix
 
 logger = logging.getLogger(__name__)

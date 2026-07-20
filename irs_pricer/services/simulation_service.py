@@ -8,7 +8,6 @@ family's surface so every pre-split import keeps working unchanged:
 
 - api/routers/simulate.py:      `simulation_service.run_simulation`,
                                 `FrontendPosition`, `FrontendShockCurves`
-- portfolio_analytics_service:  `POLICY_BASE_RATE_KRW`
 - tests (s15/s18):              funding constants as module attrs,
                                 `_resolve_swap_float_fields`, and the
                                 monkeypatch seam
