@@ -31,12 +31,17 @@ from contextlib import contextmanager
 from datetime import date, timedelta
 
 import numpy as np
-from pydantic import BaseModel
 
 from ..core.errors import NonBusinessDayError
 from ..engine import quant_engine as qe
 from ..engine.fixings import select_fixing
 from . import market_data_service
+from .simulation.constants import (
+    FUNDING_RATE_KRW,
+    FUNDING_SPREAD_BP,
+    POLICY_BASE_RATE_KRW,
+)
+from .simulation.models import FrontendPosition, FrontendShockCurves
 
 try:
     import holidays as _hols_lib
@@ -45,30 +50,6 @@ except ImportError:
     _KR_HOLIDAYS = set()
 
 logger = logging.getLogger(__name__)
-
-
-# ── s15 T1: 조달금리 스펙 — 기준금리 + 10bp, 전 기간 고정 ─────────────────────
-# 소유자 결정(2026-07-16): 조달금리는 "정책 기준금리(기준금리) + 10bp"의 단일
-# 상수이고 시뮬레이션 전 기간에 걸쳐 고정이다 — 데이터 조회도, 금통위 이벤트
-# 경로 스테핑도 없다(금통위 연동 조달 경로는 명시적으로 범위 밖). 이 상수 쌍이
-# 조달 스트립(fundingCurve), 헤더 캐리 칩, Total Return 캐리 계산이 소비하는
-# 유일한 원천이다.
-#
-# 값의 출처(s18 T1): **수기 관리 상수** — 2026-07-16 금통위 결정으로 기준금리
-# 2.50% → 2.75% 인상(2023-01 이후 첫 인상, 14개월 동결 종료). 이 상수는 리포의
-# BOK Base Rate 시계열(Data/BOK Base Rate.xlsx / loaders/base_rate.py)에서
-# 파생하지 **않는다**: 그 시계열은 결정일보다 늦게 적재되므로(2026-07-16 현재
-# 최신 행이 2026-07-08 == 2.50%) 이 상수의 원천으로 삼으면 안 된다. 정책금리
-# 변경 시 여기 한 곳을 수기로 갱신한다. 유효일: 2026-07-16 (MPC 결정일).
-#
-# 금통위 스테핑 없음 — 전 기간 고정 상수가 스펙이다(스테핑은 별도 추후 결정).
-#
-# 하위 호환: 요청이 fundingRate를 명시하면(소스 골든 캡처 등 구형 페이로드)
-# 원본 의미론 — 그 값 + fundingEvents 계단 스테핑 — 을 그대로 유지한다.
-# 라이브 프론트 브리지는 s15부터 fundingRate를 싣지 않는다.
-POLICY_BASE_RATE_KRW = 0.0275    # BOK 기준금리 (소수, 2.75%; 2026-07-16 금통위)
-FUNDING_SPREAD_BP = 10           # 기준금리 대비 조달 스프레드 (bp)
-FUNDING_RATE_KRW = POLICY_BASE_RATE_KRW + FUNDING_SPREAD_BP / 10000.0  # 0.0285
 
 
 # ── s18 T5: /api/simulate 프로파일러 — 측정 전용, 최적화 아님 ─────────────────
@@ -149,39 +130,6 @@ def _log_profile(stats: dict, *, n_positions: int, n_swaps: int, sim_days: int, 
         lines.append(f"[SIM PROFILE]   {label:<28} {rec['calls']:>9} calls {rec['secs']:10.2f}s")
     for ln in lines:
         logger.info(ln)
-
-
-# ── 프론트엔드 시뮬레이션 요청 모델 ──────────────────────────────────────────
-
-class FrontendPosition(BaseModel):
-    id: str = ""
-    name: str = ""
-    book: str = ""
-    bondType: str = "bond"              # 'swap' | 'bond'
-    sector: str = ""
-    maturityDate: str | None = None
-    couponRate: float = 0.0
-    frequency: int = 2
-    notional: float = 0.0
-    entryYield: float = 0.0
-    evaluationAmount: float = 0.0
-    duration: float = 0.0
-    pvbp: float = 0.0
-    tenor: str = ""
-    remainingDays: float = 0.0
-    krdMap: dict[str, float] = {}
-    mtmYield: float | None = None
-    expectedThetaPnL: float | None = None
-    direction: float = 1.0          # IRS: +1=receive-fixed, -1=pay-fixed / Bond: +1=long
-    currentFloatRate: float = 0.0   # IRS 현재 구간 변동금리 (% 단위, e.g. 2.81)
-    nextFixingDate: str | None = None   # IRS 다음 변동금리 픽싱/지급일 (ISO date string)
-    startDate: str | None = None        # IRS 계약 시작일 (ISDA Forward Schedule 생성용)
-
-
-class FrontendShockCurves(BaseModel):
-    bondCurves: dict[str, list[dict]] = {}  # {섹터키: [{t, val}, ...]}
-    swapCurve: list[dict] = []
-    fundingEvents: list[dict] = []
 
 
 # ── 퀀트 엔진 헬퍼 함수 ───────────────────────────────────────────────────────
