@@ -38,3 +38,6 @@ Corners cut for the 2-hour demo-first sprint. Each entry: what / where / how to 
 
 6. **baseDate stepping is over `/api/market-data/range` available_dates.**
    If that endpoint errors, the ◀/▶ steppers disable and only the raw date field works (no fabricated dates). No Seoul business-day authority was ported to FE (standing rule).
+
+7. **Data edge: the two quote sources end on different dates.**
+   As of the sprint, IRS market-data reaches 2026-07-16 but the 국고채 credit-curve series ends 2026-07-15 — on 07-16 the preview honestly draws IRS only (blank policy), and stepping from an unquoted today lands on 07-16 first. Not a code defect; deriving a "common latest" date would fabricate a valuation date, so it was not done. If the demo needs both curves, step to 2026-07-15.
