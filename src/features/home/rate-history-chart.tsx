@@ -18,7 +18,7 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import type { DockviewApi } from "dockview-react";
-import { ChartFrame } from "@/components/charts/ChartFrame";
+import { ChartFrame } from "@/components/charts/chart-frame";
 import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
 import {
   SeriesChart,

@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SegmentedControl } from "@blueprintjs/core";
 import type { IChartApi, ISeriesApi, MouseEventParams } from "lightweight-charts";
 import { LineSeries, LineStyle } from "lightweight-charts";
-import { ChartFrame } from "@/components/charts/ChartFrame";
+import { ChartFrame } from "@/components/charts/chart-frame";
 import { LwChartBase, rateFormatter } from "@/components/charts/lw-chart-base";
 import { CrosshairReticle, type CrosshairReticlePoint } from "@/components/charts/crosshair-reticle";
 import { paneOffsetX, snapReticleToNearestSeries } from "@/components/charts/snap-reticle";

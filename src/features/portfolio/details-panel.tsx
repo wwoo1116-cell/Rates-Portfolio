@@ -5,7 +5,7 @@ import { differenceInCalendarDays, format, parseISO, subYears } from "date-fns";
 import { Spinner } from "@blueprintjs/core";
 import { Badge } from "@/components/ui/badge";
 import { PriceDisplay } from "@/components/data/price-display";
-import { ChartFrame } from "@/components/charts/ChartFrame";
+import { ChartFrame } from "@/components/charts/chart-frame";
 import { SeriesChart, type SeriesChartSeriesDef } from "@/components/charts/series-chart";
 import { CHART_SERIES_COLORS } from "@/lib/chart-colors";
 import { directionPnlTone } from "@/lib/direction-color";
