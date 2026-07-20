@@ -19,7 +19,7 @@
 
 import type { ReactNode } from "react";
 import type { IDockviewPanelProps } from "dockview-react";
-import { SECTOR_ORDER, maturityColor, sectorColor } from "@/lib/chart-colors";
+import { maturityColor } from "@/lib/chart-colors";
 import type { AllocationSeries } from "@/lib/api-types";
 import { RateHistoryChart } from "@/features/home/rate-history-chart";
 import { PnlTracePanel, type PnlTracePanelParams } from "@/features/home/pnl-trace-panel";
@@ -30,6 +30,8 @@ import {
 import {
   AllocationChart,
   MATURITY_ORDER,
+  MERGED_SECTOR_ORDER,
+  mergedSectorColor,
   type AllocationDetachState,
 } from "@/features/home/portfolio-overview";
 import { MtmHistoryChart } from "@/features/portfolio/details-panel";
@@ -66,8 +68,8 @@ function DetachedAllocation({ state }: { state: unknown }) {
         title={s.title ?? ""}
         basis={s.basis ?? ""}
         series={s.series as AllocationSeries}
-        canonical={s.kind === "sector" ? SECTOR_ORDER : MATURITY_ORDER}
-        colorFor={s.kind === "sector" ? sectorColor : maturityColor}
+        canonical={s.kind === "sector" ? MERGED_SECTOR_ORDER : MATURITY_ORDER}
+        colorFor={s.kind === "sector" ? mergedSectorColor : maturityColor}
       />
     </div>
   );

@@ -24,7 +24,50 @@ import { useAllocationHistory } from "@/hooks/use-allocation-history";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartFrame } from "@/components/charts/chart-frame";
 import { StackedBar100, type StackedBar100Column } from "@/components/charts/stacked-bar-100";
-import type { AllocationSeries } from "@/lib/api-types";
+import type { AllocationRow, AllocationSeries } from "@/lib/api-types";
+
+/** R3B-PLUS B1: the Home sector-allocation chart displays 국고채 and 통안채 as
+ * one merged segment — presentation-time only, this chart alone. Every other
+ * sector surface (Portfolio, the PVBP table, chart-colors.ts's SECTOR_COLORS/
+ * SECTOR_ORDER themselves) is untouched; 통안채 exits only THIS legend, not
+ * the palette — MS.navy40 stays live elsewhere (e.g. --chart-series-funding,
+ * S15/HARDEN-1). Color is `sectorColor("국고채")`, not a hex literal, so the
+ * merged segment always matches wherever the token comes from. */
+export const MERGED_GOV_KEY = "국고·통안";
+const MERGED_GOV_PARTS = ["국고채", "통안채"] as const;
+
+export const MERGED_SECTOR_ORDER: readonly string[] = [
+  MERGED_GOV_KEY,
+  ...SECTOR_ORDER.filter((k) => !(MERGED_GOV_PARTS as readonly string[]).includes(k)),
+];
+
+export function mergedSectorColor(key: string): string {
+  return key === MERGED_GOV_KEY ? sectorColor("국고채") : sectorColor(key);
+}
+
+/** Sums 국고채+통안채 into one `국고·통안` field per row; every other field
+ * (other sectors, row metadata) passes through unchanged. Rows with neither
+ * part present (e.g. an empty/unresolved column) merge to 0, matching
+ * toColumns' existing missing-key-is-0 contract. */
+export function mergeGovMsbSeries(series: AllocationSeries): AllocationSeries {
+  if (!MERGED_GOV_PARTS.some((k) => series.keys.includes(k))) return series;
+  return {
+    keys: MERGED_SECTOR_ORDER.filter((k) => k === MERGED_GOV_KEY || series.keys.includes(k)).concat(
+      series.keys.filter((k) => !MERGED_SECTOR_ORDER.includes(k) && !(MERGED_GOV_PARTS as readonly string[]).includes(k)),
+    ),
+    rows: series.rows.map((row) => {
+      const merged: AllocationRow = { ...row };
+      let sum = 0;
+      for (const part of MERGED_GOV_PARTS) {
+        const v = row[part];
+        sum += typeof v === "number" ? v : 0;
+        delete merged[part];
+      }
+      merged[MERGED_GOV_KEY] = sum;
+      return merged;
+    }),
+  };
+}
 
 /** Snapshot handed to the detached window (chart-registry): the series data
  * plus a kind discriminator so the renderer can rebind the non-serializable
@@ -169,6 +212,12 @@ export function PortfolioOverview() {
     [bookSummary],
   );
 
+  // B1: sector chart only — 국고채+통안채 merged to one 국고·통안 segment.
+  const mergedSector = useMemo(
+    () => (allocation ? mergeGovMsbSeries(allocation.sector) : undefined),
+    [allocation],
+  );
+
   const isLoading = bookSummaryLoading || allocationLoading;
   const isError = bookSummaryError || allocationError;
 
@@ -211,9 +260,9 @@ export function PortfolioOverview() {
                   kind="sector"
                   title="섹터 배분"
                   basis="PVBP 기준"
-                  series={allocation.sector}
-                  canonical={SECTOR_ORDER}
-                  colorFor={sectorColor}
+                  series={mergedSector ?? allocation.sector}
+                  canonical={MERGED_SECTOR_ORDER}
+                  colorFor={mergedSectorColor}
                 />
                 <div className="w-px shrink-0 bg-border-subtle" />
                 <AllocationChart

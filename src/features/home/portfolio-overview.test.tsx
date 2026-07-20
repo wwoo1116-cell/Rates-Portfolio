@@ -21,7 +21,8 @@ vi.mock("@/hooks/use-allocation-history", () => ({
   useAllocationHistory: () => mockAllocation(),
 }));
 
-const { PortfolioOverview } = await import("./portfolio-overview");
+const { PortfolioOverview, mergeGovMsbSeries, MERGED_GOV_KEY, MERGED_SECTOR_ORDER, mergedSectorColor } =
+  await import("./portfolio-overview");
 
 const ALLOCATION: AllocationHistoryResponse = {
   asOfDate: "2026-07-06",
@@ -45,6 +46,23 @@ const ALLOCATION: AllocationHistoryResponse = {
       { key: "lastWeekEnd", label: "Last Week-End", valuationDate: "2026-07-03", positionCount: 3, "단기(1년 미만)": 31, "중기(1~3년)": 69 },
       { key: "prevDay", label: "Yesterday", valuationDate: "2026-07-03", positionCount: 3, "단기(1년 미만)": 31, "중기(1~3년)": 69 },
       { key: "current", label: "Current", valuationDate: "2026-07-06", positionCount: 3, "단기(1년 미만)": 32, "중기(1~3년)": 68 },
+    ],
+  },
+};
+
+/** R3B-PLUS B1 fixture: adds 국고채+통안채 alongside an untouched third sector,
+ * so the merge test can pin "combined == sum" against a real ALLOCATION-shaped
+ * response without disturbing the base fixture above. */
+const ALLOCATION_WITH_GOV: AllocationHistoryResponse = {
+  ...ALLOCATION,
+  sector: {
+    keys: ["국고채", "통안채", "공사채"],
+    rows: [
+      { key: "lastYearEnd", label: "Last Year-End", valuationDate: null, positionCount: 0, 국고채: 0, 통안채: 0, 공사채: 0 },
+      { key: "lastMonthEnd", label: "Last Month-End", valuationDate: "2026-06-30", positionCount: 5, 국고채: 30, 통안채: 20, 공사채: 50 },
+      { key: "lastWeekEnd", label: "Last Week-End", valuationDate: "2026-07-03", positionCount: 5, 국고채: 31, 통안채: 19, 공사채: 50 },
+      { key: "prevDay", label: "Yesterday", valuationDate: "2026-07-03", positionCount: 5, 국고채: 31, 통안채: 19, 공사채: 50 },
+      { key: "current", label: "Current", valuationDate: "2026-07-06", positionCount: 5, 국고채: 32.5, 통안채: 17.5, 공사채: 50 },
     ],
   },
 };
@@ -278,5 +296,64 @@ describe("PortfolioOverview", () => {
     // Within one chart's legend the hues must not collide.
     expect(new Set(colours.slice(0, 2)).size).toBe(2);
     expect(new Set(colours.slice(2, 4)).size).toBe(2);
+  });
+});
+
+describe("mergeGovMsbSeries (B1 mechanism pin)", () => {
+  it("sums 국고채+통안채 into one 국고·통안 field per row and drops the parts", () => {
+    const merged = mergeGovMsbSeries(ALLOCATION_WITH_GOV.sector);
+    const current = merged.rows.find((r) => r.key === "current")!;
+    expect(current[MERGED_GOV_KEY]).toBeCloseTo(32.5 + 17.5, 10);
+    expect(current["국고채"]).toBeUndefined();
+    expect(current["통안채"]).toBeUndefined();
+    expect(current["공사채"]).toBe(50); // untouched sector passes through
+  });
+
+  it("puts the merged key first in keys/order, credit-descending order otherwise preserved", () => {
+    const merged = mergeGovMsbSeries(ALLOCATION_WITH_GOV.sector);
+    expect(merged.keys).toEqual([MERGED_GOV_KEY, "공사채"]);
+    expect(MERGED_SECTOR_ORDER[0]).toBe(MERGED_GOV_KEY);
+    expect(MERGED_SECTOR_ORDER).not.toContain("국고채");
+    expect(MERGED_SECTOR_ORDER).not.toContain("통안채");
+  });
+
+  it("is a no-op on a series with neither part (maturity, or a sector-only book)", () => {
+    const noGov = { keys: ["공사채"], rows: ALLOCATION_WITH_GOV.sector.rows };
+    expect(mergeGovMsbSeries(noGov)).toBe(noGov);
+  });
+
+  it("mergedSectorColor resolves the merged key to the 국고채 (Blue) token, defers everything else", () => {
+    expect(mergedSectorColor(MERGED_GOV_KEY)).toBe(mergedSectorColor("국고채"));
+    expect(mergedSectorColor("공사채")).not.toBe(mergedSectorColor(MERGED_GOV_KEY));
+  });
+});
+
+describe("Home sector allocation bar (B1 render pin)", () => {
+  function loadedWithGov() {
+    mockAnalytics.mockReturnValue({
+      hasPositions: true,
+      bookSummary: BOOK_SUMMARY,
+      bookSummaryLoading: false,
+      bookSummaryError: false,
+    });
+    mockAllocation.mockReturnValue({
+      hasPositions: true,
+      allocation: ALLOCATION_WITH_GOV,
+      allocationLoading: false,
+      allocationError: false,
+      bondCount: 5,
+      schedulableCount: 5,
+    });
+  }
+
+  it("renders exactly one 국고·통안 segment/legend chip, no standalone 통안채", () => {
+    loadedWithGov();
+    render(<PortfolioOverview />);
+
+    expect(screen.getAllByText(MERGED_GOV_KEY)).toHaveLength(1); // legend chip only
+    expect(screen.queryByText("통안채")).toBeNull();
+    expect(screen.queryByText("국고채")).toBeNull();
+    // The maturity chart (untouched by B1) keeps its own independent legend.
+    expect(screen.getByText("만기 배분")).toBeDefined();
   });
 });
