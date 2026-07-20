@@ -20,6 +20,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 import { toNum } from "../../lib/scenario-curves";
+import {
+  WAYPOINT_STEP_BP,
+  buildWaypointPatch,
+  lerpDefaultBp,
+  waypointClampMax,
+} from "../../lib/waypoints";
 import { useSimulationDataStore } from "../../store/simulation-data-store";
 import { useSimulationPort } from "../../hooks/use-simulation";
 import { useMarketDateRange } from "../../hooks/use-input-curves";
@@ -37,16 +43,6 @@ const TENOR_SPREADS = [
 // lands on clean 30d steps. 180 is DEFAULT_SCENARIO_PARAMS.simDays.
 const HORIZON_CHOICES = [30, 60, 90, 180, 270, 365] as const;
 
-const WAYPOINT_STEP_BP = 5;
-
-/** SIM2-2 — the on-the-line default for an untouched intermediate waypoint:
- * target × day/simDays, rounded to 0.1bp so grid defaults stay legible
- * (≤0.05bp off the exact line — buildTimePath/_factor lerp between waypoints,
- * so the rendered/priced path stays smooth). */
-export function lerpDefaultBp(targetBp: number, day: number, simDays: number): number {
-  if (simDays <= 0) return 0;
-  return Math.round(((targetBp * day) / simDays) * 10) / 10;
-}
 
 /**
  * Numeric bp field with a local draft so partial input ("-", "1.") can be typed:
@@ -223,15 +219,11 @@ export function ConfigureStage() {
     });
   }, [params.simDays, params.baseShockBp]);
 
-  // Any user edit (stepper, typed commit — and SIM2-3 drag, which calls this
-  // same function) marks the day touched so regen never re-lerps it.
+  // Any user edit (stepper, typed commit — and SIM2-3 drag, which commits
+  // through the SAME lib patch) marks the day touched so regen never
+  // re-lerps it.
   const setWaypoint = (day: number, bp: number) =>
-    patchParams({
-      waypoints: params.waypoints.map((w) => (w.day === day ? { ...w, bp } : w)),
-      touchedWaypointDays: params.touchedWaypointDays.includes(day)
-        ? params.touchedWaypointDays
-        : [...params.touchedWaypointDays, day],
-    });
+    patchParams(buildWaypointPatch(params, day, bp));
 
   const bpTone = (bp: number) =>
     // iv3: Jade/Berry universal pair, sign convention preserved from the old
@@ -317,7 +309,7 @@ export function ConfigureStage() {
                 </div>
 
                 {params.waypoints.slice(1, -1).map((wp) => {
-                  const absMax = Math.max(Math.abs(toNum(params.baseShockBp)) + 50, 100);
+                  const absMax = waypointClampMax(params.baseShockBp);
                   return (
                     <div key={wp.day} className="flex items-center gap-2">
                       <span data-num className="w-12 flex-shrink-0 text-micro text-fg-muted">D+{wp.day}</span>

@@ -24,12 +24,32 @@ let lwProps: LwLineChartProps | null = null;
 vi.mock("../charts/term-structure-chart", () => ({
   TermStructureChart: () => <div data-testid="term-structure" />,
 }));
+// Deterministic coordinate fakes for the SIM2-3 drag tests: price→y is
+// (200 − bp), so coordinateToPrice(y) = 200 − y round-trips exactly.
+const fakeChart = {
+  timeScale: () => ({
+    timeToCoordinate: () => 100,
+    subscribeVisibleTimeRangeChange: () => {},
+    unsubscribeVisibleTimeRangeChange: () => {},
+  }),
+} as never;
+const fakeSeries = {
+  priceToCoordinate: (bp: number) => 200 - bp,
+  coordinateToPrice: (y: number) => 200 - y,
+} as never;
+
 vi.mock("../charts/lw-line-chart", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../charts/lw-line-chart")>();
+  const { useEffect } = await import("react");
   return {
     ...actual,
     LwLineChart: (props: LwLineChartProps) => {
       lwProps = props;
+      // Feed the coordinate seam the way the real host does (post-rebuild).
+      const cb = props.onSeriesRebuilt;
+      useEffect(() => {
+        cb?.(fakeChart, fakeSeries);
+      }, [cb]);
       return <div data-testid="lw-path-chart" />;
     },
   };
@@ -80,6 +100,11 @@ beforeEach(() => {
   snapshotSpy.mockClear();
   taxonomySpy.mockClear();
   seriesSpy.mockClear();
+  // jsdom has no pointer-capture API; the drag handles call it on every drag.
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = () => {};
+    Element.prototype.releasePointerCapture = () => {};
+  }
 });
 afterEach(cleanup);
 
@@ -147,6 +172,51 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     const inPathMode = buildSimulateRequest(inputs, params);
     expect(inPathMode).toEqual(inCurveMode);
     expect("previewMode" in inPathMode).toBe(false);
+  });
+
+  // ── SIM2-3 (ruling ②) — waypoint dot drag on the 시계열형 preview ──
+
+  const GRID = {
+    ...DEFAULT_SCENARIO_PARAMS,
+    waypoints: [
+      { day: 0, bp: 0 },
+      { day: 30, bp: 5 },
+      { day: 60, bp: 10 },
+      { day: 180, bp: 30 },
+    ],
+  };
+
+  it("drags an intermediate dot: snapped commit through the shared patch, day flagged touched", async () => {
+    seed("path", { params: GRID });
+    render(<CurveViewPanel />);
+    const handle = await screen.findByLabelText("D+30 웨이포인트 드래그");
+
+    // coordinateToPrice(y) = 200 − y: pointer at clientY 173 → 27bp → snap 25.
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 195 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 173 });
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 173 });
+
+    const { params } = useSimulationDataStore.getState();
+    expect(params.waypoints.find((w) => w.day === 30)?.bp).toBe(25);
+    expect(params.touchedWaypointDays).toContain(30);
+  });
+
+  it("clamps a wild drag at ±max(|baseShock|+50, 100)", async () => {
+    seed("path", { params: GRID });
+    render(<CurveViewPanel />);
+    const handle = await screen.findByLabelText("D+60 웨이포인트 드래그");
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 190 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: -900 }); // → 1100bp raw
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: -900 });
+    expect(useSimulationDataStore.getState().params.waypoints.find((w) => w.day === 60)?.bp).toBe(100);
+  });
+
+  it("renders NO drag handles for the D+0 and terminal pins", async () => {
+    seed("path", { params: GRID });
+    render(<CurveViewPanel />);
+    await screen.findByLabelText("D+30 웨이포인트 드래그");
+    expect(screen.queryByLabelText("D+0 웨이포인트 드래그")).toBeNull();
+    expect(screen.queryByLabelText("D+180 웨이포인트 드래그")).toBeNull();
   });
 
   it("previewMode survives unmount/remount (stage navigation)", () => {

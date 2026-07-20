@@ -53,6 +53,11 @@ export interface LwLineChartProps {
    * z-order (the iv4 LWC defect-family rule: the lowest-z series' format
    * captures the whole scale). */
   formatValue?: (v: number) => string;
+  /** SIM2-3 — coordinate seam for DOM overlays (waypoint drag): fires after
+   * every series rebuild with the live chart + the first (primary) series so
+   * the host can run timeToCoordinate/priceToCoordinate. The references die
+   * with the chart — hosts must not cache them past unmount. */
+  onSeriesRebuilt?: (chart: IChartApi, firstSeries: ISeriesApi<"Line"> | null) => void;
 }
 
 /** Map a D+n horizon offset to an ascending UTC timestamp for the time axis. */
@@ -66,7 +71,7 @@ export function dayToTime(baseDate: string, day: number): UTCTimestamp {
  * markers plugin) on every render even when nothing changed. */
 const EMPTY_MARKERS: LwMarker[] = [];
 
-export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS, formatValue }: LwLineChartProps) {
+export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS, formatValue, onSeriesRebuilt }: LwLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Line">[]>([]);
@@ -188,7 +193,8 @@ export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS,
 
     seriesRef.current = created;
     chart.timeScale().fitContent();
-  }, [series, zeroLine, markers, formatValue]);
+    onSeriesRebuilt?.(chart, created[0] ?? null);
+  }, [series, zeroLine, markers, formatValue, onSeriesRebuilt]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }

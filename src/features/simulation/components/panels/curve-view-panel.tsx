@@ -26,17 +26,20 @@
  * below, never a silent +0; a missing snapshot renders the whole curve as
  * absent with an explicit notice.
  */
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 
 import { getSimulationChartTheme } from "../../lib/chart-theme";
 import { buildInputCurvePreview } from "../../lib/input-curve-preview";
 import { buildTimePath } from "../../lib/scenario-preview";
+import { buildWaypointPatch } from "../../lib/waypoints";
 import { useBondInputQuotes, useSwapInputQuotes } from "../../hooks/use-input-curves";
 import { useSimulationPort } from "../../hooks/use-simulation";
 import { useSimulationDataStore } from "../../store/simulation-data-store";
 import { SegmentedButtons } from "../segmented-buttons";
 import { TermStructureChart, type TermCurveDef } from "../charts/term-structure-chart";
 import { LwLineChart, dayToTime, type LwMarker, type LwSeriesDef } from "../charts/lw-line-chart";
+import { WaypointDragOverlay } from "../charts/waypoint-drag-overlay";
 
 const PREVIEW_MODES = ["curve", "path"] as const;
 const PREVIEW_MODE_LABELS: Record<(typeof PREVIEW_MODES)[number], string> = {
@@ -49,11 +52,32 @@ const PREVIEW_MODE_LABELS: Record<(typeof PREVIEW_MODES)[number], string> = {
 const formatBpAxis = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}bp`;
 
 export function CurveViewPanel() {
-  const { params, inputs } = useSimulationPort();
+  const { params, inputs, patchParams } = useSimulationPort();
   const baseDate = inputs.baseDate;
   const previewMode = useSimulationDataStore((s) => s.previewMode);
   const setPreviewMode = useSimulationDataStore((s) => s.setPreviewMode);
   const isPath = previewMode === "path";
+
+  // SIM2-3 — live chart/series refs for the drag overlay, via the
+  // onSeriesRebuilt seam. Stable callback: the series effect lists it as a dep.
+  const [pathHost, setPathHost] = useState<{
+    chart: IChartApi;
+    series: ISeriesApi<"Line"> | null;
+  } | null>(null);
+  const handleSeriesRebuilt = useCallback(
+    (chart: IChartApi, firstSeries: ISeriesApi<"Line"> | null) =>
+      setPathHost({ chart, series: firstSeries }),
+    [],
+  );
+  // Drag commits through the SAME lib patch the steppers use (payload
+  // identity is structural; the day is flagged touched for SIM2-2 regen).
+  const commitWaypoint = useCallback(
+    (day: number, bp: number) => {
+      const p = useSimulationDataStore.getState().params;
+      patchParams(buildWaypointPatch(p, day, bp));
+    },
+    [patchParams],
+  );
 
   // 커브형-only inputs — disabled on the path branch so 시계열형 is provably
   // network-free (SIM2-1 no-fetch pin). Cached per baseDate either way.
@@ -146,7 +170,23 @@ export function CurveViewPanel() {
 
       <div className="min-h-0 flex-1">
         {isPath ? (
-          <LwLineChart series={pathSeries} zeroLine markers={pathMarkers} formatValue={formatBpAxis} />
+          <div className="relative h-full w-full">
+            <LwLineChart
+              series={pathSeries}
+              zeroLine
+              markers={pathMarkers}
+              formatValue={formatBpAxis}
+              onSeriesRebuilt={handleSeriesRebuilt}
+            />
+            <WaypointDragOverlay
+              chart={pathHost?.chart ?? null}
+              series={pathHost?.series ?? null}
+              baseDate={baseDate}
+              waypoints={params.waypoints.slice(1, -1)}
+              baseShockBp={params.baseShockBp}
+              onCommit={commitWaypoint}
+            />
+          </div>
         ) : loading ? (
           <div className="flex h-full items-center justify-center text-micro text-fg-dim">호가 로딩 중…</div>
         ) : (
