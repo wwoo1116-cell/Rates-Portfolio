@@ -56,10 +56,13 @@ Rates Portfolio/
 ### 1. 백엔드 실행
 
 ```bash
-python -m uvicorn irs_pricer.api.app:app --reload --port 8000
+python -m uvicorn irs_pricer.api.app:app --port 8000
 ```
 
-API 문서: http://127.0.0.1:8000/docs (Windows에서는 `start-backend.ps1`도 사용 가능)
+권장은 `start-backend.ps1` — 4 워커, :8000 이중 기동 가드, 커브 캐시 kill switch(`IRS_PRICER_CURVE_CACHE=0`) 문서 포함.
+**`--reload` 사용 금지** (F-17): 이 머신에서 reload 워처가 크래시 모드로 확인됨 — 부모 프로세스 사망 후 고아 자식이 :8000 소켓을 물고 남습니다.
+
+API 문서: http://127.0.0.1:8000/docs
 
 ### 2. 프론트엔드 실행
 
