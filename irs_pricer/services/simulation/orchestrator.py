@@ -144,15 +144,24 @@ def _run_simulation_profiled(
             funding_rate_fixed=funding_rate_fixed,
         )
 
+    # HARDEN-1: 일별 분해 경로는 chart가 decomposition dict에 실어 보낸다
+    # (build_chart_data 튜플 모양 보존) — 응답의 최상위 additive 필드로 분리.
+    decomposition_daily = decomposition.pop("daily", [])
+
     # 스왑이 제외된 경우(당일 호가 없음): 스왑 성분은 0이 아니라 "미정의"다 —
     # FE는 이 null을 —(공란)으로 렌더링한다(blank-MtM 정책). 스왑이 아예 없는
-    # 북(제외 아님)은 정직한 0 기여로 남는다.
+    # 북(제외 아님)은 정직한 0 기여로 남는다. 일별 경로도 같은 정책으로 매일
+    # null 처리한다(공란은 게으른 0이 아니라 미정의).
     if swaps_excluded:
         decomposition["swapMtm"] = None
         decomposition["swapCarry"] = None
         decomposition["total"] = (
             decomposition["bondMtm"] + decomposition["bondCarry"] + decomposition["fundingCost"]
         )
+        for row in decomposition_daily:
+            row["swapMtm"] = None
+            row["swapCarry"] = None
+            row["total"] = row["fundingCost"] + row["bondMtm"] + row["bondCarry"]
     with _phase(_prof, "assembly (pvbp+bookPnL)"):
         pvbp_sensitivity = build_frontend_pvbp_sensitivity(positions)
         # bookDailyPnL: 당일 실제 금리변동만 반영. dailyShockCurves 없으면 shockCurves로 fallback
@@ -207,4 +216,7 @@ def _run_simulation_profiled(
         # s15 추가 필드 (확장 전용): T2 명시적 자산군 제외 + Total Return 분해.
         "exclusions": exclusions,
         "totalReturnDecomposition": decomposition,
+        # HARDEN-1 추가 필드 (확장 전용): 일별 누적 성분 분해 경로 — Results의
+        # 성분 커브 히어로가 소비한다. 매일 5성분 합 == total (±₩1 핀).
+        "decompositionDaily": decomposition_daily,
     }

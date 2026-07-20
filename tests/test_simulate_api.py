@@ -71,13 +71,15 @@ def test_response_matches_frontend_contract_shape(representative_response: dict)
     body = representative_response
 
     # SimulateResponse keys (simulate-dto.ts) -- status is a source extra.
-    # fundingCurve/distribution are the s11 additive extensions (T3/T4), and
-    # exclusions/totalReturnDecomposition the s15 ones (T2): the source
-    # contract may only ever GROW by explicitly-listed keys, never change.
+    # fundingCurve/distribution are the s11 additive extensions (T3/T4),
+    # exclusions/totalReturnDecomposition the s15 ones (T2), and
+    # decompositionDaily the HARDEN-1 one: the source contract may only ever
+    # GROW by explicitly-listed keys, never change.
     assert set(body.keys()) == {
         "status", "chartData", "summary", "pvbpSensitivity",
         "bookDailyPnLs", "irsSettlementEvents", "irsDailyReconciliation",
         "fundingCurve", "distribution", "exclusions", "totalReturnDecomposition",
+        "decompositionDaily",
     }
     assert body["status"] == "ok"
 
@@ -160,12 +162,13 @@ def _assert_deep_close(mine, golden, path=""):
 def test_matches_source_backend_golden(representative_response: dict) -> None:
     # The golden file is the SOURCE backend's response. s11 extended the route
     # additively (fundingCurve/distribution), s15 again (exclusions/
-    # totalReturnDecomposition) -- parity is asserted over every key the source
-    # emitted, at full depth, and the extras must be EXACTLY the known
-    # extensions (an unlisted key is a contract change, not an extension, and
-    # must fail here).
+    # totalReturnDecomposition), HARDEN-1 again (decompositionDaily) -- parity
+    # is asserted over every key the source emitted, at full depth, and the
+    # extras must be EXACTLY the known extensions (an unlisted key is a
+    # contract change, not an extension, and must fail here).
     assert set(representative_response) - set(GOLDEN_RESPONSE) == {
         "fundingCurve", "distribution", "exclusions", "totalReturnDecomposition",
+        "decompositionDaily",
     }
     _assert_deep_close(
         {k: representative_response[k] for k in GOLDEN_RESPONSE}, GOLDEN_RESPONSE

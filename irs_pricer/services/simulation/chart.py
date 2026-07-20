@@ -114,6 +114,11 @@ def build_chart_data(
     cumulative_funding    = 0.0   # s15 T2: 조달 비용 병렬 누적 (양수; 분해 전용)
     break_even_day = -1
     is_broken_even = False
+    # HARDEN-1: 스왑 세타/평가 최종값(비라운딩) + 일별 분해 경로. 루프가 한 번도
+    # 돌지 않는 극단(sim_days=0 미만)에서도 정의되도록 여기서 초기화한다.
+    swap_theta_pnl = 0.0
+    swap_valuation_pnl = 0.0
+    decomposition_daily: list[dict] = []
 
     # s15 T1: 조달 비용 쪽이 보는 이벤트 목록 — 고정 조달 모드에서는 비운다.
     # 금리 경로(쇼크) 쪽 funding_events 사용은 아래에서 원본 그대로다.
@@ -479,6 +484,11 @@ def build_chart_data(
     # Day 0 초기 항목 (모든 P&L = 0)
     chart_data.append({"day": 0, "mtmPnL": 0, "cumulativeCarry": 0, "swapPnL": 0, "totalPnL": 0,
                         "swapThetaPnL": 0, "swapValuationPnL": 0})
+    # HARDEN-1: 일별 분해 경로도 chartData와 같은 day 축 — day 0 = 전 성분 0.
+    decomposition_daily.append({
+        "day": 0, "fundingCost": 0.0, "bondMtm": 0.0, "bondCarry": 0.0,
+        "swapMtm": 0.0, "swapCarry": 0.0, "total": 0.0,
+    })
     funding_curve.append(_funding_row(0, base_date, _factor(0)))
     rate_path.append({"day": 0, "bp": _ktb3y_bp(_factor(0))})
 
@@ -650,6 +660,20 @@ def build_chart_data(
             "swapThetaPnL":     round(swap_theta_pnl)      if swap_theta_pnl       else 0,
             "swapValuationPnL": round(swap_valuation_pnl)  if swap_valuation_pnl   else 0,
         }
+        # HARDEN-1: 일별 누적 성분 분해(비라운딩 float) — 최종 decomposition과
+        # 같은 누적기에서 나온 같은 float들이라 매일
+        # fundingCost + bondMtm + bondCarry + swapMtm + swapCarry == total 이
+        # 부동소수점 항등으로 성립한다. 스왑 성분은 세타/평가 대칭 분해
+        # (아래 decomposition 주석 참조).
+        decomposition_daily.append({
+            "day":         t,
+            "fundingCost": -cumulative_funding,
+            "bondMtm":     bond_mtm,
+            "bondCarry":   cumulative_bond_carry + cumulative_funding,
+            "swapMtm":     swap_valuation_pnl,
+            "swapCarry":   swap_theta_pnl,
+            "total":       total_pnl,
+        })
         if bok_breakdown:
             entry["bokBreakdown"] = bok_breakdown
         chart_data.append(entry)
@@ -672,13 +696,26 @@ def build_chart_data(
     # bondMtm + bondCarry + fundingCost + swapMtm + swapCarry == 최종 totalPnL).
     # bondCarry = 총 이자수익 + 만기 재투자 수익 (= net 누적 + 조달 누적),
     # fundingCost = -조달 누적. 모두 위 루프의 같은 float 누적기에서 나온다.
+    #
+    # HARDEN-1 (스왑캐리 어드주디케이션, route ii): 엔진의 daily_carry는
+    # quant_engine.simulate_irs_path_fm이 정산 CF를 mtm_pnl(더티)에 접어 넣고
+    # 무조건 0을 리턴하므로(cumulative_irs_carry ≡ 0), 이전의 swapMtm=더티 전액
+    # / swapCarry=0 분해는 채권 분해(평가 vs 캐리)와 비대칭이었다. 이제 스왑도
+    # 같은 정의로 나눈다 — swapCarry = 세타손익(커브 base_date 고정, 시간경과
+    # + 정산 CF = irs_fm_mtm_theta 궤적 + cumulative_irs_carry), swapMtm =
+    # 평가손익(전체 − 세타). 두 값은 위 루프가 이미 chartData(swapThetaPnL/
+    # swapValuationPnL)용으로 계산한 동일 float들이며, 합은 종전 스왑 전액과
+    # 동일하므로 total·bond 성분·funding은 바이트 동일하게 유지된다.
     decomposition = {
         "bondMtm":     bond_mtm,
         "bondCarry":   cumulative_bond_carry + cumulative_funding,
         "fundingCost": -cumulative_funding,
-        "swapMtm":     irs_mtm_t,
-        "swapCarry":   cumulative_irs_carry,
+        "swapMtm":     swap_valuation_pnl,
+        "swapCarry":   swap_theta_pnl,
         "total":       bond_mtm + cumulative_bond_carry + irs_mtm_t + cumulative_irs_carry,
+        # HARDEN-1: 일별 누적 경로 (orchestrator가 응답의 decompositionDaily로
+        # 분리한다 — 튜플 모양을 바꾸지 않기 위해 dict에 실어 보낸다).
+        "daily":       decomposition_daily,
     }
 
     return chart_data, summary, irs_settlement_events, irs_daily_recon, funding_curve, decomposition, rate_path
