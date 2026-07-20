@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Future",
-  description: "Future",
+  title: "KRW FI PMS",
+  description: "KRW FI PMS",
   icons: {
     // 16px is a hand-simplified variant (bulb + one arrow); 32px keeps the
     // full-detail mark. Browsers pick by declared size. See public/brand/.

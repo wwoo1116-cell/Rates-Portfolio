@@ -1,14 +1,14 @@
-# KRW FI / Rates Portfolio — Frontend (UIUX_test)
+# KRW FI PMS — Frontend (krw-fi-pms)
 
 원화 금리(KRW IRS·국고채) 포트폴리오 관리 시스템의 프론트엔드입니다.
-백엔드는 형제 저장소 **`../IRS Pricer_Mock`** (FastAPI, `:8000`)이며, 이 앱은 그 API를 소비하는 Next.js 클라이언트입니다.
+백엔드는 형제 저장소 **`../krw-fi-pms-backend`** (FastAPI, `:8000`)이며, 이 앱은 그 API를 소비하는 Next.js 클라이언트입니다.
 
 ## 실행 방법
 
 백엔드를 먼저 띄운 뒤(아래 참고), 프론트를 실행합니다.
 
 ```bash
-# 1. 백엔드 (../IRS Pricer_Mock 에서 — 권장은 start-backend.ps1, --reload 금지(F-17))
+# 1. 백엔드 (../krw-fi-pms-backend 에서 — 권장은 start-backend.ps1, --reload 금지(F-17))
 python -m uvicorn irs_pricer.api.app:app --port 8000
 
 # 2. 프론트엔드 (이 폴더에서)
