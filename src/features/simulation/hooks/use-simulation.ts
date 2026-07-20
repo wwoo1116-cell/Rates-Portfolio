@@ -9,7 +9,7 @@
  */
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { simulationApi } from "../api/simulation-api";
@@ -40,18 +40,22 @@ export function useRunSimulation() {
  * params + last result, with run() wired to the mutation and result ingestion.
  * This is the single object the ported <ScenarioSimulator> will bind to in Phase 4.
  */
+// SIM2-6 — MODULE-level controller for the in-flight request: the request
+// outlives the component (the mutation writes to the module-level store), so
+// the cancel affordance must too. A hook-local ref meant a remount during
+// flight rendered a Running screen whose cancel could no longer abort the
+// live request. One run at a time (the UI gates on status).
+let activeRunController: AbortController | null = null;
+
 export function useSimulationPort(): SimulationDataPort {
   const store = useSimulationDataStore();
   const runMutation = useRunSimulation();
-  // s15 — controller for the in-flight request so the Running interstitial's
-  // cancel button can abort it. One run at a time (the UI gates on status).
-  const abortRef = useRef<AbortController | null>(null);
 
   const run = useCallback(
     async (request: SimulateRequest): Promise<SimulateResponse | null> => {
       const { markRunning, ingestResult, markError } = useSimulationDataStore.getState();
       const controller = new AbortController();
-      abortRef.current = controller;
+      activeRunController = controller;
       markRunning();
       try {
         const result = await runMutation.mutateAsync({ req: request, signal: controller.signal });
@@ -64,7 +68,7 @@ export function useSimulationPort(): SimulationDataPort {
         }
         return null;
       } finally {
-        if (abortRef.current === controller) abortRef.current = null;
+        if (activeRunController === controller) activeRunController = null;
       }
     },
     [runMutation],
@@ -79,10 +83,12 @@ export function useSimulationPort(): SimulationDataPort {
 
   const cancelRun = useCallback((): void => {
     // Flip the store first so the abort's rejection sees status already idle;
-    // previous result stays untouched (replace-on-arrival semantics).
+    // previous result stays untouched (replace-on-arrival semantics). The
+    // module-level controller means this also aborts a request started by a
+    // PREVIOUS mount of the tab (SIM2-6).
     useSimulationDataStore.getState().markCancelled();
-    abortRef.current?.abort();
-    abortRef.current = null;
+    activeRunController?.abort();
+    activeRunController = null;
   }, []);
 
   return {

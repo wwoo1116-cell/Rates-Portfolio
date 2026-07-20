@@ -43,6 +43,14 @@ interface SimulationDataState {
   previewMode: "curve" | "path";
   setPreviewMode: (mode: "curve" | "path") => void;
 
+  /** SIM2-6 — the staged flow's screen, MOVED here from SimulationFlow's
+   * component state so leaving the tab and returning restores EXACTLY what
+   * was on screen (the s17 ES precedent). ingestResult lands on "results"
+   * (a run finishing while the user sits elsewhere still lands Results);
+   * markCancelled returns to "configure"; 조건 수정 sets it explicitly. */
+  stage: "configure" | "results";
+  setStage: (stage: "configure" | "results") => void;
+
   setInputs: (inputs: Partial<SimulationInputs>) => void;
   patchParams: (patch: Partial<ScenarioParams>) => void;
   resetParams: () => void;
@@ -70,15 +78,21 @@ export const useSimulationDataStore = create<SimulationDataState>((set) => ({
   previewMode: "curve",
   setPreviewMode: (mode) => set({ previewMode: mode }),
 
+  stage: "configure",
+  setStage: (stage) => set({ stage }),
+
   setInputs: (inputs) => set((state) => ({ inputs: { ...state.inputs, ...inputs } })),
   patchParams: (patch) => set((state) => ({ params: { ...state.params, ...patch } })),
   resetParams: () => set({ params: DEFAULT_SCENARIO_PARAMS }),
 
   markRunning: () => set({ status: "running", error: null }),
+  // SIM2-6: arrival LANDS the flow on Results (even if the tab was left and
+  // remounted mid-flight — the request outlives the component).
   ingestResult: (request, result) =>
-    set({ status: "success", error: null, lastRun: result, lastRunRequest: request }),
+    set({ status: "success", error: null, lastRun: result, lastRunRequest: request, stage: "results" }),
   markError: (message) => set({ status: "error", error: message }),
-  markCancelled: () => set({ status: "idle", error: null }),
+  // SIM2-6: a user cancel returns to Configure with inputs intact (s15 rule).
+  markCancelled: () => set({ status: "idle", error: null, stage: "configure" }),
 }));
 
 // ---------------------------------------------------------------------------

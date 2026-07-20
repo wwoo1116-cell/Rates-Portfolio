@@ -69,6 +69,7 @@ beforeEach(() => {
     lastRunRequest: null,
     status: "idle",
     error: null,
+    stage: "configure", // SIM2-6: stage persists in the store — reset per test
   });
 });
 afterEach(cleanup);
@@ -139,6 +140,42 @@ describe("SimulationFlow (s15 staged flow)", () => {
     expect(screen.getByText("Funding(만기)")).toBeTruthy();
     expect(screen.getByText("2.85%→2.60%")).toBeTruthy();
     expect(screen.queryByText(/^2\.60%$/)).toBeNull(); // no bare single number
+  });
+
+  // ── SIM2-6 — stage & result persistence across tab navigation ──
+
+  it("unmount → remount restores Results from the persisted snapshot, no new run", () => {
+    const first = renderFlow();
+    act(() => useSimulationDataStore.getState().patchParams({ baseShockBp: "45" }));
+    act(() => useSimulationDataStore.getState().markRunning());
+    act(() => useSimulationDataStore.getState().ingestResult(REQUEST, RESULT));
+    expect(screen.getByTestId("curves-hero")).toBeTruthy();
+    const paramsBefore = useSimulationDataStore.getState().params;
+
+    first.unmount(); // leave the tab
+
+    renderFlow(); // come back
+    // Results restored from the store snapshot — NOT reset to Configure.
+    expect(screen.getByTestId("curves-hero")).toBeTruthy();
+    expect(screen.queryByText("시나리오 조건 설정")).toBeNull();
+    // The persisted run is the SAME object (no refetch/engine call), and the
+    // edited Configure inputs survived the round trip byte-equal.
+    expect(useSimulationDataStore.getState().lastRun).toBe(RESULT);
+    expect(useSimulationDataStore.getState().params).toEqual(paramsBefore);
+    expect(useSimulationDataStore.getState().params.baseShockBp).toBe("45");
+  });
+
+  it("a run finishing while the tab is unmounted still lands on Results at remount", () => {
+    const first = renderFlow();
+    act(() => useSimulationDataStore.getState().markRunning());
+    first.unmount(); // navigate away DURING Running
+
+    // The request outlives the component: arrival writes the module store.
+    act(() => useSimulationDataStore.getState().ingestResult(REQUEST, RESULT));
+
+    renderFlow();
+    expect(screen.getByTestId("curves-hero")).toBeTruthy();
+    expect(useSimulationDataStore.getState().status).toBe("success");
   });
 
   it("조건 수정 returns to Configure with all params preserved", () => {
