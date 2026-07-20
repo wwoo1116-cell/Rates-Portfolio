@@ -1,5 +1,7 @@
 import type { LucideIcon } from "lucide-react";
-import { Crosshair, FlaskConical, History, Home, Settings, Table2, Target } from "lucide-react";
+// DEMO-DEBT (demo sprint 2026-07-20): Crosshair icon import parked with the
+// hidden Entry Signals nav item below — restore both together.
+import { FlaskConical, History, Home, Settings, Table2, Target } from "lucide-react";
 
 export interface NavItem {
   label: string;
@@ -11,7 +13,12 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Home", href: "/home", icon: Home },
   { label: "Portfolio Management", href: "/portfolio", icon: Table2 },
   { label: "Rates History", href: "/rates-history", icon: History },
-  { label: "Entry Signals", href: "/entry-signals", icon: Crosshair },
+  // DEMO-DEBT (demo sprint 2026-07-20): Entry Signals HIDDEN, not deleted —
+  // unused for the demo. Slice source/tests/store untouched; the route 404s
+  // via notFound() in app/(workspace)/entry-signals/page.tsx. Restore =
+  // uncomment this line (+ Crosshair import above) and revert that page.
+  // NOTE hiding shifts the Cmd+1~6 nav shortcuts one slot from #4 on.
+  // { label: "Entry Signals", href: "/entry-signals", icon: Crosshair },
   { label: "Simulation", href: "/simulation", icon: FlaskConical },
   { label: "Optimal Portfolio", href: "/optimal", icon: Target },
   // 7번째 항목이라 Cmd+1~6 단축키 범위 밖 -- sidebar.tsx 키핸들러 수정 불필요.

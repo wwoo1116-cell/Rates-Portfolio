@@ -2,6 +2,15 @@
 
 Corners cut for the 2-hour demo-first sprint. Each entry: what / where / how to revive.
 
+## Task 3 — Entry Signals hidden
+
+1. **Nav item commented out, route 404s — nothing deleted.**
+   `src/lib/constants.ts` (NAV_ITEMS entry + Crosshair icon import parked with DEMO-DEBT comments) and `src/app/(workspace)/entry-signals/page.tsx` (now calls `notFound()`; original two-liner preserved in the comment). The entire `features/entry-signals` slice, `stores/entry-signals-store`, all ES tests, and the chart-registry detach entries are untouched. Restore = uncomment the nav line + icon import, revert the page file.
+
+2. **Cmd+1~6 nav shortcuts shift one slot from position 4 on** while ES is hidden (Simulation is now Cmd+4). Self-heals on restore.
+
+3. **z-score adjustment term: permanently out of scope** (sprint ruling) — no code stub was added anywhere.
+
 ## Task 1 — PnL waterfall
 
 1. **Waterfall requires `totalReturnDecomposition` in the response.**
