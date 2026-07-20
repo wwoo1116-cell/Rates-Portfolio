@@ -63,10 +63,12 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
   // whenever Start/Maturity changes; writes the field only while pristine.
   const parQuote = useHistoricalQuote(startDate, maturityDate, tenorYears != null);
   const parRatePct = parQuote.data ? parQuote.data.historical_rate * 100 : null;
-  useEffect(() => {
-    if (irsRateDirty || parRatePct == null) return;
-    setIrsRatePct(parRatePct.toFixed(4));
-  }, [parRatePct, irsRateDirty]);
+  // Render-derived prefill (no state write): while the field is pristine the
+  // displayed value IS the par rate; the moment the user types, their state
+  // value takes over for good. Recompute-on-schedule-change falls out for
+  // free (the query re-keys), and a typed value can never be overwritten.
+  const displayedIrsRatePct =
+    !irsRateDirty && parRatePct != null ? parRatePct.toFixed(4) : irsRatePct;
   // Provenance line under the field: where the number came from, or why there
   // is none (a blank prefill is "no data", never a silent 0).
   const parProvenance =
@@ -75,7 +77,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
     : parRatePct != null ? `당일 par ${parRatePct.toFixed(4)}% (${startDate} 종가)`
     : "당일 par 없음 — 직접 입력";
 
-  const fixedRate = irsRatePct === "" ? null : Number(irsRatePct);
+  const fixedRate = displayedIrsRatePct === "" ? null : Number(displayedIrsRatePct);
   const notional = notional100M === "" ? null : Number(notional100M);
 
   // First failing rule, in field order -- doubles as the RUN button's
@@ -119,7 +121,7 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
   useEffect(() => {
     runTrace();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canTrace, startDate, maturityDate, irsRatePct, notional100M, payFixed, endDate]);
+  }, [canTrace, startDate, maturityDate, displayedIrsRatePct, notional100M, payFixed, endDate]);
 
   useEffect(() => {
     if (!npvTrace.data || !traceChart) return;
@@ -258,10 +260,10 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
           <input
             type="number"
             step="0.001"
-            value={irsRatePct}
-            // A user edit marks the field dirty: prefill never overwrites a
-            // typed value afterwards (HARDEN-1 dirty-field rule). The field
-            // stays fully editable either way.
+            value={displayedIrsRatePct}
+            // A user edit marks the field dirty: the prefill (render-derived
+            // while pristine) never overwrites a typed value afterwards
+            // (HARDEN-1 dirty-field rule). The field stays fully editable.
             onChange={(e) => {
               setIrsRateDirty(true);
               setIrsRatePct(e.target.value);

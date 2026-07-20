@@ -34,6 +34,18 @@ export interface PnlWaterfallProps {
 const PAD = { top: 20, right: 12, bottom: 24, left: 12 };
 const MIN_BAR_PX = 2;
 
+/** Cumulative levels: slot i spans [cum_i, cum_i + value_i]; a null (excluded)
+ * component carries the level through unchanged. Pure — outside the component
+ * so the running-level fold owns its own scope. */
+function buildSlots(items: WaterfallItem[]): (WaterfallItem & { from: number; to: number })[] {
+  let cum = 0;
+  return items.map((it) => {
+    const from = cum;
+    if (it.value !== null) cum += it.value;
+    return { ...it, from, to: cum };
+  });
+}
+
 export function PnlWaterfall({ items, total, totalLabel }: PnlWaterfallProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -57,13 +69,7 @@ export function PnlWaterfall({ items, total, totalLabel }: PnlWaterfallProps) {
   const plotH = Math.max(h - PAD.top - PAD.bottom, 0);
   const n = items.length + 1; // + Total slot
 
-  // Cumulative levels: slot i spans [cum_i, cum_i + value_i].
-  let cum = 0;
-  const slots = items.map((it) => {
-    const from = cum;
-    if (it.value !== null) cum += it.value;
-    return { ...it, from, to: cum };
-  });
+  const slots = buildSlots(items);
 
   const levels = [0, total, ...slots.flatMap((s) => [s.from, s.to])];
   const rawMin = Math.min(...levels);
