@@ -5,9 +5,8 @@
  * cf. src/stores/*-store.ts) but lives INSIDE the slice — it is not registered in
  * the app-wide src/stores/ dir, keeping the vertical slice self-contained.
  *
- * NOTE the pre-existing app store src/stores/simulation-store.ts (`useSimulationStore`,
- * a trade sandbox) is the PLACEHOLDER's state and is unrelated — this is a new,
- * separately-named slice (`useSimulationDataStore`) and does not touch it.
+ * (The old placeholder's `src/stores/simulation-store.ts` trade-sandbox store this
+ * slice was once distinguished from was removed in R3B-PLUS A1 — see git history.)
  *
  * Server transport (POST /api/simulate) is NOT here — it goes through the TanStack
  * Query mutation in ../hooks/use-simulation.ts, which writes the result back via
