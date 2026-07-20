@@ -10,8 +10,8 @@ import { spreadId, type Leg, type SelectedInstrument } from "@/lib/rv-instrument
  * - analysis params (lookback / thresholds / bands) drive the FRONTEND rolling
  *   stats (src/lib/math/rolling-stats.ts) -- changing them recomputes instantly
  *   with no network round-trip.
- * - backtest params (exitZ/stopZ/costBp/notional) feed the BACKEND
- *   /api/spread-backtest via useSpreadBacktest.
+ * - backtest params (exitZ/stopZ/costBp/notional) feed the client-side
+ *   backtest simulation (pinned lastRun -- see use-pinned-backtest).
  * - `focused` is the instrument the three left charts + backtest track;
  *   `watchlist` is the curated set scanned by the Signal grid.
  */

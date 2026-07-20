@@ -11,7 +11,6 @@
 import type {
   AllocationHistoryRequest,
   AllocationHistoryResponse,
-  BacktestSummaryOut,
   BondCashflowRequest,
   BondCashflowResponse,
   BookDailyPnlResponse,
@@ -50,7 +49,6 @@ import type {
   RateHistoryResponse,
   RateSpreadResponse,
   SpotDateResponse,
-  SpreadBacktestResponse,
   TenorDateResponse,
   TradeByTenorIn,
   TradeIn,
@@ -293,43 +291,6 @@ export const bondApi = {
   cashflows: (req: BondCashflowRequest) =>
     apiPost<BondCashflowResponse>("/api/portfolio/bond-cashflows", req),
 };
-
-// ---------------------------------------------------------------------------
-// Spread backtest (z-score mean reversion, orphaned feature -- no UI consumer
-// yet, see MIGRATION_PLAN.md §3/§6.8)
-// ---------------------------------------------------------------------------
-
-export interface SpreadBacktestParams {
-  start: string;
-  end: string;
-  short: string;
-  long: string;
-  lookback?: number;
-  entryZ?: number;
-  exitZ?: number;
-  stopZ?: number;
-  costBp?: number;
-  notional?: number;
-}
-
-export const spreadBacktestApi = {
-  run: (p: SpreadBacktestParams) =>
-    apiGet<SpreadBacktestResponse>(
-      `/api/spread-backtest${qs({
-        start: p.start,
-        end: p.end,
-        short: p.short,
-        long: p.long,
-        lookback: p.lookback,
-        entry_z: p.entryZ,
-        exit_z: p.exitZ,
-        stop_z: p.stopZ,
-        cost_bp: p.costBp,
-        notional: p.notional,
-      })}`,
-    ),
-};
-export type { BacktestSummaryOut };
 
 // ---------------------------------------------------------------------------
 // DB connection settings

@@ -15,14 +15,12 @@ import {
   portfolioAnalyticsApi,
   portfolioApi,
   rateHistoryApi,
-  spreadBacktestApi,
   tradesApi,
   type CreditSeriesLegIn,
   type HistoricalPnlRequest,
   type NpvTraceRequest,
   type PortfolioPriceRequest,
   type PositionFairRateRequest,
-  type SpreadBacktestParams,
   type TradeByTenorIn,
   type TradeIn,
 } from "@/lib/api-client";
@@ -40,7 +38,6 @@ const queryKeys = {
   creditTaxonomy: () => ["credit-curve", "taxonomy"] as const,
   creditSeries: (legs: CreditSeriesLegIn[], start: string, end: string) =>
     ["credit-curve", "series", legs, start, end] as const,
-  spreadBacktest: (params: SpreadBacktestParams) => ["spread-backtest", params] as const,
 };
 
 /**
@@ -254,19 +251,5 @@ export function usePositionMtmHistory(req: NpvTraceRequest | null) {
 export function usePositionFairRate() {
   return useMutation({
     mutationFn: (req: PositionFairRateRequest) => portfolioApi.fairRate(req),
-  });
-}
-
-/** Mean-reversion z-score backtest of an IRS curve spread (short vs long
- * tenor) -- services/spread_backtest_service.py via GET /api/spread-backtest.
- * The first UI consumer of this previously-orphaned endpoint (Entry Signals
- * tab). Deterministic per parameter set, so cache it aggressively; `enabled`
- * is left to the caller (only fire for a valid IRS spread + date range). */
-export function useSpreadBacktest(params: SpreadBacktestParams | null) {
-  return useQuery({
-    queryKey: queryKeys.spreadBacktest(params as SpreadBacktestParams),
-    queryFn: () => spreadBacktestApi.run(params as SpreadBacktestParams),
-    enabled: params !== null && Boolean(params.start && params.end && params.short && params.long),
-    staleTime: 5 * 60_000,
   });
 }

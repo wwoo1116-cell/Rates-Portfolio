@@ -371,49 +371,6 @@ export interface CreditSeriesResponse {
   results: CreditSeriesResultOut[];
 }
 
-export interface BacktestPointOut {
-  valuation_date: string;
-  spread_bp: number;
-  z_score: number | null;
-  position: number;
-  daily_pnl: number;
-  cumulative_pnl: number;
-}
-
-export interface BacktestTradeOut {
-  entry_date: string;
-  exit_date: string;
-  direction: number;
-  entry_z: number;
-  exit_z: number;
-  entry_spread_bp: number;
-  exit_spread_bp: number;
-  pnl: number;
-  exit_reason: string;
-}
-
-export interface BacktestSummaryOut {
-  total_pnl: number;
-  max_drawdown: number;
-  win_rate: number | null;
-  sharpe_ratio: number | null;
-  num_trades: number;
-}
-
-export interface SpreadBacktestResponse {
-  short: string;
-  long: string;
-  lookback: number;
-  entry_z: number;
-  exit_z: number;
-  stop_z: number;
-  cost_bp: number;
-  notional: number;
-  points: BacktestPointOut[];
-  trades: BacktestTradeOut[];
-  summary: BacktestSummaryOut;
-}
-
 export interface HistoricalPnlRequest {
   positions: PortfolioPositionIn[];
   start_date: string;
