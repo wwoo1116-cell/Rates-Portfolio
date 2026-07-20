@@ -40,7 +40,12 @@ export function ComponentGallery() {
         <div>
           <h1 className="text-h1">Component Gallery</h1>
           <p className="text-body text-fg-muted">
-            Dev-only visual review surface — every primitive and data component, every state.
+            Dev-only visual review surface — every LIVE primitive and data component, every
+            state. Excludes post-Blueprint-migration no-op shims (<code>ui/select</code>,
+            <code>ui/segmented-control</code>, <code>ui/toast</code>, <code>ui/tooltip</code> —
+            each says &quot;use Blueprint directly&quot; in its own header) and{" "}
+            <code>ui/slider</code> (real component, zero callers since the Simulation redesign
+            moved to buttons — R3B-PLUS A3).
           </p>
         </div>
         <Button variant="secondary" size="md" onClick={toggleTheme}>
