@@ -38,6 +38,11 @@ interface SimulationDataState {
   userBaseDate: string | null;
   setUserBaseDate: (date: string | null) => void;
 
+  /** SIM2-1 — which preview the Curve View panel shows. UI-only: survives
+   * stage navigation (module-level store) and NEVER enters the payload. */
+  previewMode: "curve" | "path";
+  setPreviewMode: (mode: "curve" | "path") => void;
+
   setInputs: (inputs: Partial<SimulationInputs>) => void;
   patchParams: (patch: Partial<ScenarioParams>) => void;
   resetParams: () => void;
@@ -61,6 +66,9 @@ export const useSimulationDataStore = create<SimulationDataState>((set) => ({
 
   userBaseDate: null,
   setUserBaseDate: (date) => set({ userBaseDate: date }),
+
+  previewMode: "curve",
+  setPreviewMode: (mode) => set({ previewMode: mode }),
 
   setInputs: (inputs) => set((state) => ({ inputs: { ...state.inputs, ...inputs } })),
   patchParams: (patch) => set((state) => ({ params: { ...state.params, ...patch } })),

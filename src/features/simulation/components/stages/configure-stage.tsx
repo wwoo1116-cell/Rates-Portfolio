@@ -18,12 +18,12 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 
 import { toNum } from "../../lib/scenario-curves";
 import { useSimulationDataStore } from "../../store/simulation-data-store";
 import { useSimulationPort } from "../../hooks/use-simulation";
 import { useMarketDateRange } from "../../hooks/use-input-curves";
+import { SegmentedButtons } from "../segmented-buttons";
 import { CurveViewPanel } from "../panels/curve-view-panel";
 
 const CREDIT_SECTORS = ["특은채", "은행채", "카드채", "회사채"] as const;
@@ -38,51 +38,6 @@ const TENOR_SPREADS = [
 const HORIZON_CHOICES = [30, 60, 90, 180, 270, 365] as const;
 
 const WAYPOINT_STEP_BP = 5;
-
-/**
- * Segmented button group (mutually exclusive choice). Composed from the Button
- * primitive — pressed state reuses the accent-ghost recipe the "+ 추가" button
- * established (border-sem-info / bg-sem-info-ghost / text-sem-info); no new
- * visual language. A value outside `choices` (possible if the store was
- * patched elsewhere) simply renders with no segment pressed — never coerced.
- */
-function SegmentedButtons({
-  choices,
-  value,
-  onChange,
-  format,
-  label,
-}: {
-  choices: readonly number[];
-  value: number;
-  onChange: (v: number) => void;
-  format: (v: number) => string;
-  label: string;
-}) {
-  return (
-    <div role="group" aria-label={label} className="flex w-full border border-border-subtle">
-      {choices.map((c) => (
-        <Button
-          key={c}
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-pressed={value === c}
-          onClick={() => onChange(c)}
-          data-num
-          className={cn(
-            "min-w-0 flex-1 px-0 text-micro",
-            value === c
-              ? "bg-sem-info-ghost text-sem-info shadow-[inset_0_0_0_1px_var(--sem-info)]"
-              : "text-fg-muted",
-          )}
-        >
-          {format(c)}
-        </Button>
-      ))}
-    </div>
-  );
-}
 
 /**
  * Numeric bp field with a local draft so partial input ("-", "1.") can be typed:

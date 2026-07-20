@@ -38,11 +38,12 @@ export function useMarketDateRange() {
 
 /** IRS par quotes (+ CD 3M short end) for the date → BaseQuote[]. A missing
  * snapshot (non-business day) surfaces as isError — the panel shows the
- * blank-policy notice instead of fabricating quotes. */
-export function useSwapInputQuotes(baseDate: string) {
+ * blank-policy notice instead of fabricating quotes. SIM2-1: `enabled` lets
+ * the 시계열형 branch keep the whole preview network-free. */
+export function useSwapInputQuotes(baseDate: string, enabled = true) {
   return useQuery({
     queryKey: INPUT_CURVE_KEYS.swapQuotes(baseDate),
-    enabled: !!baseDate,
+    enabled: enabled && !!baseDate,
     staleTime: Infinity,
     retry: false,
     queryFn: async (): Promise<BaseQuote[]> => {
@@ -61,12 +62,13 @@ export function useSwapInputQuotes(baseDate: string) {
 
 /** 국고채 par yields per taxonomy tenor for the date → BaseQuote[]; a tenor
  * with no point on the date stays rate:null (rendered —, never +0). */
-export function useBondInputQuotes(baseDate: string) {
+export function useBondInputQuotes(baseDate: string, enabled = true) {
   const taxonomy = useQuery({
     queryKey: INPUT_CURVE_KEYS.taxonomy,
     queryFn: () => creditCurveApi.taxonomy(),
     staleTime: Infinity,
     retry: 1,
+    enabled,
   });
 
   const tenors =
@@ -74,7 +76,7 @@ export function useBondInputQuotes(baseDate: string) {
 
   const series = useQuery({
     queryKey: INPUT_CURVE_KEYS.bondQuotes(baseDate),
-    enabled: !!baseDate && tenors.length > 0,
+    enabled: enabled && !!baseDate && tenors.length > 0,
     staleTime: Infinity,
     retry: false,
     queryFn: async (): Promise<BaseQuote[]> => {

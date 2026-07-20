@@ -48,6 +48,11 @@ export interface LwLineChartProps {
   zeroLine?: boolean;
   /** Point markers on the first series (e.g. break-even day). */
   markers?: LwMarker[];
+  /** SIM2-1 — axis/badge value formatter (e.g. "+X.Xbp"). Applied to EVERY
+   * series on the pane so the scale formatter is identical regardless of
+   * z-order (the iv4 LWC defect-family rule: the lowest-z series' format
+   * captures the whole scale). */
+  formatValue?: (v: number) => string;
 }
 
 /** Map a D+n horizon offset to an ascending UTC timestamp for the time axis. */
@@ -61,7 +66,7 @@ export function dayToTime(baseDate: string, day: number): UTCTimestamp {
  * markers plugin) on every render even when nothing changed. */
 const EMPTY_MARKERS: LwMarker[] = [];
 
-export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS }: LwLineChartProps) {
+export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS, formatValue }: LwLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Line">[]>([]);
@@ -150,6 +155,7 @@ export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS 
         lineStyle: def.dashed ? LineStyle.Dashed : LineStyle.Solid,
         priceLineVisible: false,
         lastValueVisible: false,
+        ...(formatValue ? { priceFormat: { type: "custom" as const, formatter: formatValue, minMove: 0.1 } } : {}),
       });
       s.setData(def.data);
       if (zeroLine && i === 0) {
@@ -182,7 +188,7 @@ export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS 
 
     seriesRef.current = created;
     chart.timeScale().fitContent();
-  }, [series, zeroLine, markers]);
+  }, [series, zeroLine, markers, formatValue]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }
