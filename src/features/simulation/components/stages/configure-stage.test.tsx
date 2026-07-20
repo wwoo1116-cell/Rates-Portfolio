@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { DEFAULT_SCENARIO_PARAMS, EMPTY_SIMULATION_INPUTS } from "../../types/simulation-port";
+import { buildSimulateRequest } from "../../lib/scenario-curves";
 import { useSimulationDataStore } from "../../store/simulation-data-store";
 import { ConfigureStage } from "./configure-stage";
 
@@ -104,19 +105,21 @@ describe("ConfigureStage (s15 staged flow — configure)", () => {
     ).toBe(-12);
   });
 
-  // DEMO-DEBT (demo sprint 2026-07-20): σ input removed from the Configure UI
-  // for the two-pane preview (trader feedback). Store key sigmaBp + payload
-  // default (2.0) remain — revive this test when the σ control returns.
-  it.skip("edits the fan σ with the stepper and clamps typed values to (0, 25] (s13)", () => {
+  // HARDEN-1 (supersedes the DEMO-DEBT σ-test skip): the σ/fan design left
+  // the Simulation surface PERMANENTLY (owner ruling) — the old stepper test
+  // is rewritten to pin the CURRENT spec instead of waiting for a control
+  // that is not coming back.
+  it("σ removal is permanent: no σ control, engine σ contract intact (HARDEN-1)", () => {
     renderStage();
-    fireEvent.click(screen.getByRole("button", { name: "분포 σ 0.5bp 증가" }));
-    expect(useSimulationDataStore.getState().params.sigmaBp).toBe("2.5");
-
-    fireEvent.change(screen.getByLabelText("분포 σ"), { target: { value: "4" } });
-    expect(useSimulationDataStore.getState().params.sigmaBp).toBe("4");
-
-    fireEvent.change(screen.getByLabelText("분포 σ"), { target: { value: "99" } });
-    expect(useSimulationDataStore.getState().params.sigmaBp).toBe("25");
+    // No σ control or fan-band affordance anywhere on Configure.
+    expect(screen.queryByText(/분포 σ/)).toBeNull();
+    expect(screen.queryByLabelText("분포 σ")).toBeNull();
+    expect(screen.queryByText(/팬 차트/)).toBeNull();
+    // The REQUEST contract is untouched: sigmaBp default survives in the
+    // store and buildSimulateRequest still ships sigma_bp = 2.0.
+    const { params, inputs } = useSimulationDataStore.getState();
+    expect(params.sigmaBp).toBe("2.0");
+    expect(buildSimulateRequest(inputs, params).sigma_bp).toBe(2.0);
   });
 
   it("keeps waypoint state semantics identical for equivalent selections (payload parity)", () => {
