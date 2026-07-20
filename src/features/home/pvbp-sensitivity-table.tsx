@@ -5,10 +5,15 @@
  * Backed by POST /api/portfolio/pvbp-sensitivity via use-portfolio-analytics.ts.
  * Bonds contribute their pre-computed pvbp per tenor_bucket; IRS positions
  * are re-priced delta by the real backend and bucketed by pillar.
+ *
+ * RECON-DAILY: the table markup itself now lives in sector-tenor-matrix.tsx
+ * (extracted verbatim) so the 일별 대사 panel reuses this matrix's design
+ * grammar rather than forking it. This file keeps the data plumbing, the
+ * dead-man switch, and the panel chrome.
  */
 import { Spinner } from "@blueprintjs/core";
-import { heatRampFill } from "@/lib/chart-colors";
 import { usePortfolioAnalytics } from "@/hooks/use-portfolio-analytics";
+import { SectorTenorMatrix, type MatrixRow } from "./sector-tenor-matrix";
 
 /** ALL 16 backend tenor buckets, in the backend's own order -- mirrors
  * portfolio_analytics_service._TENOR_COLUMNS and must stay in sync with it.
@@ -23,39 +28,20 @@ export const TENOR_COLS = [
   "4Y", "5Y", "6Y", "7Y", "8Y", "9Y", "10Y", "30Y",
 ] as const;
 
-const SECTOR_COL_PX = 100;
-const TENOR_COL_PX = 64;
-const TOTAL_COL_PX = 80;
-// The width at which all 17 columns render at full size. Narrower panels get
-// a horizontal scrollbar (the wrapper is already overflow-auto) instead of
-// squeezed-to-illegible cells.
-const TABLE_MIN_PX = SECTOR_COL_PX + TENOR_COLS.length * TENOR_COL_PX + TOTAL_COL_PX;
-
 /** Fill scale saturates at ±10M ₩/bp — same magnitude cap the old continuous
  * alpha scale used; only the palette moved to the S10 Jade/Berry heat ramp
  * (white text on any fill, zero keeps the muted em-dash). */
 const CELL_RANGE = 10_000_000;
 
-function Cell({ value }: { value: number }) {
-  const bg = heatRampFill(value, CELL_RANGE);
-  const color = value === 0 ? "var(--fg-dim)" : "var(--chart-heat-text)";
-  return (
-    <span
-      style={{
-        display: "block",
-        textAlign: "right",
-        padding: "2px 6px",
-        background: bg,
-        color,
-        fontFamily: "var(--font-mono)",
-        fontVariantNumeric: "tabular-nums",
-        fontWeight: 600,
-        fontSize: 11,
-      }}
-    >
-      {value === 0 ? "—" : `${value > 0 ? "+" : ""}${Math.round(value / 1000).toLocaleString()}k`}
-    </span>
-  );
+/** Response rows → matrix rows, missing buckets zero-filled (the API always
+ * sends all 16, so `?? 0` is belt-and-braces, not a hidden default). */
+export function toMatrixRows(rows: Array<Record<string, unknown>>): MatrixRow[] {
+  return rows.map((row) => ({
+    label: String(row.sector),
+    cells: TENOR_COLS.map((c) => (typeof row[c] === "number" ? (row[c] as number) : 0)),
+    total: typeof row.total === "number" ? row.total : 0,
+    emphasized: row.sector === "합계",
+  }));
 }
 
 export function PvbpSensitivityTable() {
@@ -108,61 +94,11 @@ export function PvbpSensitivityTable() {
         </div>
       ) : (
         <div className="min-h-0 overflow-auto flex-1">
-          <table
-            className="w-full border-collapse text-body"
-            style={{ tableLayout: "fixed", fontSize: 12, minWidth: TABLE_MIN_PX }}
-          >
-            <colgroup>
-              <col style={{ width: SECTOR_COL_PX }} />
-              {TENOR_COLS.map((c) => (
-                <col key={c} style={{ width: TENOR_COL_PX }} />
-              ))}
-              <col style={{ width: TOTAL_COL_PX }} />
-            </colgroup>
-            <thead>
-              <tr className="border-b border-border-subtle">
-                <th className="py-1.5 text-left text-label text-fg-muted font-bold uppercase">
-                  Sector
-                </th>
-                {TENOR_COLS.map((c) => (
-                  <th
-                    key={c}
-                    className="py-1.5 text-right text-label text-fg-muted font-bold uppercase"
-                  >
-                    {c}
-                  </th>
-                ))}
-                <th className="py-1.5 text-right text-label text-fg-muted font-bold uppercase">
-                  Total
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {(pvbpSensitivity ?? []).map((row: any) => (
-                <tr
-                  key={row.sector}
-                  className="border-t border-border-subtle"
-                  style={
-                    row.sector === "합계"
-                      ? { borderTop: "1px solid var(--border-dim)", fontWeight: 700 }
-                      : {}
-                  }
-                >
-                  <td className="py-1.5 text-label text-fg-muted uppercase truncate">
-                    {row.sector}
-                  </td>
-                  {TENOR_COLS.map((c) => (
-                    <td key={c} className="py-1">
-                      <Cell value={row[c] ?? 0} />
-                    </td>
-                  ))}
-                  <td className="py-1">
-                    <Cell value={row.total ?? 0} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SectorTenorMatrix
+            columns={TENOR_COLS}
+            rows={toMatrixRows(pvbpSensitivity ?? [])}
+            cellRange={CELL_RANGE}
+          />
 
           {hasHidden && (
             /* Should never render: TENOR_COLS covers every backend bucket. If

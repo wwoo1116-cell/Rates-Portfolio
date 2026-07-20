@@ -12,6 +12,7 @@ import {
 import { PortfolioOverview } from "./portfolio-overview";
 import { PvbpSensitivityTable } from "./pvbp-sensitivity-table";
 import { BookDailyPnlTable } from "./book-daily-pnl-table";
+import { DailyReconPanel } from "./daily-recon-panel";
 import { DockviewTab } from "@/components/layout/dockview-tab";
 import { DockviewActions } from "@/components/layout/dockview-actions";
 import { useWorkspacePanelsStore } from "@/stores/workspace-panels-store";
@@ -30,10 +31,15 @@ const BookDailyPnlPanel = memo(function BookDailyPnlPanel() {
   return <BookDailyPnlTable />;
 });
 
+const DailyReconDockPanel = memo(function DailyReconDockPanel() {
+  return <DailyReconPanel />;
+});
+
 const components = {
   overview: (props: IDockviewPanelProps) => <OverviewPanel {...props} />,
   pvbp: (props: IDockviewPanelProps) => <PvbpSensitivityPanel {...props} />,
   bookpnl: (props: IDockviewPanelProps) => <BookDailyPnlPanel {...props} />,
+  dailyrecon: (props: IDockviewPanelProps) => <DailyReconDockPanel {...props} />,
 };
 
 const defaultTabComponent = (props: IDockviewPanelHeaderProps) => <DockviewTab {...props} />;
@@ -48,7 +54,10 @@ const rightHeaderActionsComponent = (props: IDockviewHeaderActionsProps) => (
 // `booksummary` components, which no longer exist, so fromJSON would restore
 // panels that can never render. A new key means no saved layout, which falls
 // through to addDefaultPanels below.
-const STORAGE_KEY = "dockview-layout:home-v7";
+// v8 (RECON-DAILY): added the 일별 대사 panel to the defaults. A saved v7
+// layout would restore fine but silently omit the new panel; the bump makes
+// it actually appear (the sidebar toggle would otherwise be the only way in).
+const STORAGE_KEY = "dockview-layout:home-v8";
 const WORKSPACE_ID = "home";
 
 const MANAGED_PANELS: ManagedPanelDef[] = [
@@ -66,6 +75,16 @@ const MANAGED_PANELS: ManagedPanelDef[] = [
     component: "bookpnl",
     referencePanelId: "home-pvbp-panel",
     direction: "right",
+  },
+  // RECON-DAILY: tabbed WITH the PVBP panel ("adjacent to PVBP Sensitivity")
+  // — same group, so M1 sits one tab away from the live PVBP matrix it is the
+  // as-of variant of.
+  {
+    id: "home-dailyrecon-panel",
+    title: "일별 대사",
+    component: "dailyrecon",
+    referencePanelId: "home-pvbp-panel",
+    direction: "within",
   },
 ];
 
@@ -90,6 +109,14 @@ function addDefaultPanels(api: DockviewApi) {
     component: "bookpnl",
     title: "Daily P&L by Book",
     position: { referencePanel: pvbpPanel, direction: "right" },
+  });
+  api.addPanel({
+    id: "home-dailyrecon-panel",
+    component: "dailyrecon",
+    title: "일별 대사",
+    position: { referencePanel: pvbpPanel, direction: "within" },
+    // The PVBP tab stays the group's active default — recon is the drill-in.
+    inactive: true,
   });
 }
 

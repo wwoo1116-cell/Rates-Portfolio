@@ -10,26 +10,16 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { portfolioAnalyticsApi, type ParsedPositionOut } from "@/lib/api-client";
 import { requestFingerprint } from "@/lib/request-fingerprint";
 
-export function usePortfolioAnalytics() {
+/** The two client position stores merged into the ParsedPositionOut[] the
+ * portfolio-analytics endpoints take. Extracted from usePortfolioAnalytics
+ * (RECON-DAILY) so use-daily-recon.ts sends the SAME position payload — the
+ * mapping must not fork, or the recon panel would reconcile a different book
+ * than the Daily P&L table shows. Memoised on the store arrays exactly as
+ * before. */
+export function useCombinedPositions(): ParsedPositionOut[] {
   const irsPositions = useManualPositionsStore((state) => state.positions);
   const bondPositions = useBondPositionsStore((state) => state.positions);
-  // Funding-rate assumption from the Settings tab. Flows into book-daily-pnl
-  // so the backend applies BOK base + this spread to bond funding cost.
-  const fundingSpreadBp = useSettingsStore((state) => state.fundingSpreadBp);
-  
-  // Latest close — the same range→snapshot composition useLatestMarketSnapshot
-  // wraps, inlined here (T2b) because Daily P&L below needs the range's
-  // available_dates and, when a past date is picked, a SECOND snapshot. PVBP /
-  // Book Summary / Portfolio Overview always price off this latest close; the
-  // past-date pick never touches them.
-  const rangeQuery = useMarketDataRange();
-  const latestDate = rangeQuery.data?.max_date;
-  const snapshotQuery = useMarketDataSnapshot(latestDate);
-  const snapshot = snapshotQuery.data;
-  const snapshotLoading = rangeQuery.isLoading || snapshotQuery.isLoading;
-  const snapshotError = rangeQuery.isError || snapshotQuery.isError;
-
-  const combinedPositions: ParsedPositionOut[] = useMemo(() => {
+  return useMemo(() => {
     const irs: ParsedPositionOut[] = irsPositions.map(p => ({
       instrument_type: "irs",
       position_id: p.name, // The backend needs position_id. In upload, name=position_id
@@ -89,6 +79,26 @@ export function usePortfolioAnalytics() {
     }));
     return [...irs, ...bonds];
   }, [irsPositions, bondPositions]);
+}
+
+export function usePortfolioAnalytics() {
+  // Funding-rate assumption from the Settings tab. Flows into book-daily-pnl
+  // so the backend applies BOK base + this spread to bond funding cost.
+  const fundingSpreadBp = useSettingsStore((state) => state.fundingSpreadBp);
+
+  // Latest close — the same range→snapshot composition useLatestMarketSnapshot
+  // wraps, inlined here (T2b) because Daily P&L below needs the range's
+  // available_dates and, when a past date is picked, a SECOND snapshot. PVBP /
+  // Book Summary / Portfolio Overview always price off this latest close; the
+  // past-date pick never touches them.
+  const rangeQuery = useMarketDataRange();
+  const latestDate = rangeQuery.data?.max_date;
+  const snapshotQuery = useMarketDataSnapshot(latestDate);
+  const snapshot = snapshotQuery.data;
+  const snapshotLoading = rangeQuery.isLoading || snapshotQuery.isLoading;
+  const snapshotError = rangeQuery.isError || snapshotQuery.isError;
+
+  const combinedPositions = useCombinedPositions();
 
   const baseRequest = useMemo(() => {
     if (!snapshot || combinedPositions.length === 0) return undefined;

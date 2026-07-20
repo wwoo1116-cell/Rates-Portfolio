@@ -40,9 +40,19 @@ export function resolveDailyCloseDate(
 interface HomeDateState {
   dailyPnlCloseDate: string | null;
   setDailyPnlCloseDate: (date: string | null) => void;
+  /** RECON-DAILY — the 일별 대사 panel's close-date pick (D−1 of the
+   * reconciliation day D). Separate from dailyPnlCloseDate (inspecting a past
+   * recon must not silently repoint the Daily P&L table), but app-wide for
+   * the same reason: BOTH recon mounts (Home + Rates History) read this one
+   * field, so they can never show different dates, and the same date always
+   * resolves to the same queries. Same non-persistence rationale. */
+  reconCloseDate: string | null;
+  setReconCloseDate: (date: string | null) => void;
 }
 
 export const useHomeDateStore = create<HomeDateState>((set) => ({
   dailyPnlCloseDate: null,
   setDailyPnlCloseDate: (date) => set({ dailyPnlCloseDate: date }),
+  reconCloseDate: null,
+  setReconCloseDate: (date) => set({ reconCloseDate: date }),
 }));

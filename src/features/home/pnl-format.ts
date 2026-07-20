@@ -15,3 +15,14 @@
 export function formatPnlKrw(value: number): string {
   return (Math.round(value / 10_000) * 10_000).toLocaleString();
 }
+
+/** Compact signed-magnitude KRW for dense tables: 1.23B / 4.5M / raw below
+ * 1M. Moved verbatim from book-daily-pnl-table.tsx (RECON-DAILY) so the
+ * 일별 대사 panel's ₩ figures format identically to the Daily P&L table's —
+ * same TABLE/READOUT-only scope note as formatPnlKrw above. */
+export function formatKrwCompact(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  return Math.round(value).toLocaleString();
+}
