@@ -137,6 +137,9 @@ export function buildSimulateRequest(inputs: SimulationInputs, params: ScenarioP
     irsCurves: inputs.irsParRates,
     customPath: params.waypoints,
     sigma_bp: sanitizeSigmaBp(params.sigmaBp),
+    // SIM2-5: additive opt-in; false is byte-equivalent to omitting it
+    // backend-side (BE default False).
+    fundingStepping: params.fundingStepping ?? false,
   };
 }
 

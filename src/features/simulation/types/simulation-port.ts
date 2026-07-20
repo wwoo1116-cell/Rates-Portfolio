@@ -49,6 +49,9 @@ export interface ScenarioParams {
   /** s13 — fan-chart σ in bp/√business-day (free-text like the other numeric
    * params; sanitized to (0, 25] at request-build time, backend default 2.0). */
   sigmaBp: string;
+  /** SIM2-5 (ruling ④) — opt-in 금통위 funding stepping (default off = the
+   * s15 fixed constant, byte-identical). Rides the payload as fundingStepping. */
+  fundingStepping: boolean;
   /** SIM2-2 (ruling ①) — the intermediate waypoint days the USER has edited
    * (stepper, typed commit, or drag). Explicit flags, never value-equality
    * inference: an untouched waypoint re-lerps onto the line toward
@@ -107,6 +110,7 @@ export const DEFAULT_SCENARIO_PARAMS: ScenarioParams = {
   irsSpread: "0",
   shortEndEvents: [],
   sigmaBp: "2.0",
+  fundingStepping: false,
   touchedWaypointDays: [],
 };
 

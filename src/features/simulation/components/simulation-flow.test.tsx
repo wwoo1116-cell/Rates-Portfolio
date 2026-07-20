@@ -123,6 +123,24 @@ describe("SimulationFlow (s15 staged flow)", () => {
     expect(screen.queryByText("+0만")).toBeNull();
   });
 
+  it("SIM2-5: stepped funding renders the range chip, never a bare single number", () => {
+    renderFlow();
+    const steppedReq = { ...REQUEST, fundingStepping: true } as unknown as SimulateRequest;
+    const steppedResult = {
+      ...RESULT,
+      fundingCurve: [
+        { day: 0, date: "2026-07-16", fundingRate: 0.0285, positionRate: 0.0326, carryBp: 41.0 },
+        { day: 180, date: "2027-01-12", fundingRate: 0.026, positionRate: 0.0326, carryBp: 66.0 },
+      ],
+    };
+    act(() => useSimulationDataStore.getState().markRunning());
+    act(() => useSimulationDataStore.getState().ingestResult(steppedReq, steppedResult));
+
+    expect(screen.getByText("Funding(만기)")).toBeTruthy();
+    expect(screen.getByText("2.85%→2.60%")).toBeTruthy();
+    expect(screen.queryByText(/^2\.60%$/)).toBeNull(); // no bare single number
+  });
+
   it("조건 수정 returns to Configure with all params preserved", () => {
     renderFlow();
     act(() => useSimulationDataStore.getState().patchParams({ baseShockBp: "45" }));

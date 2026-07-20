@@ -61,7 +61,20 @@ export function ResultsStage({ onEdit }: { onEdit: () => void }) {
     // scenario-curves tests); only the display is gone.
   }
   if (lastFunding) {
-    chips.push({ label: "Funding", value: `${(lastFunding.fundingRate * 100).toFixed(2)}%` });
+    // SIM2-5 — staircase-aware chip: under stepping a single number would hide
+    // the staircase, so the chip shows the range (시작→만기) whenever the strip
+    // actually moved, labeled 만기 for the terminal figure.
+    const firstFunding = lastRun.fundingCurve?.[0] ?? null;
+    const stepped =
+      Boolean(lastRunRequest?.fundingStepping) &&
+      firstFunding !== null &&
+      firstFunding.fundingRate !== lastFunding.fundingRate;
+    chips.push({
+      label: stepped ? "Funding(만기)" : "Funding",
+      value: stepped
+        ? `${(firstFunding.fundingRate * 100).toFixed(2)}%→${(lastFunding.fundingRate * 100).toFixed(2)}%`
+        : `${(lastFunding.fundingRate * 100).toFixed(2)}%`,
+    });
     if (lastFunding.carryBp !== null) {
       chips.push({
         label: "Carry",

@@ -414,6 +414,26 @@ export function ConfigureStage() {
                 {eventCount > 0 && <span data-num className="text-micro text-sem-info">{eventCount}건</span>}
               </summary>
               <div className="mt-3 space-y-2">
+                {/* SIM2-5 (ruling ④) — 조달 스테핑 옵트인. 기본 off = s15 고정
+                    상수(바이트 동일). on이면 조달 비용이 아래 이벤트로 스테핑
+                    (금리 경로 쪽 이벤트 사용은 원래부터 항상 적용). */}
+                <div className="flex items-center justify-between">
+                  <span className="text-micro text-fg-muted">조달비용 금통위 스테핑</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={params.fundingStepping}
+                    aria-label="조달비용 금통위 스테핑"
+                    onClick={() => patchParams({ fundingStepping: !params.fundingStepping })}
+                    className={`border px-2 py-0.5 text-micro transition-colors ${
+                      params.fundingStepping
+                        ? "border-sem-info bg-sem-info-ghost text-sem-info"
+                        : "border-border-subtle text-fg-dim hover:text-fg-muted"
+                    }`}
+                  >
+                    {params.fundingStepping ? "ON" : "OFF"}
+                  </button>
+                </div>
                 <div className="flex items-center justify-between">
                   <span className="text-micro text-fg-dim">날짜 · 변동폭 (bp)</span>
                   <button

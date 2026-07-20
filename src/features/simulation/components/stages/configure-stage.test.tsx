@@ -183,6 +183,28 @@ describe("ConfigureStage (s15 staged flow — configure)", () => {
     expect(wps.find((w) => w.day === 30)?.bp).toBe(5); // pinned; lerp would be 10
   });
 
+  // ── SIM2-5 (ruling ④) — 조달 스테핑 opt-in toggle ──
+
+  it("funding stepping defaults OFF and ships fundingStepping:false", () => {
+    renderStage();
+    const sw = screen.getByRole("switch", { name: "조달비용 금통위 스테핑" });
+    expect(sw.getAttribute("aria-checked")).toBe("false");
+    const { inputs, params } = useSimulationDataStore.getState();
+    expect(params.fundingStepping).toBe(false);
+    expect(buildSimulateRequest(inputs, params).fundingStepping).toBe(false);
+  });
+
+  it("toggling ON flips the store and the payload; OFF returns byte-equivalent", () => {
+    renderStage();
+    const sw = screen.getByRole("switch", { name: "조달비용 금통위 스테핑" });
+    fireEvent.click(sw);
+    expect(useSimulationDataStore.getState().params.fundingStepping).toBe(true);
+    const { inputs, params } = useSimulationDataStore.getState();
+    expect(buildSimulateRequest(inputs, params).fundingStepping).toBe(true);
+    fireEvent.click(sw);
+    expect(useSimulationDataStore.getState().params.fundingStepping).toBe(false);
+  });
+
   it("prunes touched flags for days that fall off the grid on horizon shrink", () => {
     renderStage();
     fireEvent.change(screen.getByLabelText("D+120 변동폭"), { target: { value: "9" } });

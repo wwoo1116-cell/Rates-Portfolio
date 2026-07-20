@@ -47,6 +47,10 @@ export interface SimulateRequest {
   /** s13 — fan-chart σ in bp/√business-day. Optional; backend defaults to 2.0
    * (byte-identical to the s11 constant) and 422s outside (0, 25]. */
   sigma_bp?: number;
+  /** SIM2-5 (ruling ④, additive) — true + omitted fundingRate: fixed-mode
+   * funding STEPS at the request's 금통위 events (base = the policy constant
+   * pair). false/omitted = the s15 constant, byte-identical. */
+  fundingStepping?: boolean;
 }
 
 export interface SimulationSummary {
