@@ -27,7 +27,11 @@ import { Fragment } from "react";
 import { Spinner, Tooltip } from "@blueprintjs/core";
 import { usePortfolioAnalytics } from "@/hooks/use-portfolio-analytics";
 import { usePeriodPnl } from "@/hooks/use-period-pnl";
+import { useMarketDataRange } from "@/hooks/use-api";
+import { useHomeDateStore } from "@/stores/home-date-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DailyPnlFigures, PeriodPnlFigure, QuoteSource } from "@/lib/api-types";
 
@@ -186,6 +190,78 @@ function PeriodPnlStat({ label, figure }: { label: string; figure: PeriodPnlFigu
   );
 }
 
+/**
+ * R3B-PLUS T2b — past-date picker for this panel only. The Simulation
+ * BaseDateControl recipe (configure-stage.tsx), compacted for a panel header:
+ * ◀/▶ step over the backend's available_dates (no fabricated dates), the date
+ * field is bounded to the range, and 오늘로 resets to automatic (latest close).
+ * Writes home-date-store's dailyPnlCloseDate; use-portfolio-analytics feeds it
+ * into the daily-pnl request's valuation_date. The date the header DISPLAYS
+ * stays the response's server-derived as_of (T = next business day after this
+ * close) — showing the picked close itself would read one business day off.
+ */
+function CloseDateControl({ closeDate }: { closeDate: string }) {
+  const picked = useHomeDateStore((s) => s.dailyPnlCloseDate);
+  const setPicked = useHomeDateStore((s) => s.setDailyPnlCloseDate);
+  const { data: range } = useMarketDataRange();
+
+  const dates = range?.available_dates ?? [];
+  // Index of the latest available date ≤ current — the step anchor even when
+  // the current date itself has no snapshot (free-typed weekend/holiday).
+  let anchor = -1;
+  for (let i = 0; i < dates.length; i++) {
+    if (dates[i] <= closeDate) anchor = i;
+    else break;
+  }
+  const prevDate =
+    anchor === -1 ? null : dates[anchor] < closeDate ? dates[anchor] : anchor > 0 ? dates[anchor - 1] : null;
+  const next = anchor >= 0 && anchor < dates.length - 1 ? dates[anchor + 1] : null;
+
+  return (
+    <span className="flex items-center gap-1">
+      <Button
+        type="button"
+        variant="icon"
+        size="sm"
+        aria-label="이전 영업일"
+        disabled={!prevDate}
+        onClick={() => prevDate && setPicked(prevDate)}
+      >
+        ◀
+      </Button>
+      <Input
+        type="date"
+        aria-label="평가 종가일"
+        data-num
+        className="w-[132px]"
+        value={closeDate}
+        min={range?.min_date}
+        max={range?.max_date}
+        onChange={(e) => setPicked(e.target.value || null)}
+      />
+      <Button
+        type="button"
+        variant="icon"
+        size="sm"
+        aria-label="다음 영업일"
+        disabled={!next}
+        onClick={() => next && setPicked(next)}
+      >
+        ▶
+      </Button>
+      {picked && (
+        <button
+          type="button"
+          onClick={() => setPicked(null)}
+          className="border border-sem-info bg-sem-info-ghost px-2 py-0.5 text-micro text-sem-info transition-colors hover:bg-sem-info-soft"
+        >
+          오늘로
+        </button>
+      )}
+    </span>
+  );
+}
+
 /** Per-source freshness ribbon. Replaces a single "market open" flag, which
  * couldn't be honest here: the sources have different coverage, so a blank MtM
  * cell needs to say WHICH feed is behind and as of when. */
@@ -219,9 +295,17 @@ export function BookDailyPnlTable() {
     bookDailyPnl,
     bookDailyPnlLoading: isLoading,
     bookDailyPnlError: isError,
+    dailyPnlCloseDate,
   } = usePortfolioAnalytics();
   const { periodPnl, periodPnlLoading, periodPnlError } = usePeriodPnl();
   const fundingSpreadBp = useSettingsStore((s) => s.fundingSpreadBp);
+  const { data: range } = useMarketDataRange();
+
+  // T2b: a past view is "the resolved close is not the latest one". Drives
+  // the period-ribbon suppression below.
+  const viewingPast = Boolean(
+    dailyPnlCloseDate && range?.max_date && dailyPnlCloseDate !== range.max_date,
+  );
 
   const asOf = bookDailyPnl?.as_of;
   const sources = bookDailyPnl?.quote_sources ?? [];
@@ -237,7 +321,10 @@ export function BookDailyPnlTable() {
     <div className="flex h-full flex-col gap-3 p-4">
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-h2 text-fg-primary">Daily P&amp;L by Book</span>
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-2">
+          {/* T2b — which close to price off; the label to its right stays the
+              backend's as_of (T), so past picks label themselves honestly. */}
+          {hasPositions && dailyPnlCloseDate && <CloseDateControl closeDate={dailyPnlCloseDate} />}
           {asOf && <span className="text-label text-fg-muted whitespace-nowrap">{asOf}</span>}
           {asOf && sources.length > 0 && <QuoteSourceRibbon asOf={asOf} sources={sources} />}
           <span className="text-label text-fg-muted whitespace-nowrap">
@@ -250,8 +337,17 @@ export function BookDailyPnlTable() {
           close). Sits INSIDE this panel, above the daily table -- summary
           first, decomposition below; no new card. Absent entirely when no
           bonds are schedulable: Portfolio Overview already explains that
-          data-quality state, and a ribbon of dashes would just repeat it. */}
-      {hasPositions && (periodPnl || periodPnlLoading || periodPnlError) && (
+          data-quality state, and a ribbon of dashes would just repeat it.
+          T2b: also absent on a past-date view -- /period-pnl takes no
+          valuation date, its baselines are server-anchored to the CURRENT
+          close, so under a historical header its figures would be mislabeled.
+          The one-line note keeps the disappearance from reading as a bug. */}
+      {viewingPast && (
+        <div className="border-b border-border-subtle pb-3 text-label text-fg-dim">
+          과거 시점 조회 중 — WTD/MTD/YTD 기간 손익은 최신 종가 기준이라 표시하지 않습니다.
+        </div>
+      )}
+      {!viewingPast && hasPositions && (periodPnl || periodPnlLoading || periodPnlError) && (
         <div className="border-b border-border-subtle pb-3">
           {periodTotal ? (
             <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">

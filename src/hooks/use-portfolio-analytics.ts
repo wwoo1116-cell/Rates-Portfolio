@@ -2,9 +2,10 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLatestMarketSnapshot } from "@/hooks/use-api";
+import { useMarketDataRange, useMarketDataSnapshot } from "@/hooks/use-api";
 import { useManualPositionsStore } from "@/stores/manual-positions-store";
 import { useBondPositionsStore } from "@/stores/bond-positions-store";
+import { resolveDailyCloseDate, useHomeDateStore } from "@/stores/home-date-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { portfolioAnalyticsApi, type ParsedPositionOut } from "@/lib/api-client";
 import { requestFingerprint } from "@/lib/request-fingerprint";
@@ -16,7 +17,17 @@ export function usePortfolioAnalytics() {
   // so the backend applies BOK base + this spread to bond funding cost.
   const fundingSpreadBp = useSettingsStore((state) => state.fundingSpreadBp);
   
-  const { snapshot, isLoading: snapshotLoading, isError: snapshotError } = useLatestMarketSnapshot();
+  // Latest close — the same range→snapshot composition useLatestMarketSnapshot
+  // wraps, inlined here (T2b) because Daily P&L below needs the range's
+  // available_dates and, when a past date is picked, a SECOND snapshot. PVBP /
+  // Book Summary / Portfolio Overview always price off this latest close; the
+  // past-date pick never touches them.
+  const rangeQuery = useMarketDataRange();
+  const latestDate = rangeQuery.data?.max_date;
+  const snapshotQuery = useMarketDataSnapshot(latestDate);
+  const snapshot = snapshotQuery.data;
+  const snapshotLoading = rangeQuery.isLoading || snapshotQuery.isLoading;
+  const snapshotError = rangeQuery.isError || snapshotQuery.isError;
 
   const combinedPositions: ParsedPositionOut[] = useMemo(() => {
     const irs: ParsedPositionOut[] = irsPositions.map(p => ({
@@ -90,22 +101,42 @@ export function usePortfolioAnalytics() {
     };
   }, [snapshot, combinedPositions]);
 
-  // Daily P&L needs the LAST CLOSE (= baseRequest's snapshot) and nothing else.
-  // It used to also send the close-before-that as prior_*, back when the panel
-  // meant "yesterday vs the day before". It now means "T vs last close", where
-  // the backend resolves T = next business day after the close and decides for
-  // itself whether T has quotes yet -- both theta legs price off the close
-  // curve, so the older snapshot has no role. That also drops a whole
-  // snapshot round trip out of this panel's path.
+  // Daily P&L needs ONE close snapshot and nothing else. It used to also send
+  // the close-before-that as prior_*, back when the panel meant "yesterday vs
+  // the day before". It now means "T vs a close", where the backend resolves
+  // T = next business day after the close and decides for itself whether T has
+  // quotes yet -- both theta legs price off the close curve, so an older
+  // snapshot has no role.
+  //
+  // R3B-PLUS T2b — WHICH close is now the user's choice: the panel's date
+  // picker writes a past close date to home-date-store, and this request (and
+  // only this request) follows it. A free-typed date that isn't an available
+  // date (weekend/holiday) snaps to the latest available date ≤ it; the
+  // panel's steppers only ever step over available_dates. A null pick means
+  // the latest close — same snapshot query key (deduped by TanStack) and a
+  // byte-identical request body to the pre-T2b shape.
+  const pickedCloseDate = useHomeDateStore((s) => s.dailyPnlCloseDate);
+  const availableDates = rangeQuery.data?.available_dates;
+  const dailyCloseDate = useMemo(
+    () => resolveDailyCloseDate(pickedCloseDate, latestDate, availableDates),
+    [pickedCloseDate, latestDate, availableDates],
+  );
+  const dailySnapshotQuery = useMarketDataSnapshot(dailyCloseDate);
+  const dailySnapshot = dailySnapshotQuery.data;
+
   const dailyPnlRequest = useMemo(() => {
-    if (!baseRequest) return undefined;
+    if (!dailySnapshot || combinedPositions.length === 0) return undefined;
     return {
-      ...baseRequest,
+      valuation_date: dailySnapshot.valuation_date,
+      cd_rate: dailySnapshot.cd_rate,
+      on_rate: dailySnapshot.on_rate,
+      swap_quotes: dailySnapshot.swap_quotes,
+      positions: combinedPositions,
       // Included in the body (and thus the fingerprint) so changing the spread
       // in Settings refetches Home's Daily P&L with the new funding assumption.
       funding_spread_bp: fundingSpreadBp,
     };
-  }, [baseRequest, fundingSpreadBp]);
+  }, [dailySnapshot, combinedPositions, fundingSpreadBp]);
 
   // Query keys carry a content FINGERPRINT of the request, never the request
   // itself: TanStack re-hashes the whole key every render, and this request is
@@ -159,14 +190,25 @@ export function usePortfolioAnalytics() {
     // the Home tab shows two different dates with no explanation.
     closeDate: snapshot?.valuation_date,
 
+    // T2b: the RESOLVED close date the Daily P&L request prices off (picked
+    // date snapped to available_dates; latest close when nothing is picked).
+    // The panel's date control renders this, and compares it to the range's
+    // max_date to know it is showing a past view.
+    dailyPnlCloseDate: dailyCloseDate,
+
     pvbpSensitivity: pvbpSensitivityQuery.data,
     pvbpLoading: snapshotLoading || (Boolean(baseRequest) && pvbpSensitivityQuery.isLoading),
     pvbpError: snapshotError || pvbpSensitivityQuery.isError,
 
     bookDailyPnl: bookDailyPnlQuery.data,
+    // T2b: tracks the DAILY snapshot (picked close), not the latest-close one
+    // the other two panels wait on — picking a past date must not spin them.
     bookDailyPnlLoading:
-      snapshotLoading || (Boolean(dailyPnlRequest) && bookDailyPnlQuery.isLoading),
-    bookDailyPnlError: snapshotError || bookDailyPnlQuery.isError,
+      rangeQuery.isLoading ||
+      dailySnapshotQuery.isLoading ||
+      (Boolean(dailyPnlRequest) && bookDailyPnlQuery.isLoading),
+    bookDailyPnlError:
+      rangeQuery.isError || dailySnapshotQuery.isError || bookDailyPnlQuery.isError,
 
     bookSummary: bookSummaryQuery.data,
     bookSummaryLoading: snapshotLoading || (Boolean(baseRequest) && bookSummaryQuery.isLoading),

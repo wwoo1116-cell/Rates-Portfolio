@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { PeriodPnlFigure, PeriodPnlResponse } from "@/lib/api-types";
 
@@ -14,6 +14,7 @@ import type { PeriodPnlFigure, PeriodPnlResponse } from "@/lib/api-types";
 
 const mockAnalytics = vi.fn();
 const mockPeriodPnl = vi.fn();
+const mockRange = vi.fn();
 
 vi.mock("@/hooks/use-portfolio-analytics", () => ({
   usePortfolioAnalytics: () => mockAnalytics(),
@@ -21,8 +22,20 @@ vi.mock("@/hooks/use-portfolio-analytics", () => ({
 vi.mock("@/hooks/use-period-pnl", () => ({
   usePeriodPnl: () => mockPeriodPnl(),
 }));
+// T2b: the panel's date control reads the range for its steppers/bounds.
+vi.mock("@/hooks/use-api", () => ({
+  useMarketDataRange: () => mockRange(),
+}));
 
 const { BookDailyPnlTable } = await import("./book-daily-pnl-table");
+const { useHomeDateStore } = await import("@/stores/home-date-store");
+
+/** T2b range fixture: latest close 07-15; 07-11/07-12 are a weekend gap. */
+const RANGE = {
+  min_date: "2026-07-10",
+  max_date: "2026-07-15",
+  available_dates: ["2026-07-10", "2026-07-13", "2026-07-14", "2026-07-15"],
+};
 
 function fig(over: Partial<PeriodPnlFigure> = {}): PeriodPnlFigure {
   return {
@@ -69,8 +82,11 @@ function analytics(over: Record<string, unknown> = {}) {
     bookDailyPnl: DAILY,
     bookDailyPnlLoading: false,
     bookDailyPnlError: false,
+    // T2b: the resolved close the daily request priced off (latest by default).
+    dailyPnlCloseDate: RANGE.max_date,
     ...over,
   });
+  mockRange.mockReturnValue({ data: RANGE });
 }
 
 function period(over: Record<string, unknown> = {}) {
@@ -85,6 +101,7 @@ function period(over: Record<string, unknown> = {}) {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  useHomeDateStore.setState({ dailyPnlCloseDate: null });
 });
 
 describe("BookDailyPnlTable period ribbon", () => {
@@ -376,5 +393,77 @@ describe("BookDailyPnlTable 채권/스왑 sub-rows (HARDEN-1)", () => {
     for (const name of ["Theta", "MtM", "Total", "Funding"] as const) {
       expect(swap.cells[col(name)].className, `${name} td alignment`).toContain("text-right");
     }
+  });
+});
+
+/**
+ * R3B-PLUS T2b — past-date picker. The control writes home-date-store's
+ * dailyPnlCloseDate; use-portfolio-analytics (mocked here) turns that into the
+ * request. These pins cover the panel's own responsibilities: stepping over
+ * available_dates only, the reset chip appearing only for an explicit pick,
+ * the header still labeling itself with the BACKEND's as_of (T), and the
+ * period ribbon giving way to the honesty note on a past view.
+ */
+describe("BookDailyPnlTable past-date picker (T2b)", () => {
+  it("at the latest close: date field shows it, ▶ is disabled, no reset chip, ribbon intact", () => {
+    analytics();
+    period();
+    render(<BookDailyPnlTable />);
+
+    expect((screen.getByLabelText("평가 종가일") as HTMLInputElement).value).toBe("2026-07-15");
+    // ▶ has nowhere to go from the latest close; ◀ is live.
+    expect((screen.getByLabelText("다음 영업일") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("이전 영업일") as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText("오늘로")).toBeNull();
+    expect(screen.getByText("WTD")).toBeDefined();
+    expect(screen.queryByText(/과거 시점 조회 중/)).toBeNull();
+  });
+
+  it("◀ steps to the previous AVAILABLE date, skipping the weekend gap", () => {
+    analytics({ dailyPnlCloseDate: "2026-07-13" });
+    period();
+    render(<BookDailyPnlTable />);
+
+    fireEvent.click(screen.getByLabelText("이전 영업일"));
+    // From 07-13 the previous available date is 07-10 — never 07-12/07-11.
+    expect(useHomeDateStore.getState().dailyPnlCloseDate).toBe("2026-07-10");
+  });
+
+  it("▶ steps forward over available dates from a past view", () => {
+    useHomeDateStore.setState({ dailyPnlCloseDate: "2026-07-13" });
+    analytics({ dailyPnlCloseDate: "2026-07-13" });
+    period();
+    render(<BookDailyPnlTable />);
+
+    fireEvent.click(screen.getByLabelText("다음 영업일"));
+    expect(useHomeDateStore.getState().dailyPnlCloseDate).toBe("2026-07-14");
+  });
+
+  it("past view: header keeps the backend's as_of, ribbon yields to the honesty note, 오늘로 resets", () => {
+    useHomeDateStore.setState({ dailyPnlCloseDate: "2026-07-14" });
+    analytics({
+      dailyPnlCloseDate: "2026-07-14",
+      bookDailyPnl: { ...DAILY, as_of: "2026-07-15" },
+    });
+    period();
+    render(<BookDailyPnlTable />);
+
+    // The displayed date is the server-derived T for the picked close — not
+    // the picked close itself (that would read one business day off).
+    expect(screen.getByText("2026-07-15")).toBeDefined();
+    // WTD/MTD/YTD are anchored to the CURRENT close server-side; under a
+    // historical header they'd be mislabeled, so the note replaces them.
+    expect(screen.queryByText("WTD")).toBeNull();
+    expect(screen.getByText(/과거 시점 조회 중/)).toBeDefined();
+
+    fireEvent.click(screen.getByText("오늘로"));
+    expect(useHomeDateStore.getState().dailyPnlCloseDate).toBeNull();
+  });
+
+  it("renders no date control without positions (nothing to price)", () => {
+    analytics({ hasPositions: false, bookDailyPnl: undefined });
+    period({ periodPnl: undefined });
+    render(<BookDailyPnlTable />);
+    expect(screen.queryByLabelText("평가 종가일")).toBeNull();
   });
 });
