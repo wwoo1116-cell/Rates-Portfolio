@@ -25,7 +25,7 @@ import {
   type SeriesChartClickContext,
   type SeriesChartSeriesDef,
 } from "@/components/charts/series-chart";
-import { InstrumentSelector } from "@/components/rate-history/instrument-selector";
+import { InstrumentSelector } from "@/features/rates-history/instrument-selector";
 import { useCreditCurveSeries, useCreditCurveTaxonomy, useMarketDataRange, useRateHistory } from "@/hooks/use-api";
 import {
   buildInstrumentSeries,

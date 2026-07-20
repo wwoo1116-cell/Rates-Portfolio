@@ -10,7 +10,7 @@
  */
 
 import { Button } from "@/components/ui/button";
-import { InstrumentSelector } from "@/components/rate-history/instrument-selector";
+import { InstrumentSelector } from "@/features/rates-history/instrument-selector";
 import { instrumentLabel } from "@/lib/rv-instruments";
 import { LOOKBACK_PRESETS, useEntrySignalsStore } from "@/stores/entry-signals-store";
 import { cn } from "@/lib/utils";
