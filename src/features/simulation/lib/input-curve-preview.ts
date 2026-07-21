@@ -11,12 +11,14 @@
  * gap / "—"), never a silent +0.
  */
 import type { ScenarioParams } from "../types/simulation-port";
+import type { SimulateRequest } from "../api/simulate-dto";
 import {
   deriveFundingSteps,
   generateShockCurves,
   shortEndBpFromSteps,
   toNum,
 } from "./scenario-curves";
+import { createPathEvaluator, sectorToFamily } from "./recon/path-matrix";
 
 /** One term-structure pillar: tenor in years + its display label. */
 export interface CurvePillar {
@@ -75,6 +77,93 @@ export interface InputCurvePreview {
   swapPct: (number | null | undefined)[];
   /** Final short-end (BOK) cumulative shock actually applied, in bp. */
   shortEndBp: number;
+}
+
+/**
+ * FB4 T2 — is the designed scenario SHAPED in time (a D+n scrubber is
+ * meaningful) or effectively parallel-in-time (one terminal overlay)? Shaped
+ * = the customPath deviates from the exact linear ramp (the engine's SIM2-4
+ * activation predicate, mirrored) OR 금통위 events step the short end.
+ */
+export function isShapedScenario(req: SimulateRequest): boolean {
+  const base = req.baseShockBp ?? 0;
+  const shapedPath =
+    !!req.customPath &&
+    req.customPath.length >= 2 &&
+    base !== 0 &&
+    req.customPath.some((p) => Math.abs(p.bp - (base * p.day) / req.simDays) > 1e-9);
+  return shapedPath || (req.fundingEvents ?? []).length > 0;
+}
+
+/** One family lane of the FB4 커브형 preview: the SOLID base curve and the
+ * DASHED scenario overlay, both % values aligned to the shared pillar axis
+ * (undefined = family doesn't carry the pillar; null = carried, no quote —
+ * the established blank policy). */
+export interface FamilyPreviewSeries {
+  /** Chip key (sector vocabulary: 국고채/통안채/IRS/회사채/여전채). */
+  key: string;
+  basePct: (number | null | undefined)[];
+  shockedPct: (number | null | undefined)[];
+}
+
+export interface ScenarioOverlayPreview {
+  pillars: CurvePillar[];
+  series: FamilyPreviewSeries[];
+}
+
+/**
+ * FB4 T2 — base curves × families with the scenario overlay at time slice
+ * D+`day`. The overlay is a VIEW over the SAME machinery the request uses:
+ * per pillar, shocked% = base% + cumBpAt(family, τ, day)/100 where cumBpAt is
+ * lib/recon/path-matrix's request evaluator — waypoint lerp, BOK staircase
+ * and short-end stitching included, NO math re-derived here (reuse-guard
+ * pinned). At day = simDays on a linear path this reduces exactly to the
+ * horizon-end shock the old two-line preview drew.
+ *
+ * Family → shock curve mapping is the engine's own (sectorToFamily /
+ * get_sector_curve_key): 국고채·통안채 ride the 국채 curve, 여전채 the 카드채
+ * curve, IRS the swap curve — each family's BASE quotes stay its own.
+ */
+export function buildScenarioOverlay(
+  req: SimulateRequest,
+  day: number,
+  families: Array<{ key: string; quotes: BaseQuote[] }>,
+): ScenarioOverlayPreview {
+  const ev = createPathEvaluator(req);
+
+  const byT = new Map<number, CurvePillar>();
+  for (const f of families) {
+    for (const q of f.quotes) {
+      if (!byT.has(q.t)) byT.set(q.t, { t: q.t, label: q.label });
+    }
+  }
+  const pillars = [...byT.values()].sort((a, b) => a.t - b.t);
+
+  const series: FamilyPreviewSeries[] = families.map((f) => {
+    const rateByT = new Map(f.quotes.map((q) => [q.t, q.rate]));
+    const curveFamily = sectorToFamily(f.key);
+    const basePct: (number | null | undefined)[] = [];
+    const shockedPct: (number | null | undefined)[] = [];
+    for (const { t } of pillars) {
+      if (!rateByT.has(t)) {
+        basePct.push(undefined);
+        shockedPct.push(undefined);
+        continue;
+      }
+      const rate = rateByT.get(t);
+      if (rate === null || rate === undefined) {
+        basePct.push(null);
+        shockedPct.push(null);
+        continue;
+      }
+      const base = rate * 100;
+      basePct.push(base);
+      shockedPct.push(base + ev.cumBpAt(curveFamily, t, day) / 100);
+    }
+    return { key: f.key, basePct, shockedPct };
+  });
+
+  return { pillars, series };
 }
 
 /**

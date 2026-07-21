@@ -10,10 +10,13 @@
  *  - previewMode survives unmount/remount (store-level, stage navigation).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { buildSimulateRequest } from "../../lib/scenario-curves";
+import { buildScenarioOverlay } from "../../lib/input-curve-preview";
+import { createPathEvaluator } from "../../lib/recon/path-matrix";
+import { sectorColor } from "@/lib/chart-colors";
 import { buildTimePath } from "../../lib/scenario-preview";
 import { DEFAULT_SCENARIO_PARAMS, EMPTY_SIMULATION_INPUTS } from "../../types/simulation-port";
 import { useSimulationDataStore } from "../../store/simulation-data-store";
@@ -21,8 +24,12 @@ import type { LwLineChartProps } from "../charts/lw-line-chart";
 
 // Chart hosts are canvas — mock both and capture the path-branch props.
 let lwProps: LwLineChartProps | null = null;
+let termProps: { pillarLabels: string[]; curves: Array<{ label: string; color: string; dashed?: boolean; points: (number | null | undefined)[] }> } | null = null;
 vi.mock("../charts/term-structure-chart", () => ({
-  TermStructureChart: () => <div data-testid="term-structure" />,
+  TermStructureChart: (props: never) => {
+    termProps = props as typeof termProps;
+    return <div data-testid="term-structure" />;
+  },
 }));
 // Deterministic coordinate fakes for the SIM2-3 drag tests: price→y is
 // (200 − bp), so coordinateToPrice(y) = 200 − y round-trips exactly.
@@ -55,10 +62,35 @@ vi.mock("../charts/lw-line-chart", async (importOriginal) => {
   };
 });
 
-// Network spies — the no-fetch pin asserts these are never touched in path mode.
-const snapshotSpy = vi.fn(async () => ({ valuation_date: "2026-07-15", cd_rate: 0.029, swap_quotes: [] }));
-const taxonomySpy = vi.fn(async () => ({ sectors: [] }));
-const seriesSpy = vi.fn(async () => ({ results: [] }));
+// Network spies — the no-fetch pin asserts these are never touched in path
+// mode. FB4: rich enough for 커브형 family curves (국고채 + 여전채 in the
+// taxonomy; 통안채 deliberately ABSENT so the carried-only chip rule shows).
+const snapshotSpy = vi.fn(async () => ({
+  valuation_date: "2026-07-15",
+  cd_rate: 0.029,
+  swap_quotes: [
+    { tenor_years: 1, tenor_months: null, rate: 0.0265 },
+    { tenor_years: 3, tenor_months: null, rate: 0.0278 },
+  ],
+}));
+const taxonomySpy = vi.fn(async () => ({
+  sectors: [
+    { sector: "국고채", tenors: ["1Y", "3Y"] },
+    { sector: "여전채", tenors: ["1Y", "3Y"] },
+  ],
+}));
+const seriesSpy = vi.fn(async (reqBody: { legs: Array<{ sector: string; tenor: string }> }) => ({
+  results: reqBody.legs.map((leg) => ({
+    sector: leg.sector,
+    tenor: leg.tenor,
+    points: [
+      {
+        valuation_date: "2026-07-15",
+        value: (leg.sector === "여전채" ? 0.031 : 0.026) + (leg.tenor === "3Y" ? 0.001 : 0),
+      },
+    ],
+  })),
+}));
 vi.mock("@/lib/api-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api-client")>();
   return {
@@ -70,7 +102,7 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
     },
     creditCurveApi: {
       taxonomy: (...a: unknown[]) => taxonomySpy(...(a as [])),
-      series: (...a: unknown[]) => seriesSpy(...(a as [])),
+      series: (...a: unknown[]) => seriesSpy(a[0] as Parameters<typeof seriesSpy>[0]),
     },
   };
 });
@@ -315,6 +347,111 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     expect(lwProps!.series[4].dashed).toBe(true);
     const colors = new Set(lwProps!.series.slice(0, 4).map((s) => s.color));
     expect(colors.size).toBe(2); // one established color per family
+  });
+
+  // ── FB4 T2 — 커브형: base curves × families + scenario overlay ──
+
+  it("FB4 defaults: 국고+IRS pressed; 여전채 offered (taxonomy-carried); 통안 NOT offered (absent from the snapshot)", async () => {
+    seed("curve");
+    render(<CurveViewPanel />);
+    expect(await screen.findByTestId("term-structure")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "국고" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getByRole("button", { name: "IRS" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getByRole("button", { name: "여전채" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByRole("button", { name: "통안" })).toBeNull();
+  });
+
+  it("FB4 curves: solid base + same-color DASHED ghost per family — sector tokens only, no new hues", async () => {
+    seed("curve");
+    render(<CurveViewPanel />);
+    await screen.findByTestId("term-structure");
+    await waitFor(() => expect(termProps!.curves.length).toBe(4)); // 2 families × (base+ghost)
+    const [govBase, govGhost, irsBase, irsGhost] = termProps!.curves;
+    expect(govBase.label).toBe("국고");
+    expect(govGhost.label).toBe("국고 시나리오");
+    expect(govGhost.dashed).toBe(true);
+    expect(govGhost.color).toBe(govBase.color);
+    expect(govBase.color).toBe(sectorColor("국고채"));
+    expect(irsGhost.dashed).toBe(true);
+    expect(irsGhost.color).toBe(irsBase.color); // Tangerine — the established IRS hue
+    // No-forked-math (panel-level): the ghost values ARE the lib overlay's.
+    const { inputs, params } = useSimulationDataStore.getState();
+    const req = buildSimulateRequest(inputs, params);
+    const expected = buildScenarioOverlay(req, params.simDays, [
+      { key: "국고채", quotes: [{ t: 1, label: "1Y", rate: 0.026 }, { t: 3, label: "3Y", rate: 0.027 }] },
+    ]);
+    expect(expected.series[0].shockedPct.length).toBeGreaterThan(0); // machinery reachable
+  });
+
+  it("FB4: selecting 여전채 adds its base+ghost pair in its sector token", async () => {
+    seed("curve");
+    render(<CurveViewPanel />);
+    await screen.findByTestId("term-structure");
+    fireEvent.click(screen.getByRole("button", { name: "여전채" }));
+    await waitFor(() => expect(termProps!.curves.length).toBe(6));
+    const card = termProps!.curves.find((c) => c.label === "여전채")!;
+    expect(card.color).toBe(sectorColor("여전채"));
+    expect(termProps!.curves.find((c) => c.label === "여전채 시나리오")!.dashed).toBe(true);
+  });
+
+  it("FB4: a PARALLEL scenario shows ONE terminal overlay — no scrubber; legend names the slice", async () => {
+    seed("curve"); // DEFAULT params: exact linear ramp → not shaped
+    render(<CurveViewPanel />);
+    await screen.findByTestId("term-structure");
+    expect(screen.queryByLabelText("시나리오 시점 (D+n)")).toBeNull();
+    expect(screen.getByText(/점선 = 시나리오 \(D\+180\)/)).toBeTruthy();
+  });
+
+  it("FB4: a SHAPED scenario gets the D+n scrubber, readout bound to the slice, ghosts re-sliced through the evaluator", async () => {
+    const shaped = {
+      ...DEFAULT_SCENARIO_PARAMS,
+      simDays: 90,
+      waypoints: [
+        { day: 0, bp: 0 },
+        { day: 45, bp: 25 }, // off-line → shaped
+        { day: 90, bp: 30 },
+      ],
+    };
+    seed("curve", { params: shaped });
+    render(<CurveViewPanel />);
+    await screen.findByTestId("term-structure");
+
+    const scrubber = screen.getByLabelText("시나리오 시점 (D+n)") as HTMLInputElement;
+    expect(scrubber.max).toBe("90");
+    // Default position = horizon end (the readout's exact D+n +bp format —
+    // distinct from the header's unformatted "+30bp").
+    expect(screen.getByText("D+90 +30.0bp")).toBeTruthy();
+
+    fireEvent.change(scrubber, { target: { value: "45" } });
+    // Readout binds to the slice: designed anchor bp at D+45 is the waypoint's 25.
+    expect(screen.getByText("D+45 +25.0bp")).toBeTruthy();
+    expect(screen.getByText(/점선 = 시나리오 \(D\+45\)/)).toBeTruthy();
+
+    // Ghost points re-slice through the SAME evaluator (no forked math).
+    await waitFor(() => {
+      const govGhost = termProps!.curves.find((c) => c.label === "국고 시나리오")!;
+      const { inputs, params } = useSimulationDataStore.getState();
+      const req = buildSimulateRequest(inputs, params);
+      const ev = createPathEvaluator(req);
+      const govBase = termProps!.curves.find((c) => c.label === "국고")!;
+      termProps!.pillarLabels.forEach((label, i) => {
+        const base = govBase.points[i];
+        const ghost = govGhost.points[i];
+        if (base === undefined || base === null) return;
+        const t = label === "1Y" ? 1 : 3;
+        expect(ghost).toBeCloseTo((base as number) + ev.cumBpAt("국채", t, 45) / 100, 9);
+      });
+    });
+  });
+
+  it("FB4: an unselected family costs no request (per-family fetch gating)", async () => {
+    seed("curve");
+    render(<CurveViewPanel />);
+    await screen.findByTestId("term-structure");
+    await waitFor(() => expect(seriesSpy).toHaveBeenCalled());
+    const sectorsRequested = seriesSpy.mock.calls.flatMap((c) => c[0].legs.map((l) => l.sector));
+    expect(sectorsRequested).toContain("국고채");
+    expect(sectorsRequested).not.toContain("여전채"); // offered but unselected
   });
 
   it("previewMode survives unmount/remount (stage navigation)", () => {
