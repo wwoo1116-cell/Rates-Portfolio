@@ -135,7 +135,13 @@ import { anchorConversionError, tenorSpreadAt, ANCHOR_FLOOR_BP } from "./scenari
 import { N1_GOLDEN_INPUTS, N1_GOLDEN_PARAMS } from "./n1-golden-config";
 import { createPathEvaluator } from "./recon/path-matrix";
 
-const GOLDEN = readFileSync(join(__dirname, "__fixtures__", "n1-golden-request.json"), "utf8");
+// CRLF-normalized: git's eol translation rewrites the fixture's line endings
+// per checkout (the SIM worktree served LF, the merged mainline CRLF), which
+// is environment noise, not payload content. The pin compares the full
+// serialized JSON — normalizing \r\n keeps it byte-meaningful and
+// checkout-proof.
+const GOLDEN = readFileSync(join(__dirname, "__fixtures__", "n1-golden-request.json"), "utf8")
+  .replace(/\r\n/g, "\n");
 
 describe("N1 anchor re-expression", () => {
   it("anchor ABSENT: reproduces the pre-N1 golden request byte-for-byte", () => {
