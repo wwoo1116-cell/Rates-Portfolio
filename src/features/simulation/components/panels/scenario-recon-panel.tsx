@@ -164,6 +164,29 @@ export function ScenarioReconPanel() {
 }
 
 /**
+ * F-VMP-1 (owner ruling: transparency, threshold unchanged) — the RAW signed
+ * difference behind a 불일치 verdict, full precision down to sub-won float
+ * drift. VMP's live capture printed six windows as "예상 +1.5억 vs 엔진
+ * +1.5억": both sides rounded identically at the 억/만 display grain while
+ * the ±₩1 pin had tripped on drift the reader could not see. This makes the
+ * drift self-explaining ("불일치 (Δ ₩0.42)") without touching the comparison
+ * math or the verdict threshold.
+ */
+export function formatRawDeltaKrw(delta: number): string {
+  const abs = Math.abs(delta);
+  const text =
+    abs >= 1
+      ? // Whole-won scale: thousands-grouped, 2dp so fractional drift survives.
+        delta.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+      : // Sub-won drift (the VMP case): 2dp normally; drift so small it would
+        // round to 0.00 gets 4dp — a 불일치 verdict must never display Δ ₩0.
+        abs > 0 && abs < 0.005
+        ? delta.toFixed(4)
+        : delta.toFixed(2);
+  return delta > 0 ? `+${text}` : text;
+}
+
+/**
  * T4b — the swap settlement-cash lane in the PM CashflowTable grammar
  * (features/portfolio/details-panel.tsx CashflowTable: rounded bg-bg-tertiary
  * scroll box, Payment-Date/Leg/Rate/Cashflow column shapes, mono tabular
@@ -223,7 +246,8 @@ function CashLaneView({ lane }: { lane: ReturnType<typeof buildSettlementLane> }
               .map((w) => (
                 <span key={w.reconDay} data-num className="ml-2">
                   {w.date} 예상 {formatKrwAxisSigned(w.projectedSum)} vs 엔진{" "}
-                  {formatKrwAxisSigned(w.engineSettleCf)}
+                  {formatKrwAxisSigned(w.engineSettleCf)} (Δ ₩
+                  {formatRawDeltaKrw(w.projectedSum - w.engineSettleCf)})
                 </span>
               ))}
           </div>
