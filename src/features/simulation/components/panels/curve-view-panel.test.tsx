@@ -20,6 +20,7 @@ import { sectorColor } from "@/lib/chart-colors";
 import { buildTimePath } from "../../lib/scenario-preview";
 import { DEFAULT_SCENARIO_PARAMS, EMPTY_SIMULATION_INPUTS } from "../../types/simulation-port";
 import { useSimulationDataStore } from "../../store/simulation-data-store";
+import { dayToTime } from "../charts/lw-line-chart";
 import type { LwLineChartProps } from "../charts/lw-line-chart";
 
 // Chart hosts are canvas — mock both and capture the path-branch props.
@@ -75,11 +76,13 @@ const snapshotSpy = vi.fn(async () => ({
 }));
 const taxonomySpy = vi.fn(async () => ({
   sectors: [
-    { sector: "국고채", tenors: ["1Y", "3Y"] },
-    { sector: "여전채", tenors: ["1Y", "3Y"] },
+    // 국고채 unrated; 여전채 RATED (FB5 B1: the panel must fetch its base curve
+    // at the representative rating ratings[0], not the silent-blank rating:null).
+    { sector: "국고채", ratings: [], tenors: ["1Y", "3Y"] },
+    { sector: "여전채", ratings: ["AAA (카드)", "AA (카드)"], tenors: ["1Y", "3Y"] },
   ],
 }));
-const seriesSpy = vi.fn(async (reqBody: { legs: Array<{ sector: string; tenor: string }> }) => ({
+const seriesSpy = vi.fn(async (reqBody: { legs: Array<{ sector: string; rating: string | null; tenor: string }> }) => ({
   results: reqBody.legs.map((leg) => ({
     sector: leg.sector,
     tenor: leg.tenor,
@@ -253,15 +256,15 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
 
   // ── RECON-SCEN F2 — 시계열형 multi-series (tenor × 곡선군) ──
 
-  it("F2 defaults: anchor 국고 3Y pre-selected; every path-machinery pillar offered as a chip", () => {
+  it("F2 defaults: anchor 국고채 3Y pre-selected; every path-machinery pillar offered as a chip", () => {
     seed("path");
     render(<CurveViewPanel />);
     expect((screen.getByRole("button", { name: "3Y" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
-    expect((screen.getByRole("button", { name: "국고" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getByRole("button", { name: "국고채" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
     for (const pillar of ["1D", "3M", "9Y", "10Y"]) {
       expect(screen.getByRole("button", { name: pillar })).toBeTruthy();
     }
-    for (const fam of ["IRS", "회사채", "여전채"]) {
+    for (const fam of ["IRS", "공사채", "시은채", "회사채", "여전채"]) {
       expect((screen.getByRole("button", { name: fam }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("false");
     }
     expect(lwProps!.series.length).toBe(1); // anchor only, no policy series
@@ -319,7 +322,7 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     fireEvent.click(screen.getByRole("button", { name: "3Y" })); // drop the anchor
     expect(screen.queryByLabelText("D+30 웨이포인트 드래그")).toBeNull();
     expect(lwProps!.markers!.length).toBe(0);
-    expect(screen.getByText(/드래그는 국고 3Y 표시 중에만/)).toBeTruthy();
+    expect(screen.getByText(/드래그는 국고채 3Y 표시 중에만/)).toBeTruthy();
   });
 
   it("F2: the last selected tenor/family cannot be deselected (never an empty chart)", () => {
@@ -327,8 +330,8 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     render(<CurveViewPanel />);
     fireEvent.click(screen.getByRole("button", { name: "3Y" }));
     expect((screen.getByRole("button", { name: "3Y" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "국고" }));
-    expect((screen.getByRole("button", { name: "국고" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "국고채" }));
+    expect((screen.getByRole("button", { name: "국고채" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
     expect(lwProps!.series.length).toBe(1);
   });
 
@@ -349,16 +352,65 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     expect(colors.size).toBe(2); // one established color per family
   });
 
+  // ── FB5 B2 — 시계열형 per-series crosshair Δbp readout ──
+
+  it("B2: crosshair readout shows each visible series' Δbp under the date; — on a whitespace day", () => {
+    seed("path", { params: GRID });
+    render(<CurveViewPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "5Y" })); // 2 tenor series
+
+    // Series carry per-series labels for the readout (family + tenor).
+    const labels = lwProps!.series.map((s) => s.label);
+    expect(labels).toContain("국고채 3Y");
+    expect(labels).toContain("국고채 5Y");
+
+    // Feed the readout the way LwLineChart does from param.seriesData — the
+    // panel renders those values verbatim (no recomputation), — for the null.
+    act(() => {
+      lwProps!.onCrosshairMove!({
+        time: dayToTime("2026-07-15", 30),
+        points: [
+          { label: "국고채 3Y", color: "rgb(1,1,1)", value: 5 },
+          { label: "국고채 5Y", color: "rgb(2,2,2)", value: null }, // whitespace
+        ],
+      });
+    });
+
+    expect(screen.getByText("2026-08-14")).toBeTruthy(); // baseDate + 30d (UTC)
+    expect(screen.getByText("+5.0bp")).toBeTruthy();
+    expect(screen.getByText("국고채 5Y")).toBeTruthy();
+    // The null series reads — (honest whitespace), never a fabricated +0.0bp.
+    expect(screen.queryByText("+0.0bp")).toBeNull();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  it("B2: crosshair leaving the data (null readout) hides the readout row", () => {
+    seed("path", { params: GRID });
+    render(<CurveViewPanel />);
+    act(() => {
+      lwProps!.onCrosshairMove!({
+        time: dayToTime("2026-07-15", 30),
+        points: [{ label: "국고채 3Y", color: "rgb(1,1,1)", value: 5 }],
+      });
+    });
+    expect(screen.getByText("2026-08-14")).toBeTruthy();
+    act(() => lwProps!.onCrosshairMove!(null));
+    expect(screen.queryByText("2026-08-14")).toBeNull();
+  });
+
   // ── FB4 T2 — 커브형: base curves × families + scenario overlay ──
 
-  it("FB4 defaults: 국고+IRS pressed; 여전채 offered (taxonomy-carried); 통안 NOT offered (absent from the snapshot)", async () => {
+  it("FB4/FB5: 국고채+IRS pressed; 여전채 offered (taxonomy-carried, full PVBP name); 통안채 NOT offered (no snapshot curve)", async () => {
     seed("curve");
     render(<CurveViewPanel />);
     expect(await screen.findByTestId("term-structure")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "국고" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getByRole("button", { name: "국고채" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
     expect((screen.getByRole("button", { name: "IRS" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
     expect((screen.getByRole("button", { name: "여전채" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("false");
-    expect(screen.queryByRole("button", { name: "통안" })).toBeNull();
+    // 통안채/특은채 carry no distinct curve in the credit-matrix snapshot → absent,
+    // never a clickable chip that silently draws nothing (FB5 honesty).
+    expect(screen.queryByRole("button", { name: "통안채" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "특은채" })).toBeNull();
   });
 
   it("FB4 curves: solid base + same-color DASHED ghost per family — sector tokens only, no new hues", async () => {
@@ -367,8 +419,8 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     await screen.findByTestId("term-structure");
     await waitFor(() => expect(termProps!.curves.length).toBe(4)); // 2 families × (base+ghost)
     const [govBase, govGhost, irsBase, irsGhost] = termProps!.curves;
-    expect(govBase.label).toBe("국고");
-    expect(govGhost.label).toBe("국고 시나리오");
+    expect(govBase.label).toBe("국고채");
+    expect(govGhost.label).toBe("국고채 시나리오");
     expect(govGhost.dashed).toBe(true);
     expect(govGhost.color).toBe(govBase.color);
     expect(govBase.color).toBe(sectorColor("국고채"));
@@ -392,6 +444,48 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     const card = termProps!.curves.find((c) => c.label === "여전채")!;
     expect(card.color).toBe(sectorColor("여전채"));
     expect(termProps!.curves.find((c) => c.label === "여전채 시나리오")!.dashed).toBe(true);
+  });
+
+  it("FB5 B1: a RATED sector fetches its base curve at the representative rating (not the silent rating:null)", async () => {
+    seed("curve");
+    render(<CurveViewPanel />);
+    await screen.findByTestId("term-structure");
+    fireEvent.click(screen.getByRole("button", { name: "여전채" }));
+    // The offered chip DRAWS (base+ghost pair present) — no silent blank…
+    await waitFor(() => expect(termProps!.curves.some((c) => c.label === "여전채")).toBe(true));
+    // …because the request carried the taxonomy's representative rating
+    // (ratings[0]) for every 여전채 leg, never null (the FB5 root-cause fix).
+    await waitFor(() => {
+      const cardLegs = seriesSpy.mock.calls.flatMap((c) => c[0].legs).filter((l) => l.sector === "여전채");
+      expect(cardLegs.length).toBeGreaterThan(0);
+      expect(cardLegs.every((l) => l.rating === "AAA (카드)")).toBe(true);
+    });
+    // And the representative rating is disclosed (never passed off as the whole sector).
+    expect(screen.getByText(/기준 등급:.*여전채 AAA \(카드\)/)).toBeTruthy();
+  });
+
+  it("FB5 B1: 국고채 (unrated) still fetches with rating:null", async () => {
+    seed("curve");
+    render(<CurveViewPanel />);
+    await screen.findByTestId("term-structure");
+    await waitFor(() => {
+      const govLegs = seriesSpy.mock.calls.flatMap((c) => c[0].legs).filter((l) => l.sector === "국고채");
+      expect(govLegs.length).toBeGreaterThan(0);
+      expect(govLegs.every((l) => l.rating === null)).toBe(true);
+    });
+  });
+
+  it("FB5 B1 (ruling ④): every offered 커브형 family label is a PVBP sector name (or IRS)", async () => {
+    const { SECTOR_ORDER } = await import("@/lib/chart-colors");
+    const allowed = new Set<string>([...SECTOR_ORDER, "IRS"]);
+    seed("curve");
+    render(<CurveViewPanel />);
+    await screen.findByTestId("term-structure");
+    // The 곡선군 chip row: labels come straight from the PVBP taxonomy.
+    for (const name of ["국고채", "IRS", "여전채"]) {
+      expect(allowed.has(name)).toBe(true);
+      expect(screen.getByRole("button", { name })).toBeTruthy();
+    }
   });
 
   it("FB4: a PARALLEL scenario shows ONE terminal overlay — no scrubber; legend names the slice", async () => {
@@ -429,11 +523,11 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
 
     // Ghost points re-slice through the SAME evaluator (no forked math).
     await waitFor(() => {
-      const govGhost = termProps!.curves.find((c) => c.label === "국고 시나리오")!;
+      const govGhost = termProps!.curves.find((c) => c.label === "국고채 시나리오")!;
       const { inputs, params } = useSimulationDataStore.getState();
       const req = buildSimulateRequest(inputs, params);
       const ev = createPathEvaluator(req);
-      const govBase = termProps!.curves.find((c) => c.label === "국고")!;
+      const govBase = termProps!.curves.find((c) => c.label === "국고채")!;
       termProps!.pillarLabels.forEach((label, i) => {
         const base = govBase.points[i];
         const ghost = govGhost.points[i];
@@ -479,7 +573,7 @@ describe("CurveViewPanel — N1 anchor-driven gating", () => {
     const chip5y = screen.getAllByRole("button", { name: "5Y" })[0] as HTMLButtonElement;
     expect(chip5y.getAttribute("aria-pressed")).toBe("true");
     // …the caption names the anchor pillar…
-    expect(screen.getByText(/국고 5Y 드래그 가능/)).toBeTruthy();
+    expect(screen.getByText(/국고채 5Y 드래그 가능/)).toBeTruthy();
     // …and waypoint markers exist (anchor visible ⇒ dots have a host series).
     expect(lwProps?.markers?.length).toBeGreaterThan(0);
   });
@@ -496,6 +590,6 @@ describe("CurveViewPanel — N1 anchor-driven gating", () => {
     });
     expect((screen.getAllByRole("button", { name: "10Y" })[0] as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
     expect((screen.getAllByRole("button", { name: "3Y" })[0] as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByText(/국고 10Y 드래그 가능|드래그는 국고 10Y 표시 중에만/)).toBeTruthy();
+    expect(screen.getByText(/국고채 10Y 드래그 가능|드래그는 국고채 10Y 표시 중에만/)).toBeTruthy();
   });
 });

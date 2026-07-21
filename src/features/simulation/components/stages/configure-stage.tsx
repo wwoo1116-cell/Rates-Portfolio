@@ -33,7 +33,18 @@ import { useMarketDateRange } from "../../hooks/use-input-curves";
 import { SegmentedButtons } from "../segmented-buttons";
 import { CurveViewPanel } from "../panels/curve-view-panel";
 
-const CREDIT_SECTORS = ["특은채", "은행채", "카드채", "회사채"] as const;
+// FB5 B1 (ruling ①) — the credit-spread rows are labeled with the PVBP sector
+// taxonomy (the vocabulary the M1/M2 grids and the 커브형 chips use), while the
+// underlying creditSpreads param KEY stays the shock-curve family the engine
+// reads (generateShockCurves): payload byte-identical, display honest. Mapping
+// is the engine's own get_sector_curve_key inverse: 은행채→시은채, 카드채→여전채
+// (특은채·회사채 share the name across both vocabularies).
+const CREDIT_SECTORS = [
+  { key: "특은채", label: "특은채" },
+  { key: "은행채", label: "시은채" },
+  { key: "카드채", label: "여전채" },
+  { key: "회사채", label: "회사채" },
+] as const;
 const TENOR_SPREADS = [
   { key: "spread1y", label: "1Y 기준" },
   { key: "spread10y", label: "10Y 기준" },
@@ -423,16 +434,16 @@ export function ConfigureStage() {
                 <div>
                   <p className="mb-2 text-micro text-fg-dim">크레딧 스프레드 (국채 대비 추가)</p>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                    {CREDIT_SECTORS.map((sector) => (
-                      <div key={sector} className="flex items-center gap-1.5">
-                        <span className="w-10 flex-shrink-0 text-micro text-fg-muted">{sector}</span>
+                    {CREDIT_SECTORS.map(({ key, label }) => (
+                      <div key={key} className="flex items-center gap-1.5">
+                        <span className="w-10 flex-shrink-0 text-micro text-fg-muted">{label}</span>
                         <div className="min-w-0 flex-1">
                           <Input
                             type="text"
                             inputMode="decimal"
-                            value={params.creditSpreads[sector] ?? "0"}
+                            value={params.creditSpreads[key] ?? "0"}
                             onChange={(e) =>
-                              patchParams({ creditSpreads: { ...params.creditSpreads, [sector]: e.target.value } })
+                              patchParams({ creditSpreads: { ...params.creditSpreads, [key]: e.target.value } })
                             }
                             data-num
                             className="text-right"

@@ -17,6 +17,8 @@ import {
   type IChartApi,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
+  type LineData,
+  type MouseEventParams,
   type SeriesMarker,
   type Time,
   type UTCTimestamp,
@@ -34,6 +36,22 @@ export interface LwSeriesDef {
   data: LwPoint[];
   lineWidth?: 1 | 2 | 3 | 4;
   dashed?: boolean;
+  /** FB5 B2 — series name for the crosshair readout (per-series Δbp row). */
+  label?: string;
+}
+
+/** FB5 B2 — one series' value under the crosshair, sourced from the chart's own
+ * plotted point (param.seriesData), so the readout can never diverge from what
+ * is drawn. `value` is null on a whitespace day (the series has no point there). */
+export interface LwCrosshairPoint {
+  label?: string;
+  color: string;
+  value: number | null;
+}
+export interface LwCrosshairReadout {
+  /** The plotted point's time under the crosshair (null when off-data). */
+  time: UTCTimestamp | null;
+  points: LwCrosshairPoint[];
 }
 
 export interface LwMarker {
@@ -58,6 +76,12 @@ export interface LwLineChartProps {
    * the host can run timeToCoordinate/priceToCoordinate. The references die
    * with the chart — hosts must not cache them past unmount. */
   onSeriesRebuilt?: (chart: IChartApi, firstSeries: ISeriesApi<"Line"> | null) => void;
+  /** FB5 B2 — fires on every crosshair move with each series' plotted value at
+   * the crosshair time (null when the crosshair leaves the data). The values
+   * come from lightweight-charts' own param.seriesData — the SAME points the
+   * lines are drawn from (no recomputation), so the readout row can never
+   * disagree with the chart. */
+  onCrosshairMove?: (readout: LwCrosshairReadout | null) => void;
 }
 
 /** Map a D+n horizon offset to an ascending UTC timestamp for the time axis. */
@@ -71,11 +95,21 @@ export function dayToTime(baseDate: string, day: number): UTCTimestamp {
  * markers plugin) on every render even when nothing changed. */
 const EMPTY_MARKERS: LwMarker[] = [];
 
-export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS, formatValue, onSeriesRebuilt }: LwLineChartProps) {
+export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS, formatValue, onSeriesRebuilt, onCrosshairMove }: LwLineChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Line">[]>([]);
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  // FB5 B2 — the crosshair handler is registered ONCE (in the create effect) but
+  // must read the latest series defs (labels/colors) and callback: mirror both
+  // into refs (updated in a commit-phase effect, never during render) so a
+  // series rebuild never needs a re-subscription.
+  const seriesDefsRef = useRef<LwSeriesDef[]>(series);
+  const onCrosshairMoveRef = useRef<LwLineChartProps["onCrosshairMove"]>(onCrosshairMove);
+  useEffect(() => {
+    seriesDefsRef.current = series;
+    onCrosshairMoveRef.current = onCrosshairMove;
+  });
   // Guards every deferred callback that closes over `chart`. lightweight-charts
   // throws "Object is disposed" if anything touches a chart after remove(), and
   // a ResizeObserver notification already queued when the panel unmounts can
@@ -120,12 +154,38 @@ export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS,
     });
     ro.observe(el);
 
+    // FB5 B2 — per-series crosshair readout. Values come from param.seriesData
+    // (lightweight-charts' own copy of the plotted point), paired to each
+    // series def by index (seriesRef order == series-prop order). A series with
+    // no point at the crosshair time is simply absent from seriesData → null
+    // (an honest — on whitespace days).
+    const onCrosshair = (param: MouseEventParams<Time>) => {
+      if (disposedRef.current) return;
+      const cb = onCrosshairMoveRef.current;
+      if (!cb) return;
+      if (param.time == null || !param.point) {
+        cb(null);
+        return;
+      }
+      const defs = seriesDefsRef.current;
+      const points: LwCrosshairPoint[] = seriesRef.current.map((api, i) => {
+        const datum = param.seriesData.get(api) as LineData<Time> | undefined;
+        const value = datum && typeof datum.value === "number" ? datum.value : null;
+        // Every LwSeriesDef carries a color; "transparent" is an unreachable
+        // fallback (no raw hex — the slice's no-color lint).
+        return { label: defs[i]?.label, color: defs[i]?.color ?? "transparent", value };
+      });
+      cb({ time: param.time as UTCTimestamp, points });
+    };
+    chart.subscribeCrosshairMove(onCrosshair);
+
     return () => {
       // Order matters: flag first so any in-flight callback bails, then stop
       // observing, detach the markers plugin (it holds a series reference), and
       // only then dispose the chart.
       disposedRef.current = true;
       ro.disconnect();
+      chart.unsubscribeCrosshairMove(onCrosshair);
       markersRef.current?.detach();
       markersRef.current = null;
       chart.remove();

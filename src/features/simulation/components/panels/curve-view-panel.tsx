@@ -50,14 +50,20 @@ import {
   PATH_PILLARS,
   createPathEvaluator,
   samplePathDays,
-  type CurveFamilyKey,
+  sectorToFamily,
 } from "../../lib/recon/path-matrix";
 import { useSectorInputQuotes, useSwapInputQuotes } from "../../hooks/use-input-curves";
 import { useSimulationPort } from "../../hooks/use-simulation";
 import { useSimulationDataStore } from "../../store/simulation-data-store";
 import { SegmentedButtons } from "../segmented-buttons";
 import { TermStructureChart, type TermCurveDef } from "../charts/term-structure-chart";
-import { LwLineChart, dayToTime, type LwMarker, type LwSeriesDef } from "../charts/lw-line-chart";
+import {
+  LwLineChart,
+  dayToTime,
+  type LwCrosshairReadout,
+  type LwMarker,
+  type LwSeriesDef,
+} from "../charts/lw-line-chart";
 import { WaypointDragOverlay } from "../charts/waypoint-drag-overlay";
 
 const PREVIEW_MODES = ["curve", "path"] as const;
@@ -66,38 +72,35 @@ const PREVIEW_MODE_LABELS: Record<(typeof PREVIEW_MODES)[number], string> = {
   path: "시계열형",
 };
 
-/** FB4 T2 — 커브형 families (sector vocabulary; the base-quote source per
- * chip). IRS = the market snapshot's swap quotes; the four bond families =
- * per-sector credit-curve series. Colors: the app-wide fixed sector tokens
- * for bond families; IRS keeps the slice's established Tangerine — existing
- * tokens only, no new hues (contrast gate covers all of them). */
-const CURVE_FAMILIES = [
-  { key: "국고채", label: "국고" },
-  { key: "통안채", label: "통안" },
-  { key: "IRS", label: "IRS" },
-  { key: "회사채", label: "회사채" },
-  { key: "여전채", label: "여전채" },
-] as const;
+const IRS_KEY = "IRS";
 
-function curveFamilyColor(key: string): string {
-  if (key === "IRS") return getSimulationChartTheme().previewPalette[2]; // Tangerine
+/** FB5 B1 — the ONE preview family roster, shared by 커브형 and 시계열형. Names
+ * are the PVBP sector taxonomy (ruling ①: same vocabulary the M1/M2 grids and
+ * sectorColor use), ordered benchmarks-first then blotter order (ruling ②: the
+ * Rate History selector convention). Only the credit-matrix-backed sectors that
+ * carry a DISTINCT curve are offered; 통안채·특은채 are honestly ABSENT — the
+ * snapshot has no distinct curve for them (both fold to 국고채·공사채 in the
+ * credit matrix AND in the shock model), exactly as the Rate History selector
+ * omits them (ruling ③: absent, never a clickable chip that draws nothing).
+ * Each bond sector's curves derive through the engine's own sectorToFamily (no
+ * forked mapping): base quote = useSectorInputQuotes(sector) at its
+ * representative rating; shock/ghost family = sectorToFamily(sector). IRS rides
+ * the swap snapshot. Reuse-guard: every string is pinned ∈ chart-colors
+ * SECTOR_ORDER ∪ {IRS} by curve-view-panel.test. */
+const PREVIEW_FAMILIES = ["국고채", IRS_KEY, "공사채", "시은채", "여전채", "회사채"] as const;
+type FamilyKey = (typeof PREVIEW_FAMILIES)[number];
+
+/** Established family color: the app-wide fixed sector token per bond sector;
+ * IRS keeps the slice's Tangerine (existing tokens only — the contrast gate
+ * covers all of them). */
+function familyColor(key: string): string {
+  if (key === IRS_KEY) return getSimulationChartTheme().previewPalette[2]; // Tangerine
   return sectorColor(key);
 }
 
-/** F2 curve families — display key → the request's shock-curve family.
- * 여전채 rides the 카드채 curve (backend get_sector_curve_key: 여전→카드채). */
-const PATH_FAMILIES = [
-  { key: "국고", curve: "국채" },
-  { key: "IRS", curve: "swap" },
-  { key: "회사채", curve: "회사채" },
-  { key: "여전채", curve: "카드채" },
-] as const satisfies readonly { key: string; curve: CurveFamilyKey }[];
-type PathFamilyKey = (typeof PATH_FAMILIES)[number]["key"];
-
-const ANCHOR_FAMILY: PathFamilyKey = "국고";
-// N1: the anchor TENOR is no longer a constant — it follows
-// params.anchorTenor (default 3Y). The family stays 국고 (owner choice set is
-// 국고 pillars only).
+const ANCHOR_FAMILY: FamilyKey = "국고채";
+// N1: the anchor TENOR follows params.anchorTenor (default 3Y). The family
+// stays 국고채 (owner choice set is 국고채 pillars only).
 
 /** "+12.5bp" axis/badge format for the path view (rate-fan formatBpAxis
  * pattern; applied to every series — z-order formatter rule). */
@@ -107,13 +110,12 @@ const formatBpAxis = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}bp`;
  * original buildTimePath view used. */
 const round2 = (v: number) => parseFloat(v.toFixed(2));
 
-/** Established family colors: 국고=Ocean, IRS=Tangerine (this panel's 커브형
- * legend pair), 회사채/여전채 = the app-wide fixed sector hues. */
-function pathFamilyColor(key: PathFamilyKey): string {
-  const t = getSimulationChartTheme();
-  if (key === "국고") return t.previewPalette[0];
-  if (key === "IRS") return t.previewPalette[2];
-  return sectorColor(key);
+/** FB5 B2 — the crosshair date label (UTC seconds → YYYY-MM-DD), matching the
+ * dayToTime UTC-slot convention the series use. */
+function formatCrosshairDate(tsSeconds: number): string {
+  const d = new Date(tsSeconds * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
 }
 
 /** Multi-select toggle chip — the SegmentedButtons pressed recipe, minus the
@@ -155,10 +157,10 @@ export function CurveViewPanel() {
   // N1 — the designed anchor pillar (params-driven; absent ≡ 3Y).
   const anchorTenor = params.anchorTenor ?? "3Y";
 
-  // F2 — panel-local series selection; the anchor (국고 × anchorTenor) is the
+  // F2 — panel-local series selection; the anchor (국고채 × anchorTenor) is the
   // default.
   const [selTenors, setSelTenors] = useState<string[]>([anchorTenor]);
-  const [selFamilies, setSelFamilies] = useState<PathFamilyKey[]>([ANCHOR_FAMILY]);
+  const [selFamilies, setSelFamilies] = useState<FamilyKey[]>([ANCHOR_FAMILY]);
   const toggleIn = <T,>(list: T[], v: T): T[] =>
     list.includes(v) ? (list.length > 1 ? list.filter((x) => x !== v) : list) : [...list, v];
   // N1 — switching the anchor auto-selects its tenor chip: the waypoint dots
@@ -193,12 +195,18 @@ export function CurveViewPanel() {
     [patchParams],
   );
 
-  // FB4 T2 — 커브형 family selection (sector vocabulary; default 국고+IRS =
-  // the pre-FB4 two lines). Chips render only for families the snapshot
+  // FB4 T2 — 커브형 family selection (PVBP sector vocabulary; default 국고채+IRS
+  // = the pre-FB4 two lines). Chips render only for families the snapshot
   // carries; the last selected family stays.
-  const [selCurveFamilies, setSelCurveFamilies] = useState<string[]>(["국고채", "IRS"]);
+  const [selCurveFamilies, setSelCurveFamilies] = useState<string[]>(["국고채", IRS_KEY]);
   // Scrubber position for SHAPED scenarios (null = horizon end).
   const [scrubDay, setScrubDay] = useState<number | null>(null);
+
+  // FB5 B2 — the 시계열형 per-series Δbp readout under the crosshair date. The
+  // values are the chart's own plotted points (LwLineChart sources them from
+  // param.seriesData), so this never recomputes and never disagrees with the
+  // lines. null = crosshair off the data.
+  const [readout, setReadout] = useState<LwCrosshairReadout | null>(null);
 
   // ONE request → ONE evaluator for both preview modes — the same structural
   // identity the payload-parity pin protects, and the T2 no-forked-math rule:
@@ -210,35 +218,40 @@ export function CurveViewPanel() {
 
   // 커브형-only inputs — every quote hook is disabled on the path branch so
   // 시계열형 stays provably network-free (SIM2-1 no-fetch pin), and an
-  // UNSELECTED family costs no request either. Cached per (sector, baseDate).
+  // UNSELECTED family costs no request either. Cached per (sector, rating,
+  // baseDate). FB5 B1: the four rated sectors now fetch at their representative
+  // rating (useSectorInputQuotes) instead of the silent-blank rating:null.
   const gov = useSectorInputQuotes("국고채", baseDate, !isPath && selCurveFamilies.includes("국고채"));
-  const msb = useSectorInputQuotes("통안채", baseDate, !isPath && selCurveFamilies.includes("통안채"));
-  const corp = useSectorInputQuotes("회사채", baseDate, !isPath && selCurveFamilies.includes("회사채"));
+  const agency = useSectorInputQuotes("공사채", baseDate, !isPath && selCurveFamilies.includes("공사채"));
+  const comm = useSectorInputQuotes("시은채", baseDate, !isPath && selCurveFamilies.includes("시은채"));
   const card = useSectorInputQuotes("여전채", baseDate, !isPath && selCurveFamilies.includes("여전채"));
-  const swap = useSwapInputQuotes(baseDate, !isPath && selCurveFamilies.includes("IRS"));
+  const corp = useSectorInputQuotes("회사채", baseDate, !isPath && selCurveFamilies.includes("회사채"));
+  const swap = useSwapInputQuotes(baseDate, !isPath && selCurveFamilies.includes(IRS_KEY));
 
   const sectorQueries: Record<string, ReturnType<typeof useSectorInputQuotes>> = useMemo(
-    () => ({ 국고채: gov, 통안채: msb, 회사채: corp, 여전채: card }),
-    [gov, msb, corp, card],
+    () => ({ 국고채: gov, 공사채: agency, 시은채: comm, 여전채: card, 회사채: corp }),
+    [gov, agency, comm, card, corp],
   );
 
   // Chip roster: IRS always (market snapshot source); bond families only when
-  // the credit taxonomy carries them ("every family the snapshot carries").
-  const familyRoster = CURVE_FAMILIES.filter(
-    (f) => f.key === "IRS" || (sectorQueries[f.key]?.carried ?? false) || selCurveFamilies.includes(f.key),
+  // the credit taxonomy carries them ("every family the snapshot carries" —
+  // 통안채·특은채 are absent because it doesn't). Every offered chip therefore
+  // draws a real curve (the FB5 honesty pin), never a clickable silent blank.
+  const familyRoster = PREVIEW_FAMILIES.filter(
+    (key) => key === IRS_KEY || (sectorQueries[key]?.carried ?? false) || selCurveFamilies.includes(key),
   );
 
   const overlay = useMemo(() => {
-    const families = CURVE_FAMILIES.filter((f) => selCurveFamilies.includes(f.key)).map((f) => ({
-      key: f.key,
+    const families = PREVIEW_FAMILIES.filter((key) => selCurveFamilies.includes(key)).map((key) => ({
+      key,
       quotes:
-        f.key === "IRS"
+        key === IRS_KEY
           ? swap.isError
             ? []
             : swap.data ?? []
-          : sectorQueries[f.key].isError
+          : sectorQueries[key].isError
             ? []
-            : sectorQueries[f.key].data ?? [],
+            : sectorQueries[key].data ?? [],
     }));
     return buildScenarioOverlay(req, effDay, families);
   }, [req, effDay, selCurveFamilies, swap.data, swap.isError, sectorQueries]);
@@ -256,22 +269,28 @@ export function CurveViewPanel() {
     const { evaluator, days } = pathModel;
     const t = getSimulationChartTheme();
 
-    const combos = PATH_FAMILIES.filter((f) => selFamilies.includes(f.key)).flatMap((f) =>
+    const combos = PREVIEW_FAMILIES.filter((key) => selFamilies.includes(key)).flatMap((key) =>
       PATH_PILLARS.filter((p) => selTenors.includes(p.label)).map((p) => ({
-        family: f,
+        key,
+        // Shock/base family via the engine's own sectorToFamily (no forked
+        // mapping): 국고채→국채, 공사채→특은채, 시은채→은행채, 여전채→카드채,
+        // 회사채→회사채, IRS→swap.
+        curve: sectorToFamily(key),
         pillar: p,
-        isAnchor: f.key === ANCHOR_FAMILY && p.label === anchorTenor,
+        isAnchor: key === ANCHOR_FAMILY && p.label === anchorTenor,
       })),
     );
     // Anchor first: markers, the zero line, and the drag overlay ride series[0].
     combos.sort((a, b) => Number(b.isAnchor) - Number(a.isAnchor));
 
-    const defs: LwSeriesDef[] = combos.map(({ family, pillar, isAnchor }) => ({
-      color: pathFamilyColor(family.key),
+    const defs: LwSeriesDef[] = combos.map(({ key, curve, pillar, isAnchor }) => ({
+      color: familyColor(key),
       lineWidth: isAnchor ? 2 : 1,
+      // FB5 B2 — the crosshair-readout name (family + tenor).
+      label: `${key} ${pillar.label}`,
       data: days.map((d) => ({
         time: dayToTime(baseDate, d),
-        value: round2(evaluator.cumBpAt(family.curve, pillar.t, d)),
+        value: round2(evaluator.cumBpAt(curve, pillar.t, d)),
       })),
     }));
 
@@ -280,6 +299,7 @@ export function CurveViewPanel() {
         color: t.axis,
         lineWidth: 2,
         dashed: true,
+        label: "기준금리",
         data: days.map((d) => ({ time: dayToTime(baseDate, d), value: evaluator.bokCumBpAt(d) })),
       });
     }
@@ -291,38 +311,45 @@ export function CurveViewPanel() {
   // the anchor on screen the dots (and drag) have no honest host series.
   const pathMarkers = useMemo<LwMarker[]>(() => {
     if (!isPath || !anchorVisible) return [];
-    const t = getSimulationChartTheme();
     return params.waypoints.map((w) => ({
       time: dayToTime(baseDate, w.day),
       text: formatBpAxis(w.bp),
-      color: t.previewPalette[0],
+      color: familyColor(ANCHOR_FAMILY),
     }));
   }, [isPath, anchorVisible, params.waypoints, baseDate]);
 
   // FB4 T2 — solid base + same-color DASHED scenario ghost per selected
-  // family (RH rendering grammar: sector tokens; IRS keeps the established
-  // Tangerine — no new hues).
+  // family (RH rendering grammar: PVBP sector tokens; IRS keeps the established
+  // Tangerine — no new hues). The label IS the PVBP sector name (ruling ①).
   const curves: TermCurveDef[] = overlay.series.flatMap((s) => {
-    const color = curveFamilyColor(s.key);
-    const label = CURVE_FAMILIES.find((f) => f.key === s.key)?.label ?? s.key;
+    const color = familyColor(s.key);
     return [
-      { label, color, points: s.basePct },
-      { label: `${label} 시나리오`, color, points: s.shockedPct, dashed: true },
+      { label: s.key, color, points: s.basePct },
+      { label: `${s.key} 시나리오`, color, points: s.shockedPct, dashed: true },
     ];
   });
 
   // Per selected family: tenors the source carries with no value on the date
   // (a gap + "—", blank policy — never a silent +0).
-  const missingByFamily = CURVE_FAMILIES.filter((f) => selCurveFamilies.includes(f.key))
-    .map((f) => {
-      const quotes = f.key === "IRS" ? swap.data ?? [] : sectorQueries[f.key].data ?? [];
-      return { label: f.label, missing: quotes.filter((q) => q.rate === null).map((q) => q.label) };
+  const missingByFamily = PREVIEW_FAMILIES.filter((key) => selCurveFamilies.includes(key))
+    .map((key) => {
+      const quotes = key === IRS_KEY ? swap.data ?? [] : sectorQueries[key].data ?? [];
+      return { label: key, missing: quotes.filter((q) => q.rate === null).map((q) => q.label) };
     })
     .filter((m) => m.missing.length > 0);
 
+  // FB5 B1 honesty — disclose the representative rating each RATED family's
+  // preview curve reflects (never pass a single tier off as the whole sector).
+  const ratingBySector = PREVIEW_FAMILIES.filter(
+    (key) => key !== IRS_KEY && selCurveFamilies.includes(key) && sectorQueries[key]?.rated,
+  )
+    .map((key) => ({ label: key as string, rating: sectorQueries[key]?.representativeRating }))
+    .filter((r): r is { label: string; rating: string } => !!r.rating);
+
   const loading =
     !isPath &&
-    (swap.isLoading || CURVE_FAMILIES.some((f) => f.key !== "IRS" && sectorQueries[f.key].isLoading));
+    (swap.isLoading ||
+      PREVIEW_FAMILIES.some((key) => key !== IRS_KEY && sectorQueries[key].isLoading));
   const hasPolicy = isPath && (pathModel?.evaluator.hasBokEvents ?? false);
 
   // Scrubber readout: the ANCHOR pillar's designed cum bp at the slice.
@@ -351,17 +378,18 @@ export function CurveViewPanel() {
         </div>
       </div>
 
-      {/* FB4 T2 — 커브형 family chips (RH grammar): every family the
-          snapshot carries; default 국고+IRS. */}
+      {/* FB4 T2 / FB5 B1 — 커브형 family chips (PVBP sector taxonomy, RH
+          grammar): every sector the snapshot carries a real curve for; default
+          국고채+IRS. */}
       {!isPath && (
         <div className="mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-1">
           <span className="mr-0.5 text-label font-bold uppercase text-fg-muted">곡선군</span>
-          {familyRoster.map((f) => (
+          {familyRoster.map((key) => (
             <ToggleChip
-              key={f.key}
-              label={f.label}
-              pressed={selCurveFamilies.includes(f.key)}
-              onToggle={() => setSelCurveFamilies((cur) => toggleIn(cur, f.key))}
+              key={key}
+              label={key}
+              pressed={selCurveFamilies.includes(key)}
+              onToggle={() => setSelCurveFamilies((cur) => toggleIn(cur, key))}
             />
           ))}
           {shaped && (
@@ -383,8 +411,9 @@ export function CurveViewPanel() {
         </div>
       )}
 
-      {/* F2 — series selection chips (path mode only): every pillar the path
-          machinery produces + the four curve families. */}
+      {/* F2 / FB5 B1 — series selection chips (path mode only): every pillar the
+          path machinery produces + the PVBP curve families (same roster as
+          커브형; each rides its shock-curve family). */}
       {isPath && (
         <div className="mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-1">
           <span className="mr-0.5 text-label font-bold uppercase text-fg-muted">테너</span>
@@ -397,12 +426,12 @@ export function CurveViewPanel() {
             />
           ))}
           <span className="ml-2 mr-0.5 text-label font-bold uppercase text-fg-muted">곡선군</span>
-          {PATH_FAMILIES.map((f) => (
+          {PREVIEW_FAMILIES.map((key) => (
             <ToggleChip
-              key={f.key}
-              label={f.key}
-              pressed={selFamilies.includes(f.key)}
-              onToggle={() => setSelFamilies((cur) => toggleIn(cur, f.key))}
+              key={key}
+              label={key}
+              pressed={selFamilies.includes(key)}
+              onToggle={() => setSelFamilies((cur) => toggleIn(cur, key))}
             />
           ))}
         </div>
@@ -417,6 +446,7 @@ export function CurveViewPanel() {
               markers={pathMarkers}
               formatValue={formatBpAxis}
               onSeriesRebuilt={handleSeriesRebuilt}
+              onCrosshairMove={setReadout}
             />
             <WaypointDragOverlay
               chart={pathHost?.chart ?? null}
@@ -436,23 +466,46 @@ export function CurveViewPanel() {
 
       {isPath ? (
         <>
+          {/* FB5 B2 — per-series Δbp readout under the crosshair date. Each
+              value is the chart's own plotted point (never recomputed); a
+              series with no point on a whitespace day reads —. */}
+          {readout && readout.time != null && (
+            <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-micro">
+              <span data-num className="font-bold text-fg-secondary label-nowrap">
+                {formatCrosshairDate(readout.time)}
+              </span>
+              {readout.points.map((p, i) => (
+                <span
+                  key={p.label ?? i}
+                  data-num
+                  className="inline-flex items-center gap-1.5 label-nowrap"
+                >
+                  <span className="inline-block h-0.5 w-3" style={{ backgroundColor: p.color }} />
+                  <span className="text-fg-muted">{p.label ?? "—"}</span>
+                  <span className="text-fg-primary">
+                    {p.value == null ? "—" : formatBpAxis(p.value)}
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
           {/* Legend: established family colors for the selected 곡선군. */}
           <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-micro">
-            {PATH_FAMILIES.filter((f) => selFamilies.includes(f.key)).map((f) => (
-              <span key={f.key} className="inline-flex items-center gap-1.5 text-fg-muted">
+            {PREVIEW_FAMILIES.filter((key) => selFamilies.includes(key)).map((key) => (
+              <span key={key} className="inline-flex items-center gap-1.5 text-fg-muted">
                 <span
                   className="inline-block h-0.5 w-4"
-                  style={{ backgroundColor: pathFamilyColor(f.key) }}
+                  style={{ backgroundColor: familyColor(key) }}
                 />
-                {f.key}
+                {key}
               </span>
             ))}
           </div>
           <p data-num className="mt-0.5 text-center text-micro text-fg-dim">
             테너 {selTenors.join("/")} 경로
             {anchorVisible
-              ? ` · 점 = 웨이포인트 (국고 ${anchorTenor} 드래그 가능)`
-              : ` · 웨이포인트 드래그는 국고 ${anchorTenor} 표시 중에만`}
+              ? ` · 점 = 웨이포인트 (${ANCHOR_FAMILY} ${anchorTenor} 드래그 가능)`
+              : ` · 웨이포인트 드래그는 ${ANCHOR_FAMILY} ${anchorTenor} 표시 중에만`}
             {hasPolicy ? " · 점선 = 기준금리 누적 변동" : ""}
           </p>
         </>
@@ -461,15 +514,15 @@ export function CurveViewPanel() {
           {/* Legend + blank-policy notices (커브형, FB4): solid = base curve,
               dashed ghost = the scenario at the readout's D+n slice. */}
           <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-micro">
-            {CURVE_FAMILIES.filter((f) => selCurveFamilies.includes(f.key)).map((f) => {
-              const err = f.key === "IRS" ? swap.isError : sectorQueries[f.key].isError;
+            {PREVIEW_FAMILIES.filter((key) => selCurveFamilies.includes(key)).map((key) => {
+              const err = key === IRS_KEY ? swap.isError : sectorQueries[key].isError;
               return (
-                <span key={f.key} className="inline-flex items-center gap-1.5 text-fg-muted">
+                <span key={key} className="inline-flex items-center gap-1.5 text-fg-muted">
                   <span
                     className="inline-block h-0.5 w-4"
-                    style={{ backgroundColor: curveFamilyColor(f.key) }}
+                    style={{ backgroundColor: familyColor(key) }}
                   />
-                  {f.label}
+                  {key}
                   {err && <span className="text-fg-dim">호가 없음 —</span>}
                 </span>
               );
@@ -481,6 +534,14 @@ export function CurveViewPanel() {
               </span>
             )}
           </div>
+          {/* FB5 B1 honesty — the representative rating each rated family's
+              preview curve reflects (a single tier is never passed off as the
+              whole sector). */}
+          {ratingBySector.length > 0 && (
+            <p data-num className="mt-0.5 text-center text-micro text-fg-dim">
+              기준 등급:{ratingBySector.map((r) => ` ${r.label} ${r.rating}`).join(" ·")}
+            </p>
+          )}
           {missingByFamily.length > 0 && (
             <p data-num className="mt-0.5 text-center text-micro text-fg-dim">
               결측 호가:

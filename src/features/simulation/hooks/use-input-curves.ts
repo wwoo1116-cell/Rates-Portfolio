@@ -28,8 +28,10 @@ export const INPUT_CURVE_KEYS = {
   dateRange: ["simulation", "market-date-range"] as const,
   taxonomy: ["simulation", "credit-taxonomy"] as const,
   swapQuotes: (d: string) => ["simulation", "input-curves", "swap", d] as const,
-  bondQuotes: (d: string, sector: string = BOND_SECTOR) =>
-    ["simulation", "input-curves", "bond", sector, d] as const,
+  // The representative rating is part of the cache identity: a rated sector's
+  // curve differs per rating, and the FB5 fix keys the base quote to ratings[0].
+  bondQuotes: (d: string, sector: string = BOND_SECTOR, rating: string | null = null) =>
+    ["simulation", "input-curves", "bond", sector, rating ?? "-", d] as const,
 };
 
 /** Available market-data dates — bounds + steps for the baseDate toggle. */
@@ -40,6 +42,32 @@ export function useMarketDateRange() {
     staleTime: 5 * 60_000,
     retry: 1,
   });
+}
+
+/** The credit taxonomy tree (sectors → ratings → tenors) — the Rate History
+ * selector's own option source. FB5 B1: the 커브형 chip roster and its
+ * enablement/representative-rating are derived from THIS (reuse, not a forked
+ * list). Shares the taxonomy cache key with useSectorInputQuotes, so one fetch
+ * feeds both. */
+export function useCreditTaxonomy(enabled = true) {
+  return useQuery({
+    queryKey: INPUT_CURVE_KEYS.taxonomy,
+    queryFn: () => creditCurveApi.taxonomy(),
+    staleTime: Infinity,
+    retry: 1,
+    enabled,
+  });
+}
+
+/** Representative rating for a sector's single preview curve — the RV selector's
+ * own default tier (ratings[0], the highest/first). Unrated sectors (국고채) and
+ * any sector the taxonomy doesn't rate return null. This is THE FB5 silent-chip
+ * fix: a RATED sector queried with rating:null resolves to no raw category
+ * server-side (raw_category(sector,"") === None) → an empty, silently-blank
+ * series; ratings[0] is a REAL curve (not invented math) and mirrors LegPicker. */
+export function representativeRating(sectorDef?: { ratings?: string[] } | null): string | null {
+  const ratings = sectorDef?.ratings ?? [];
+  return ratings.length > 0 ? ratings[0] : null;
 }
 
 /** IRS par quotes (+ CD 3M short end) for the date → BaseQuote[]. A missing
@@ -72,24 +100,22 @@ export function useSwapInputQuotes(baseDate: string, enabled = true) {
  * sector is part of the cache key, and `carried` reports whether the credit
  * taxonomy offers the sector at all (chip renders only when it does). */
 export function useSectorInputQuotes(sector: string, baseDate: string, enabled = true) {
-  const taxonomy = useQuery({
-    queryKey: INPUT_CURVE_KEYS.taxonomy,
-    queryFn: () => creditCurveApi.taxonomy(),
-    staleTime: Infinity,
-    retry: 1,
-    enabled,
-  });
+  const taxonomy = useCreditTaxonomy(enabled);
 
-  const tenors = taxonomy.data?.sectors.find((s) => s.sector === sector)?.tenors ?? [];
+  const sectorDef = taxonomy.data?.sectors.find((s) => s.sector === sector);
+  const tenors = sectorDef?.tenors ?? [];
+  // FB5 B1 — resolve the sector's representative rating (ratings[0]) so a RATED
+  // sector fetches a real curve instead of the silent-blank rating:null series.
+  const repRating = representativeRating(sectorDef);
 
   const series = useQuery({
-    queryKey: INPUT_CURVE_KEYS.bondQuotes(baseDate, sector),
+    queryKey: INPUT_CURVE_KEYS.bondQuotes(baseDate, sector, repRating),
     enabled: enabled && !!baseDate && tenors.length > 0,
     staleTime: Infinity,
     retry: false,
     queryFn: async (): Promise<BaseQuote[]> => {
       const res = await creditCurveApi.series({
-        legs: tenors.map((tenor) => ({ sector, rating: null, tenor })),
+        legs: tenors.map((tenor) => ({ sector, rating: repRating, tenor })),
         start_date: baseDate,
         end_date: baseDate,
       });
@@ -110,6 +136,11 @@ export function useSectorInputQuotes(sector: string, baseDate: string, enabled =
     /** Taxonomy resolved AND carries this sector. */
     carried: (taxonomy.data?.sectors.some((s) => s.sector === sector) ?? false),
     taxonomyLoaded: taxonomy.isSuccess,
+    /** The rating the preview curve actually reflects (null = unrated). Shown
+     * in the panel caption so a single-tier curve is never passed off as "the"
+     * whole sector. */
+    representativeRating: repRating,
+    rated: (sectorDef?.ratings?.length ?? 0) > 0,
   };
 }
 
