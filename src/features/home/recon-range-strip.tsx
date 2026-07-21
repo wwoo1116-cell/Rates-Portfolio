@@ -15,6 +15,14 @@ import { cn } from "@/lib/utils";
 import { formatKrwCompact } from "./pnl-format";
 import { ReconDeltaBpChart } from "./recon-deltabp-chart";
 
+/** FB5-A A3.5 — % guard floor (₩). The % column shows 잔차 as a share of the
+ * day's P&L; when the expected P&L (예상) magnitude is below this floor the
+ * ratio is dominated by a near-zero base and reads as a meaningless blowup
+ * (e.g. −2459.5%). Below the floor the % renders — with a tooltip and the
+ * absolute 잔차 (its own column) is untouched. Display-only: no math changes,
+ * bridgeLadder.residualPct is unchanged. */
+export const RANGE_PCT_EXPECTED_FLOOR_KRW = 1_000_000;
+
 /** RECON2-RH — the two views over one computed row set: the 잔차 table
  * (default, pre-existing) and the M2 Δbp time series. One 계산 run feeds
  * both; toggling never refetches. */
@@ -193,20 +201,32 @@ export function ReconRangeStrip() {
                     <SignedCell value={r.residual} />
                   </td>
                   <td className="py-1 text-right">
-                    <span
-                      style={{
-                        display: "block",
-                        textAlign: "right",
-                        fontFamily: "var(--font-mono)",
-                        fontVariantNumeric: "tabular-nums",
-                        fontSize: 12,
-                        color: "var(--fg-dim)",
-                      }}
-                    >
-                      {r.residualPct === null
-                        ? "—"
-                        : `${r.residualPct > 0 ? "+" : ""}${r.residualPct.toFixed(1)}%`}
-                    </span>
+                    {(() => {
+                      // A3.5: suppress the % when 예상 is below the floor — a
+                      // near-zero base distorts the ratio. The absolute 잔차
+                      // column above is unaffected.
+                      const pctDistorted =
+                        r.expected !== null &&
+                        Math.abs(r.expected) < RANGE_PCT_EXPECTED_FLOOR_KRW;
+                      const showDash = r.residualPct === null || pctDistorted;
+                      return (
+                        <span
+                          title={pctDistorted ? "예상 소액 — %가 왜곡됨" : undefined}
+                          style={{
+                            display: "block",
+                            textAlign: "right",
+                            fontFamily: "var(--font-mono)",
+                            fontVariantNumeric: "tabular-nums",
+                            fontSize: 12,
+                            color: "var(--fg-dim)",
+                          }}
+                        >
+                          {showDash
+                            ? "—"
+                            : `${r.residualPct! > 0 ? "+" : ""}${r.residualPct!.toFixed(1)}%`}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="py-1 text-label text-fg-dim truncate" title={r.note}>
                     {r.note ?? ""}

@@ -50,6 +50,13 @@ vi.mock("lightweight-charts", () => ({
 }));
 
 import { PnlTracePanel } from "./pnl-trace-panel";
+import {
+  buildInstrumentSeries,
+  outrightId,
+  spreadId,
+  traceSeriesContextAt,
+  type SelectedInstrument,
+} from "@/lib/rv-instruments";
 
 const point = { valuation_date: "2021-07-05" };
 
@@ -264,5 +271,78 @@ describe("SIM2-7 funding provenance", () => {
   it("names the historical basis under the Market Rates block", () => {
     renderPanel();
     expect(screen.getByTestId("trace-funding-provenance").textContent).toContain("실적(BOK) + 10bp");
+  });
+});
+
+/**
+ * FB5-A A1 — traced-date rate context. The panel shows the IRS 3Y/10Y
+ * benchmark pair (from the clicked point) plus every series that was on the
+ * chart, each snapshotted AT the traced date. Same-source pin: the context row
+ * values equal the charted series' values there — derived by the SAME
+ * buildInstrumentSeries the chart uses, not re-fetched.
+ */
+describe("A1 traced-date rate context (same-source)", () => {
+  const TRACE_DATE = "2026-07-10";
+  // One market point at the traced date: IRS 3Y=3.05%, 10Y=3.42%, no 5Y quote.
+  const tracePoint = {
+    valuation_date: TRACE_DATE,
+    cd_rate: 0.028,
+    base_rate: 0.025,
+    tenor_rates: { "3Y": 0.0305, "10Y": 0.0342 },
+  } as unknown as Parameters<typeof buildInstrumentSeries>[1][number];
+
+  const irs = (tenor: string) => ({ sector: "IRS", rating: null, tenor });
+  const instruments: SelectedInstrument[] = [
+    { kind: "outright", id: outrightId(irs("3Y")), leg: irs("3Y") },
+    {
+      kind: "spread",
+      id: spreadId([{ leg: irs("10Y"), weight: 1 }, { leg: irs("3Y"), weight: -1 }]),
+      legs: [{ leg: irs("10Y"), weight: 1 }, { leg: irs("3Y"), weight: -1 }],
+    },
+    // A 5Y outright the market has NO quote for on this date → honest —.
+    { kind: "outright", id: outrightId(irs("5Y")), leg: irs("5Y") },
+  ];
+
+  function renderWithContext() {
+    const built = buildInstrumentSeries(instruments, [tracePoint], []);
+    const seriesContext = traceSeriesContextAt(built, TRACE_DATE);
+    const props = {
+      params: { point: tracePoint, seriesContext },
+    } as unknown as Parameters<typeof PnlTracePanel>[0];
+    return { built, seriesContext, ...render(<PnlTracePanel {...props} />) };
+  }
+
+  it("benchmark pair shows the point's IRS 3Y/10Y", () => {
+    renderWithContext();
+    const bench = screen.getByTestId("trace-benchmark-rates").textContent ?? "";
+    expect(bench).toContain("3.0500%"); // 3Y
+    expect(bench).toContain("3.4200%"); // 10Y
+  });
+
+  it("each context row equals its charted series' value at the date (same-source)", () => {
+    const { built } = renderWithContext();
+
+    // Outright IRS 3Y: 3.0500% — identical to the built series' lineData point.
+    const outrightBuilt = built[0];
+    const outVal = outrightBuilt.lineData.find((d) => d.time === TRACE_DATE)!.value;
+    expect(outVal).toBe(0.0305);
+    expect(screen.getByTestId(`trace-ctx-${outrightBuilt.id}`).textContent).toContain(
+      `${(outVal * 100).toFixed(4)}%`,
+    );
+
+    // Spread 10Y−3Y: (0.0342−0.0305)×10000 = 37bp — same object, rendered as bp.
+    const spreadBuilt = built[1];
+    const spVal = spreadBuilt.lineData.find((d) => d.time === TRACE_DATE)!.value;
+    expect(spVal).toBeCloseTo(37, 6);
+    expect(screen.getByTestId(`trace-ctx-${spreadBuilt.id}`).textContent).toContain(
+      `${spVal.toFixed(2)}bp`,
+    );
+  });
+
+  it("a series with no quote that day renders an honest — (never a carry-forward)", () => {
+    const { built } = renderWithContext();
+    const fiveY = built[2];
+    expect(fiveY.lineData.length).toBe(0); // no 5Y quote in the point
+    expect(screen.getByTestId(`trace-ctx-${fiveY.id}`).textContent).toContain("—");
   });
 });

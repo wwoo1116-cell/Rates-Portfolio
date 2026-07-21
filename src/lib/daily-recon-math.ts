@@ -24,6 +24,7 @@
  * its own — both mounts render these functions' outputs, so two mounts can
  * never disagree about the same date.
  */
+import { differenceInCalendarDays, parseISO } from "date-fns";
 import type { DailyPnlFigures, MarketDataResponse, PortfolioCashFlowOut } from "@/lib/api-types";
 
 /** The residual slot's label. Exported so the naming pin can assert on the
@@ -96,8 +97,15 @@ export interface ContributionRow {
 /** M3 = M1 × M2 cell-wise: contribution_₩[sector][tenor] =
  * KRD@D−1[sector][tenor] × (−Δbp[tenor]) — the first-order P&L convention
  * the realized buckets themselves use ([CHANGED, FB3] sign fix; see module
- * header — the old ×(+Δbp) inverted the whole Assumed leg). A null Δbp
- * yields a null cell — excluded from every sum, never treated as zero. */
+ * header — the old ×(+Δbp) inverted the whole Assumed leg).
+ *
+ * null-vs-0 (FB5-A A3.4): a cell is null — reserved for "—" — in exactly two
+ * cases, unmapped Δbp (we don't know the move) OR no KRD mass at that tenor
+ * (nothing to move). A cell where KRD IS present and Δbp is a real 0.0 is an
+ * honest ₩0 (a measurement: risk existed, the rate didn't move) and stays a
+ * numeric 0 so the matrix renders 0, not — (paired with zeroAsDash={false} on
+ * the M3 grid). A 0-KRD cell contributes 0 to the sum either way, so the Σ /
+ * Assumed figure is byte-identical to the pre-A3.4 behavior. */
 export function contributionRows(
   columns: readonly string[],
   pvbpRows: Array<Record<string, unknown>>,
@@ -109,10 +117,12 @@ export function contributionRows(
     for (const c of columns) {
       const krd = typeof row[c] === "number" ? (row[c] as number) : 0;
       const d = deltaBp[c];
-      if (d == null) {
-        cells[c] = null;
+      if (d == null || krd === 0) {
+        cells[c] = null; // unmapped Δbp, or no KRD mass — both render —
       } else {
-        const v = krd * -d;
+        // krd ≠ 0: a real contribution. d === 0 is an honest ₩0 (normalize the
+        // JS −0 that krd × -0 produces so it prints as "0").
+        const v = d === 0 ? 0 : krd * -d;
         cells[c] = v;
         total += v;
       }
@@ -192,6 +202,68 @@ export function assumedTotal(
 ): number | undefined {
   const rows = contributionRows(columns, pvbpRows, deltaBp);
   return rows.find((r) => r.sector === "합계")?.total;
+}
+
+/** FB5-A A3.2/A3.3 — the DV01-FIX basis metadata the pvbp-sensitivity 합계 row
+ * carries (portfolio_analytics_service.build_pvbp_sensitivity): how the bond
+ * KRD cells were derived, and the blotter snapshot's own as-of.
+ *
+ *  - `sources`: additive counts keyed by the engine's own source names —
+ *    `reval` (bump-reval DV01 at D−1), `sheet_frn` (reset-linked sheet
+ *    duration; the FRN carve-out), `sheet_fallback` (sheet PVBP for rows the
+ *    engine could not revalue). Renders the mixed basis explicit.
+ *  - `blotterAsOf`: the frozen blotter's detected as-of (uniform 잔존일수
+ *    fingerprint; 2026-03-23 in the current export, ≈ D on a fresh one). */
+export interface Dv01Meta {
+  sources: Record<string, number>;
+  blotterAsOf: string | null;
+  frnCount: number;
+}
+
+/** Human labels for the engine's dv01 source keys (A3.3 chip). */
+export const DV01_SOURCE_LABELS: Record<string, string> = {
+  reval: "reval",
+  sheet_frn: "FRN",
+  sheet_fallback: "fallback",
+};
+/** Chip render order — the primary basis first, then the carve-outs. */
+export const DV01_SOURCE_ORDER = ["reval", "sheet_frn", "sheet_fallback"] as const;
+
+/** Pull the DV01-FIX basis metadata off the pvbp-sensitivity 합계 row. Absent
+ * fields (fresh export before the DV01 line, or a book with no bonds) degrade
+ * to empty/nulls — the caller hides the chips rather than inventing them. */
+export function dv01Meta(pvbpRows?: Array<Record<string, unknown>>): Dv01Meta {
+  const total = pvbpRows?.find((r) => r.sector === "합계");
+  const rawSources = total?.dv01_sources;
+  const sources: Record<string, number> = {};
+  if (rawSources && typeof rawSources === "object") {
+    for (const [k, v] of Object.entries(rawSources as Record<string, unknown>)) {
+      if (typeof v === "number") sources[k] = v;
+    }
+  }
+  const blotterAsOf = typeof total?.blotter_as_of === "string" ? total.blotter_as_of : null;
+  const frn = total?.frn_positions;
+  const frnCount = Array.isArray(frn) ? frn.length : sources["sheet_frn"] ?? 0;
+  return { sources, blotterAsOf, frnCount };
+}
+
+/** A3.2 — the blotter is "stale" (worth an honest as-of notice) when its
+ * detected snapshot date lags the reconciliation reference (the D−1 close the
+ * KRD was priced at) by more than this many calendar days. On a fresh export
+ * the detected as-of ≈ the reference and the notice stays hidden. */
+export const BLOTTER_STALE_THRESHOLD_DAYS = 7;
+
+/** True when `blotterAsOf` lags `reference` by more than the threshold — the
+ * only case the as-of chip surfaces. Null/unparseable → not stale (nothing
+ * honest to say). Forward or ≈-reference dates (fresh export) → not stale. */
+export function isBlotterStale(
+  blotterAsOf: string | null,
+  reference: string | null,
+  thresholdDays: number = BLOTTER_STALE_THRESHOLD_DAYS,
+): boolean {
+  if (!blotterAsOf || !reference) return false;
+  const lag = differenceInCalendarDays(parseISO(reference), parseISO(blotterAsOf));
+  return Number.isFinite(lag) && lag > thresholdDays;
 }
 
 /** T4a — scheduled swap net settlements in the window (close, asOf], from a

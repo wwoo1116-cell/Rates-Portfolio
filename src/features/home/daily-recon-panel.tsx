@@ -27,11 +27,15 @@
 import { Spinner } from "@blueprintjs/core";
 import { useDailyRecon } from "@/hooks/use-daily-recon";
 import {
+  DV01_SOURCE_LABELS,
+  DV01_SOURCE_ORDER,
   RESIDUAL_CAPTION,
   RESIDUAL_LABEL,
   bridgeLadder,
   contributionRows,
+  dv01Meta,
   excludedTenors,
+  isBlotterStale,
   realizedFromByClass,
   type BridgeLadder,
 } from "@/lib/daily-recon-math";
@@ -170,6 +174,15 @@ export function DailyReconPanel({ showRange = false }: { showRange?: boolean } =
   const totalPvbpRow = pvbpRows?.find((r) => r.sector === "합계");
   const excluded = deltaBp ? excludedTenors(TENOR_COLS, totalPvbpRow, deltaBp) : [];
 
+  // A3.2/A3.3 — DV01-FIX basis metadata off the 합계 row: the mixed-basis
+  // counts (always surfaced when present) and the blotter as-of (surfaced only
+  // when it lags the priced close — a fresh export stays silent).
+  const dv01 = dv01Meta(pvbpRows);
+  const dv01SourceChips = DV01_SOURCE_ORDER.filter((k) => dv01.sources[k]).map(
+    (k) => `${DV01_SOURCE_LABELS[k]} ${dv01.sources[k]}`,
+  );
+  const blotterStale = isBlotterStale(dv01.blotterAsOf, resolvedClose ?? null);
+
   const assumedRow = contrib.find((r) => r.sector === "합계");
   const realized = realizedFromByClass(totalRow?.by_class);
   const ladder: BridgeLadder | undefined =
@@ -195,9 +208,36 @@ export function DailyReconPanel({ showRange = false }: { showRange?: boolean } =
       <p className="text-micro text-fg-dim">
         예상 PnL = 테타(T−1 기지) + Σ<sub>테너</sub> KRD@D−1 × (−Δbp) — D일 Realized
         (테타+채권평가+스왑평가)와 대사하는 브리지입니다. 차이는 {RESIDUAL_LABEL}(
-        {RESIDUAL_CAPTION})로만 표기합니다. 채권 KRD는 블로터의 정적 PVBP(버킷별)이며 IRS
-        행만 D−1 커브로 재평가됩니다.
+        {RESIDUAL_CAPTION})로만 표기합니다. 채권 KRD는 고정쿠폰 채권은 D−1 커브로 서버
+        재평가(reval DV01), FRN은 리셋 연동 시트 듀레이션, 재평가 불가 행은 시트
+        PVBP(fallback)로 산출되며, IRS 행은 D−1 커브로 재평가됩니다.
       </p>
+
+      {/* A3.2/A3.3 — the mixed-basis is made explicit: source counts always,
+          and the blotter as-of only when it lags the priced close (a fresh
+          export keeps it hidden). */}
+      {(dv01SourceChips.length > 0 || (blotterStale && dv01.blotterAsOf)) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {dv01SourceChips.length > 0 && (
+            <span
+              className="inline-flex items-center gap-1.5 border border-border-subtle px-2 py-0.5 text-micro text-fg-muted label-nowrap"
+              data-testid="dv01-sources-chip"
+            >
+              <span className="uppercase text-fg-dim">혼합 근거</span>
+              {dv01SourceChips.join(" · ")}
+            </span>
+          )}
+          {blotterStale && dv01.blotterAsOf && (
+            <span
+              className="inline-flex items-center gap-1.5 border border-sem-risk px-2 py-0.5 text-micro text-sem-risk label-nowrap"
+              data-testid="blotter-asof-chip"
+              title="블로터(채권 시트) 스냅샷 기준일 — D−1 대비 과거이므로 채권 잔존만기·시트 PVBP가 이 시점 기준입니다."
+            >
+              블로터 기준일 {dv01.blotterAsOf}
+            </span>
+          )}
+        </div>
+      )}
 
       {!hasPositions ? (
         <div className="flex flex-1 items-center justify-center text-center text-body text-fg-muted">
@@ -257,6 +297,12 @@ export function DailyReconPanel({ showRange = false }: { showRange?: boolean } =
                     rows={m3Rows}
                     cellRange={m3Range}
                     formatCell={formatKrwSigned}
+                    // A3.4 honest-zero: a cell with KRD present and Δbp exactly
+                    // 0.0 is a real ₩0 (contributionRows yields numeric 0),
+                    // rendered 0 — not —. The em-dash stays reserved for null
+                    // cells (unmapped Δbp / no-KRD), which this flag never
+                    // touches. Aligns with the M2 Δbp row's zeroAsDash={false}.
+                    zeroAsDash={false}
                   />
                 </div>
                 <p className="text-micro text-fg-dim">
