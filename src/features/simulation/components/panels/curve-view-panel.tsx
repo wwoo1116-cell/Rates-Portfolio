@@ -177,7 +177,6 @@ export function CurveViewPanel() {
     if (!isPath) return null;
     const req = buildSimulateRequest(inputs, params);
     return { evaluator: createPathEvaluator(req), days: samplePathDays(req) };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPath, params, inputs]);
 
   const anchorVisible = selFamilies.includes(ANCHOR_FAMILY) && selTenors.includes(ANCHOR_TENOR);
