@@ -122,38 +122,29 @@ interface SpreadLegRowProps {
   index: number;
   sectors: TaxonomySectorOut[];
   filter: string;
-  /** Raw input string, parsed only at Add time. Parsing on every keystroke
-   * (the old `Number(e.target.value)`) clobbered partial entries: typing "-"
-   * reads as badInput -> "" -> 0, and the controlled re-render wiped the minus
-   * before "-2" could be completed -- on the input whose whole point is signed
-   * weights. Same string-state pattern as the panel's anchor/notional fields. */
-  weight: string;
-  onWeightChange: (index: number, weight: string) => void;
+  /** FB3 F3 (owner ruling: weights carry no meaning) — the coefficient is
+   * FIXED by leg count (2-leg = +1/−1, 3-leg fly = +1/−2/+1) and rendered as
+   * a read-only label; the numeric weight input is gone. */
+  weight: number;
   onLegChange: (index: number, leg: Leg | null) => void;
 }
 
-/** One weighted term of the spread expression. Exists as its own component so
+/** One term of the spread expression. Exists as its own component so
  * each row can hand LegPicker an identity-stable onChange -- LegPicker keeps
  * onChange in an effect dependency list, so an inline arrow here would re-fire
  * that effect every render and loop through the parent's setState. */
-function SpreadLegRow({ index, sectors, filter, weight, onWeightChange, onLegChange }: SpreadLegRowProps) {
+function SpreadLegRow({ index, sectors, filter, weight, onLegChange }: SpreadLegRowProps) {
   const handleLeg = useCallback((leg: Leg | null) => onLegChange(index, leg), [index, onLegChange]);
-  const handleWeight = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => onWeightChange(index, e.target.value),
-    [index, onWeightChange],
-  );
 
   return (
     <div className="flex items-center gap-1.5">
-      <input
-        type="number"
-        step="1"
-        value={weight}
-        onChange={handleWeight}
-        aria-label={`Leg ${index + 1} weight`}
+      <span
         data-num
-        className="h-7 w-14 border border-border-subtle bg-bg-elevated px-1.5 text-center text-body text-fg-primary"
-      />
+        aria-label={`Leg ${index + 1} coefficient`}
+        className="inline-flex h-7 min-w-9 items-center justify-center border border-border-subtle bg-bg-tertiary px-1.5 text-body tabular-nums text-fg-secondary"
+      >
+        {weight > 0 ? `+${weight}` : weight}
+      </span>
       <span className="text-micro text-fg-dim">×</span>
       <LegPicker sectors={sectors} filter={filter} onChange={handleLeg} />
     </div>
@@ -174,8 +165,13 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
   // 2-leg stays the default; 3 turns the expression into a fly.
   const [legCount, setLegCount] = useState(2);
   const [spreadLegs, setSpreadLegs] = useState<(Leg | null)[]>([null, null]);
-  // Raw strings while typing (see SpreadLegRowProps.weight); numbers only at Add.
-  const [weights, setWeights] = useState<string[]>(DEFAULT_SPREAD_WEIGHTS[2].map(String));
+  // FB3 F3 (owner ruling): weights carry no meaning as USER INPUT — the
+  // coefficients are fixed by leg count (2-leg = +1/−1, 3-leg fly =
+  // +1/−2/+1, the DEFAULT_SPREAD_WEIGHTS that were already the defaults).
+  // Derived, not state; both canonical sets sum to 0, so the PVBP-neutral
+  // sizing (B4: net PVBP = c·Σwᵢ) is always satisfiable and the old
+  // weight-sum warning path is unreachable by construction.
+  const spreadWeights = DEFAULT_SPREAD_WEIGHTS[legCount] ?? [];
 
   const sectors = taxonomy?.sectors ?? [];
 
@@ -188,14 +184,6 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
     });
   }, []);
 
-  const handleWeightChange = useCallback((index: number, weight: string) => {
-    setWeights((prev) => {
-      const next = [...prev];
-      next[index] = weight;
-      return next;
-    });
-  }, []);
-
   const handleLegCount = useCallback((count: number) => {
     setLegCount(count);
     setSpreadLegs((prev) => {
@@ -203,25 +191,10 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
       while (next.length < count) next.push(null);
       return next;
     });
-    // Resetting to the canonical weights is the point of the control: picking
-    // "3" should give you a fly (+1/−2/+1), not 3 legs of leftover weights.
-    setWeights((DEFAULT_SPREAD_WEIGHTS[count] ?? Array.from({ length: count }, () => 1)).map(String));
   }, []);
 
   const activeLegs = spreadLegs.slice(0, legCount);
-  const activeWeights = weights.slice(0, legCount);
-  const parsedWeights = activeWeights.map((w) => Number(w));
-  // "" parses to 0, which would silently add a dead leg -- require every
-  // weight to be an explicitly typed finite number before Add unlocks.
-  const weightsValid =
-    activeWeights.length === legCount &&
-    activeWeights.every((w) => w.trim() !== "" && Number.isFinite(Number(w)));
-  const spreadReady =
-    activeLegs.length === legCount && activeLegs.every((l) => l != null) && weightsValid;
-  // PVBP-neutral sizing (B4) solves nᵢ ∝ wᵢ/pᵢ, whose net PVBP is c·Σwᵢ -- so it
-  // can only reach zero when the weights sum to zero. Surface that here rather
-  // than letting the sizing panel fail later.
-  const weightSum = weightsValid ? parsedWeights.reduce((a, b) => a + b, 0) : 0;
+  const spreadReady = activeLegs.length === legCount && activeLegs.every((l) => l != null);
 
   function handleAddOutright() {
     if (!outrightLeg) return;
@@ -230,7 +203,7 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
 
   function handleAddSpread() {
     if (!spreadReady) return;
-    const legs: SpreadLeg[] = activeLegs.map((leg, i) => ({ leg: leg as Leg, weight: parsedWeights[i] }));
+    const legs: SpreadLeg[] = activeLegs.map((leg, i) => ({ leg: leg as Leg, weight: spreadWeights[i] }));
     onAdd({ kind: "spread", id: spreadId(legs), legs });
   }
 
@@ -279,8 +252,7 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
                   index={i}
                   sectors={sectors}
                   filter={filter}
-                  weight={weights[i] ?? ""}
-                  onWeightChange={handleWeightChange}
+                  weight={spreadWeights[i] ?? 0}
                   onLegChange={handleLegChange}
                 />
               ))}
@@ -292,13 +264,9 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
         )}
       </div>
 
-      {mode === "spread" && weightSum !== 0 && (
-        <p className="text-micro text-sem-risk">
-          가중치 합 = {weightSum} (≠ 0). 스프레드로는 유효하지만, 합이 0이 아니면 PVBP 중립
-          사이징이 불가능합니다 (net PVBP ∝ 가중치 합).
-        </p>
-      )}
-
+      {/* FB3 F3: the weight-sum warning is gone WITH its cause — both fixed
+          coefficient sets (+1/−1, +1/−2/+1) sum to 0, so PVBP-neutral sizing
+          is always satisfiable. */}
       {selected.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {selected.map((inst) => (

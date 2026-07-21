@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildInstrumentSeries, spreadLabel, type SelectedInstrument } from "@/lib/rv-instruments";
 import type { CreditSeriesResultOut, RateHistoryPointOut } from "@/lib/api-client";
-import { migrateInstrumentV0 } from "./entry-signals-store";
+import { migrateInstrumentV0, normalizeInstrumentV1 } from "./entry-signals-store";
 
 const legA = { sector: "IRS", rating: null, tenor: "3Y" };
 const legB = { sector: "IRS", rating: null, tenor: "5Y" };
@@ -77,5 +77,73 @@ describe("migrateInstrumentV0", () => {
 
   it("returns null for a null focused instrument", () => {
     expect(migrateInstrumentV0(null)).toBeNull();
+  });
+});
+
+describe("normalizeInstrumentV1 (FB3 F3 — fixed spread coefficients)", () => {
+  const canonical2 = {
+    kind: "spread" as const,
+    id: "S:1*IRS||5Y~-1*IRS||3Y",
+    legs: [
+      { leg: legB, weight: 1 },
+      { leg: legA, weight: -1 },
+    ],
+  };
+
+  it("passes an already-canonical spread through BYTE-identical (same reference)", () => {
+    // toBe, not toEqual: the strongest byte-identity — no rewrite, no new id,
+    // no colorForId shift for users already on default weights.
+    expect(normalizeInstrumentV1(canonical2)).toBe(canonical2);
+  });
+
+  it("normalizes user-typed 2-leg weights to +1/−1, preserving leg order, re-deriving the id", () => {
+    const custom = {
+      kind: "spread" as const,
+      id: "S:2*IRS||5Y~-1*IRS||3Y",
+      legs: [
+        { leg: legB, weight: 2 },
+        { leg: legA, weight: -1 },
+      ],
+    };
+    const out = normalizeInstrumentV1(custom);
+    expect(out?.kind).toBe("spread");
+    if (out?.kind !== "spread") return;
+    expect(out.legs.map((l) => l.weight)).toEqual([1, -1]);
+    expect(out.legs.map((l) => l.leg)).toEqual([legB, legA]);
+    expect(out.id).toBe("S:1*IRS||5Y~-1*IRS||3Y");
+  });
+
+  it("normalizes 3-leg weights to the +1/−2/+1 fly", () => {
+    const custom = {
+      kind: "spread" as const,
+      id: "S:1*IRS||5Y~-1*IRS||3Y~1*IRS||5Y",
+      legs: [
+        { leg: legB, weight: 1 },
+        { leg: legA, weight: -1 },
+        { leg: legB, weight: 1 },
+      ],
+    };
+    const out = normalizeInstrumentV1(custom);
+    if (out?.kind !== "spread") throw new Error("expected spread");
+    expect(out.legs.map((l) => l.weight)).toEqual([1, -2, 1]);
+    expect(out.id).toBe("S:1*IRS||5Y~-2*IRS||3Y~1*IRS||5Y");
+  });
+
+  it("passes outrights and null through untouched; unknown leg counts untouched", () => {
+    const outright = { kind: "outright" as const, id: "O:IRS||3Y", leg: legA };
+    expect(normalizeInstrumentV1(outright)).toBe(outright);
+    expect(normalizeInstrumentV1(null)).toBeNull();
+    const fourLeg = {
+      kind: "spread" as const,
+      id: "S:x",
+      legs: [
+        { leg: legA, weight: 1 },
+        { leg: legB, weight: 2 },
+        { leg: legA, weight: 3 },
+        { leg: legB, weight: 4 },
+      ],
+    };
+    // No canonical set for N=4 (unreachable via any shipped UI) — never guess.
+    expect(normalizeInstrumentV1(fourLeg)).toBe(fourLeg);
   });
 });
