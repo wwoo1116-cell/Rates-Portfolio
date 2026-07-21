@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -27,6 +29,18 @@ function renderStage() {
       <ConfigureStage />
     </QueryClientProvider>,
   );
+}
+
+// FB4 T1 — the horizon is driven through the 마감일 calendar now; a helper
+// keeps the re-pinned tests readable. BASE + 90d = 2026-10-13.
+const BASE_DATE = "2026-07-15";
+function seedBaseDate() {
+  useSimulationDataStore.setState({
+    inputs: { ...EMPTY_SIMULATION_INPUTS, baseDate: BASE_DATE },
+  });
+}
+function pickEndDate(iso: string) {
+  fireEvent.change(screen.getByLabelText("마감일 (시뮬레이션 종료)"), { target: { value: iso } });
 }
 
 beforeEach(() => {
@@ -63,14 +77,16 @@ describe("ConfigureStage (s15 staged flow — configure)", () => {
     for (const d of accordions) expect(d.open).toBe(false);
   });
 
-  it("edits the horizon through the port (segmented button → store → display)", () => {
+  it("edits the horizon through the port (마감일 calendar → store → display) [CHANGED, FB4]", () => {
+    seedBaseDate();
     renderStage();
-    fireEvent.click(screen.getByRole("button", { name: "90D" }));
+    pickEndDate("2026-10-13"); // BASE + 90d
     expect(useSimulationDataStore.getState().params.simDays).toBe(90);
     expect(screen.getByText("90 Days")).toBeTruthy();
-    expect(
-      (screen.getByRole("button", { name: "90D" }) as HTMLButtonElement).getAttribute("aria-pressed"),
-    ).toBe("true");
+    // The picker reads back the DERIVED end date (contract stays baseDate+simDays).
+    expect((screen.getByLabelText("마감일 (시뮬레이션 종료)") as HTMLInputElement).value).toBe(
+      "2026-10-13",
+    );
   });
 
   it("edits the base shock through the port", () => {
@@ -133,8 +149,9 @@ describe("ConfigureStage (s15 staged flow — configure)", () => {
     // [CHANGED, SIM2-2 ruling] — the untouched D+60 is the on-line lerp
     // (30×60/90 = 20bp), not the old 0-pin. The touched D+30 carries the
     // user's 10 exactly; terminal pin unchanged.
+    seedBaseDate();
     renderStage();
-    fireEvent.click(screen.getByRole("button", { name: "90D" }));
+    pickEndDate("2026-10-13"); // BASE + 90d  [CHANGED, FB4]
     fireEvent.change(screen.getByLabelText("D+30 변동폭"), { target: { value: "10" } });
     const { params } = useSimulationDataStore.getState();
     expect(params.simDays).toBe(90);
@@ -206,13 +223,86 @@ describe("ConfigureStage (s15 staged flow — configure)", () => {
   });
 
   it("prunes touched flags for days that fall off the grid on horizon shrink", () => {
+    seedBaseDate();
     renderStage();
     fireEvent.change(screen.getByLabelText("D+120 변동폭"), { target: { value: "9" } });
     expect(useSimulationDataStore.getState().params.touchedWaypointDays).toContain(120);
-    fireEvent.click(screen.getByRole("button", { name: "90D" }));
+    pickEndDate("2026-10-13"); // BASE + 90d  [CHANGED, FB4]
     const { params } = useSimulationDataStore.getState();
     expect(params.touchedWaypointDays).not.toContain(120);
     expect(params.waypoints.some((w) => w.day === 120)).toBe(false);
+  });
+});
+
+describe("ConfigureStage — FB4 T1 date pickers", () => {
+  it("rejects 마감일 ≤ 시작일 with an explicit message and writes NOTHING", () => {
+    seedBaseDate();
+    renderStage();
+    pickEndDate("2026-07-10"); // before 시작일
+    expect(screen.getByText("마감일은 시작일 이후여야 합니다.")).toBeTruthy();
+    expect(useSimulationDataStore.getState().params.simDays).toBe(180); // untouched
+    expect(screen.getByText("180 Days")).toBeTruthy();
+  });
+
+  it("rejects a horizon beyond the 365-day cap with the explicit cap message — never a silent clamp", () => {
+    seedBaseDate();
+    renderStage();
+    pickEndDate("2027-07-20"); // 370d
+    expect(screen.getByText(/최대 기간 365일을 초과합니다 — 2027-07-15 이하/)).toBeTruthy();
+    expect(useSimulationDataStore.getState().params.simDays).toBe(180);
+  });
+
+  it("accepts a NON-PRESET horizon (100d) — the capability the segment row could not express", () => {
+    seedBaseDate();
+    renderStage();
+    pickEndDate("2026-10-23"); // BASE + 100d
+    expect(useSimulationDataStore.getState().params.simDays).toBe(100);
+    expect(screen.getByText("100 Days")).toBeTruthy();
+    // Waypoint grid: intermediates i×30 for i < floor(100/30) → D+30/D+60,
+    // then the terminal pin at the exact (non-multiple) horizon day.
+    expect(useSimulationDataStore.getState().params.waypoints.map((w) => w.day)).toEqual([
+      0, 30, 60, 100,
+    ]);
+  });
+
+  it("changing 시작일 keeps simDays (마감일 display shifts) — the old control's semantics", () => {
+    seedBaseDate();
+    renderStage();
+    pickEndDate("2026-10-13"); // 90d
+    fireEvent.change(screen.getByLabelText("시작일 (평가 기준일)"), {
+      target: { value: "2026-07-10" },
+    });
+    expect(useSimulationDataStore.getState().userBaseDate).toBe("2026-07-10");
+    expect(useSimulationDataStore.getState().params.simDays).toBe(90); // unchanged
+  });
+
+  it("payload byte-identity: picker-driven selections reproduce the pre-refactor fixture bytes", () => {
+    // The fixture was captured from the UNTOUCHED builder at acb395f (see
+    // __fixtures__/generate-payload-pin.test.ts). Drive the store to the
+    // non-preset case's (baseDate, simDays) THROUGH THE PICKER, set the
+    // remaining params, and the wire bytes must match exactly.
+    seedBaseDate();
+    renderStage();
+    pickEndDate("2026-10-23"); // BASE + 100d
+    useSimulationDataStore.getState().patchParams({
+      anchorTenor: "5Y",
+      baseShockBp: "20",
+      spread10y: "10",
+      waypoints: [
+        { day: 0, bp: 0 },
+        { day: 100, bp: 20 },
+      ],
+      touchedWaypointDays: [],
+    });
+    const { inputs, params } = useSimulationDataStore.getState();
+    const built = buildSimulateRequest(inputs, params);
+    const fixture = JSON.parse(
+      readFileSync(
+        join(process.cwd(), "src", "features", "simulation", "lib", "__fixtures__", "payload-pin.json"),
+        "utf-8",
+      ),
+    );
+    expect(built).toEqual(fixture["non-preset-100d-anchor-5y"]);
   });
 });
 
