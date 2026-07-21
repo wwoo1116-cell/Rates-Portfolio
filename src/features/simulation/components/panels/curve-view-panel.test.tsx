@@ -219,6 +219,104 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     expect(screen.queryByLabelText("D+180 웨이포인트 드래그")).toBeNull();
   });
 
+  // ── RECON-SCEN F2 — 시계열형 multi-series (tenor × 곡선군) ──
+
+  it("F2 defaults: anchor 국고 3Y pre-selected; every path-machinery pillar offered as a chip", () => {
+    seed("path");
+    render(<CurveViewPanel />);
+    expect((screen.getByRole("button", { name: "3Y" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getByRole("button", { name: "국고" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    for (const pillar of ["1D", "3M", "9Y", "10Y"]) {
+      expect(screen.getByRole("button", { name: pillar })).toBeTruthy();
+    }
+    for (const fam of ["IRS", "회사채", "여전채"]) {
+      expect((screen.getByRole("button", { name: fam }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("false");
+    }
+    expect(lwProps!.series.length).toBe(1); // anchor only, no policy series
+  });
+
+  it("F2 pin: a selected non-anchor tenor series equals the corresponding M2 matrix row", async () => {
+    const { buildPathMatrix, PATH_PILLARS } = await import("../../lib/recon/path-matrix");
+    seed("path");
+    render(<CurveViewPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "5Y" }));
+
+    expect(lwProps!.series.length).toBe(2); // anchor first + 5Y
+    const request = buildSimulateRequest(useSimulationDataStore.getState().inputs, DEFAULT_SCENARIO_PARAMS);
+    const m = buildPathMatrix(request, "국채");
+    const i5y = PATH_PILLARS.findIndex((p) => p.label === "5Y");
+    expect(lwProps!.series[1].data.map((p) => p.value)).toEqual(
+      m.cumBp.map((row) => parseFloat(row[i5y].toFixed(2))),
+    );
+    // Anchor stays series[0] (markers/drag/zero-line host).
+    const expected = buildTimePath(DEFAULT_SCENARIO_PARAMS, "2026-07-15");
+    expect(lwProps!.series[0].data.map((p) => p.value)).toEqual(expected.map((p) => p.gov3y));
+  });
+
+  it("F2 pin: a family series equals base + its spread staircase (여전채 → 카드채 curve)", async () => {
+    const { buildPathMatrix, PATH_PILLARS, createPathEvaluator } = await import("../../lib/recon/path-matrix");
+    const params = {
+      ...DEFAULT_SCENARIO_PARAMS,
+      creditSpreads: { ...DEFAULT_SCENARIO_PARAMS.creditSpreads, 카드채: "12" },
+    };
+    seed("path", { params });
+    render(<CurveViewPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "여전채" }));
+
+    expect(lwProps!.series.length).toBe(2); // anchor + 여전채 3Y
+    const request = buildSimulateRequest(useSimulationDataStore.getState().inputs, params);
+    const m = buildPathMatrix(request, "카드채");
+    const i3y = PATH_PILLARS.findIndex((p) => p.label === "3Y");
+    const famValues = lwProps!.series[1].data.map((p) => p.value);
+    expect(famValues).toEqual(m.cumBp.map((row) => parseFloat(row[i3y].toFixed(2))));
+    // …which IS base + factor × its constant credit spread at every sample.
+    const ev = createPathEvaluator(request);
+    m.days.forEach((d, i) => {
+      expect(famValues[i]).toBeCloseTo(
+        parseFloat((ev.cumBpAt("국채", 3, d) + 12 * ev.factorAt(d)).toFixed(2)),
+        2,
+      );
+    });
+  });
+
+  it("F2: deselecting the anchor removes waypoint markers and disables drag (no fake host series)", async () => {
+    seed("path", { params: GRID });
+    render(<CurveViewPanel />);
+    await screen.findByLabelText("D+30 웨이포인트 드래그");
+    fireEvent.click(screen.getByRole("button", { name: "5Y" })); // keep a tenor selected
+    fireEvent.click(screen.getByRole("button", { name: "3Y" })); // drop the anchor
+    expect(screen.queryByLabelText("D+30 웨이포인트 드래그")).toBeNull();
+    expect(lwProps!.markers!.length).toBe(0);
+    expect(screen.getByText(/드래그는 국고 3Y 표시 중에만/)).toBeTruthy();
+  });
+
+  it("F2: the last selected tenor/family cannot be deselected (never an empty chart)", () => {
+    seed("path");
+    render(<CurveViewPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "3Y" }));
+    expect((screen.getByRole("button", { name: "3Y" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "국고" }));
+    expect((screen.getByRole("button", { name: "국고" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    expect(lwProps!.series.length).toBe(1);
+  });
+
+  it("F2: composite overlay — families × tenors, family colors distinct, policy series appended last", () => {
+    seed("path", {
+      params: {
+        ...DEFAULT_SCENARIO_PARAMS,
+        shortEndEvents: [{ id: 0, date: "2026-08-20", shiftBp: "-25" }],
+      },
+    });
+    render(<CurveViewPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "10Y" }));
+    fireEvent.click(screen.getByRole("button", { name: "IRS" }));
+    // 2 tenors × 2 families + dashed policy = 5 series, anchor first, policy last.
+    expect(lwProps!.series.length).toBe(5);
+    expect(lwProps!.series[4].dashed).toBe(true);
+    const colors = new Set(lwProps!.series.slice(0, 4).map((s) => s.color));
+    expect(colors.size).toBe(2); // one established color per family
+  });
+
   it("previewMode survives unmount/remount (stage navigation)", () => {
     seed("curve");
     const first = render(<CurveViewPanel />);
