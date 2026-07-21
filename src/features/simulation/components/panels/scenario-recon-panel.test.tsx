@@ -132,6 +132,42 @@ describe("ScenarioReconPanel (RECON-SCEN M1–M3)", () => {
     expect(screen.getByText(/시계열형 미리보기와 동일한 원천/)).toBeTruthy();
   });
 
+  it("FB3 F4a — M2 renders the genuinely-zero short end as 0.0, never the unmapped — (0.0-vs-— rule)", () => {
+    // Live-app regime: no 금통위 events → the FE-built curves pin the short
+    // nodes at 0 (the committed fixture ships an explicit flat short end, so
+    // its request curves are patched here to the FE's no-event form — the
+    // matrix reads the request's own curves).
+    seedRun();
+    const fx = cloneFixture(loadFixture("linear"));
+    for (const nodes of [
+      ...Object.values(fx.request.shockCurves.bondCurves),
+      fx.request.shockCurves.swapCurve,
+    ]) {
+      for (const n of nodes as { t: number; val: number }[]) {
+        if (n.t <= 0.25) n.val = 0;
+      }
+    }
+    useSimulationDataStore.setState({ lastRun: fx.response, lastRunRequest: fx.request });
+    render(<ScenarioReconPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "경로 매트릭스" }));
+
+    const row = screen.getByText("2026-04-02").closest("tr")!;
+    const cells = Array.from(row.querySelectorAll("td")).map((td) => td.textContent?.trim());
+    // Layout: [일자, ...15 pillar cells]. 1D and 3M are MEASURED zeros of the
+    // designed path (short end moves only via 금통위 events — by design),
+    // while 3Y carries the ramped value.
+    expect(cells[1]).toBe("+0.0"); // 1D — a value, not the unmapped em-dash
+    expect(cells[2]).toBe("+0.0"); // 3M
+    expect(cells[8]).not.toBe("—"); // 3Y carries a value
+    expect(screen.getByText(/금통위 이벤트로만 이동/)).toBeTruthy();
+
+    // …and the KRD grid (M1) keeps the mass grammar: zero-mass cells still —.
+    fireEvent.click(screen.getByRole("button", { name: "KRD 그리드" }));
+    const ktbRow = screen.getByText("국고채").closest("tr")!;
+    const ktbCells = Array.from(ktbRow.querySelectorAll("td")).map((td) => td.textContent?.trim());
+    expect(ktbCells[1]).toBe("—"); // 1D — no KRD mass there in the fixture
+  });
+
   it("T4b 정산 CF subtab: settlement rows in the CashflowTable grammar + engine-lane 대사 line", () => {
     seedRun();
     render(<ScenarioReconPanel />);

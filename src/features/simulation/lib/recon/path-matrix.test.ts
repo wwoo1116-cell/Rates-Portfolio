@@ -159,6 +159,50 @@ describe("samplePathDays / buildPathMatrix", () => {
     expect(days).toEqual(expected);
   });
 
+  it("FB3 F4a — byte-agreement with the ENGINE's applied path: matrix(swap) == irsDailyReconciliation.cumulativeBp per pillar, incl. the genuinely-zero 1D/3M", () => {
+    const { request, response } = loadFixture("linear");
+    const ev = createPathEvaluator(request);
+    const reconRows = response.irsDailyReconciliation ?? [];
+    expect(reconRows.length).toBeGreaterThan(0);
+    // Every engine recon row, every pillar the engine carries: the FE matrix
+    // reproduces the engine's applied cumulative Δbp to the engine's own 3dp
+    // wire rounding. The 1D/3M zeros are the ENGINE's applied values — the
+    // scenario short end moves only via 금통위 events (none in this fixture),
+    // so 0.0 is the truth, not an unmapped hole.
+    for (const row of [reconRows[0], reconRows[Math.floor(reconRows.length / 2)], reconRows[reconRows.length - 1]]) {
+      for (const [name, engineCum] of Object.entries(row.cumulativeBp)) {
+        const t = pillarYears(name);
+        if (t === null) continue;
+        expect(Math.abs(ev.cumBpAt("swap", t, row.day) - engineCum), `${name}@d${row.day}`).toBeLessThanOrEqual(0.0006);
+      }
+    }
+    // NOTE this fixture ships an explicit flat short end (generator
+    // shortEnd=5.0), so its 1D/3M genuinely MOVE — and the matrix agrees
+    // with the engine there too (covered above). The live-app zero case is
+    // pinned separately below.
+  });
+
+  it("FB3 F4a — live-app payloads without 금통위 events apply GENUINE ZERO at 1D/3M (0.0, not unmapped)", () => {
+    // buildSimulateRequest derives shortEndBp from 금통위 events; with none
+    // (the DEFAULT params), generateShockCurves pins the short nodes at
+    // shortEnd − base → terminal(1D)=terminal(3M)=0 → the applied path at
+    // those pillars is 0.0 on EVERY day, for every family. This is the
+    // owner's screenshot scenario: the value is a measured zero by design,
+    // and the M2 grid must render 0.0 there, never the unmapped em-dash.
+    const request = buildSimulateRequest(
+      { ...EMPTY_SIMULATION_INPUTS, baseDate: "2026-07-16" },
+      DEFAULT_SCENARIO_PARAMS,
+    );
+    const ev = createPathEvaluator(request);
+    for (const day of [0, 45, 90, 180]) {
+      for (const family of ["국채", "swap", "회사채"] as const) {
+        expect(ev.cumBpAt(family, 1 / 365, day)).toBe(0);
+        expect(ev.cumBpAt(family, 0.25, day)).toBe(0);
+      }
+      if (day > 0) expect(ev.cumBpAt("국채", 3, day)).toBeGreaterThan(0); // 3Y ramps — the zeros are pillar-specific, not a dead matrix
+    }
+  });
+
   it("국채 3Y matrix row equals the designed waypoint path (the anchor identity)", () => {
     const { request } = loadFixture("linear");
     const m = buildPathMatrix(request, "국채", [0, 11, 22, 45]);

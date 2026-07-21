@@ -152,10 +152,16 @@ export function ScenarioReconPanel() {
               formatCell={formatBpCell}
               leadHeader="일자"
               totalHeader={null}
+              // FB3 F4a — M2 cells are MEASUREMENTS of the designed path: a
+              // genuine 0.0 (e.g. the 1D/3M short end without 금통위 events)
+              // renders 0.0, never the unmapped em-dash.
+              zeroAsDash={false}
             />
             <p className="mt-2 text-micro text-fg-dim">
               설계 경로(국채 커브)의 일자 × 테너 누적 Δbp — 웨이포인트/온라인 보간 경로를 각
-              테너가 실제로 따르는 값 (시계열형 미리보기와 동일한 원천). 영업일만 표시.
+              테너가 실제로 따르는 값 (시계열형 미리보기와 동일한 원천). 영업일만 표시. 단기
+              필러(1D/3M)는 금통위 이벤트로만 이동하도록 설계되어, 이벤트가 없는 시나리오에서는
+              실제 적용 충격이 0.0입니다 (— 아님).
             </p>
           </>
         )
