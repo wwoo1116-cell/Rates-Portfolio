@@ -60,4 +60,63 @@ spread) is ledgered for a cleanup pass — it would retire this wiring class ent
 but rewrites the custom Delta/Daily/Cumulative/Funding tooltip, out of a fix lane's
 proportion.
 
-<!-- F1-FIX, T2, gates: filled by later commits -->
+### The fix (commit 49fcea3, after the diagnosis commit 9d89b2c)
+
+Liveness gate: `onChartReady` records the live chart in `liveChartRef` synchronously
+(before the state update lands); the data effect bails unless
+`traceChart === liveChartRef.current` — the stale post-remount run is skipped and the
+queued `setTraceChart` re-render attaches the series to the live chart. The crosshair
+unsubscribe cleanup is disposal-safe (try/catch). No behavior change on the normal
+path; the ChartFrame-maximize path is unaffected (it was already safe).
+
+**Pin** (`pnl-trace-panel.flow.test.tsx`, separate from the S9 suite which stubs
+LwChartBase): real LwChartBase over a faked lightweight-charts that records
+disposed-chart writes. 3 tests — initial render; the condition-change round trip
+(latest chart carries the new series, zero disposed-chart attaches, header updated);
+repeated changes. **Revert-verified: 2/3 fail with the fix stashed** (initial-mount
+passes, both round-trip pins fail) — fails on revert as mandated.
+
+## T2 / F3 — spread weights removed (commit 5886693)
+
+**Before**: each spread leg had a signed numeric weight input (`Leg N weight`), raw
+string state, validity gating on Add, and a weight-sum ≠ 0 warning.
+**After**: coefficients are FIXED by leg count — 2-leg **+1/−1**, 3-leg fly
+**+1/−2/+1** (exactly the previous defaults, `DEFAULT_SPREAD_WEIGHTS`) — rendered as
+read-only labels; inputs, weight state, validation and the warning (unreachable: both
+sets sum 0, so PVBP-neutral sizing always satisfiable) are gone. `Add Spread` emits
+the canonical weights and the weight-encoded id. The selector is shared with the
+entry-signals configure surface, which inherits the same fixed semantics.
+
+- **No engine/data change**: `SpreadLeg.weight`, the sizing math
+  (`lib/math/pvbp-sizing`), and the series math (`rv-instruments`) are untouched — a
+  canonical spread's computed series is byte-identical by construction, and the pin is
+  the strongest available form: `normalizeInstrumentV1(canonical)` returns the **same
+  object reference**.
+- **Persisted state normalized on load (noted as mandated)**: the entry-signals
+  watchlist (persist v1) is the one store that can hold user-typed weights →
+  **v1→v2 migration**: non-default spread weights normalize to the canonical set for
+  their leg count (leg ORDER preserved — the sign pattern is positional), id
+  re-derived (weights are encoded in it; the known one-time colorForId shift, same as
+  the v0→v1 note). Outrights, null, and leg counts with no canonical set (unreachable
+  via any shipped UI) pass through untouched — never guessed.
+
+## Gates (final head 5886693)
+
+| Gate | Result |
+|---|---|
+| tsc | clean |
+| vitest | **397 passed / 0 failed** — baseline re-derived from this checkout's base (b5b4cac = 385, the recon2-merge count) **+ N = 12**, enumerated: +3 F1 flow pins (`pnl-trace-panel.flow.test.tsx`) · +5 F3 selector pins (`instrument-selector.test.tsx`: no inputs / 2-leg labels / fly labels / canonical 2-leg emission+id / fly emission+id + warning-gone) · +4 F3 normalization pins (`entry-signals-store.test.ts`: reference-identity, 2-leg, fly, passthrough) |
+| eslint | **13E / 21W** (= ≤13E/21W gate) |
+| guards | all green in-suite (incl. anti-fork, Δbp reuse — no comments naming its guarded identifiers were added) |
+| tree | clean; NO build, NO push, servers untouched |
+| forbidden surfaces | `git diff --name-only b5b4cac..HEAD` = hook cache, this report, `pnl-trace-panel(.flow.test)`, `instrument-selector(+test)`, `entry-signals-store(+test)` — **zero diffs** on Simulation, home recon files, `use-recon-range`, the shock builder, BE, or lane B's stylesheet. (`pnl-trace-panel` is a features/home file but NOT a recon file — it is F1's explicitly-assigned subject.) |
+
+## Deferred
+
+- Migrating PnL Trace onto the canonical SeriesChart (retires the hand-rolled wiring
+  class entirely; requires re-homing the custom Delta/Daily/Cumulative/Funding
+  tooltip) — cleanup-pass candidate.
+- The entry-signals ES tab shares the fixed-coefficient selector; its own report/docs
+  copy referencing "signed-weight legs" wording could be refreshed in a docs pass.
+
+Worktree left in place for the merge pass.
