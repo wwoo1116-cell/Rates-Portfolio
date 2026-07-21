@@ -14,7 +14,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { simulationApi } from "../api/simulation-api";
 import type { SimulateRequest, SimulateResponse } from "../api/simulate-dto";
-import { buildSimulateRequest } from "../lib/scenario-curves";
+import { anchorConversionError, buildSimulateRequest } from "../lib/scenario-curves";
 import { useSimulationDataStore } from "../store/simulation-data-store";
 import type { SimulationDataPort } from "../types/simulation-port";
 
@@ -74,11 +74,25 @@ export function useSimulationPort(): SimulationDataPort {
     [runMutation],
   );
 
-  const runCurrent = useCallback((): Promise<SimulateResponse | null> => {
+  const runCurrent = useCallback(async (): Promise<SimulateResponse | null> => {
     // Read fresh from the store (not the closed-over render snapshot) so a run
     // triggered right after a patchParams uses the latest params/inputs.
-    const { inputs, params } = useSimulationDataStore.getState();
-    return run(buildSimulateRequest(inputs, params));
+    const { inputs, params, markError, setLastRunAnchorTenor } = useSimulationDataStore.getState();
+    // N1 degeneracy guard — belt to Configure's braces: even a programmatic
+    // caller cannot ship a degenerate anchor conversion (silent
+    // customPath-disable / SIM2-4 triviality misclassification). No request
+    // is issued; the honest cause lands on `error`.
+    const anchorError = anchorConversionError(params);
+    if (anchorError) {
+      markError(anchorError);
+      return null;
+    }
+    const anchor = params.anchorTenor ?? "3Y";
+    const result = await run(buildSimulateRequest(inputs, params));
+    // Remember which pillar the landed run was designed on (Results chip
+    // labeling) — captured at build time, immune to mid-flight anchor edits.
+    if (result) setLastRunAnchorTenor(anchor);
+    return result;
   }, [run]);
 
   const cancelRun = useCallback((): void => {

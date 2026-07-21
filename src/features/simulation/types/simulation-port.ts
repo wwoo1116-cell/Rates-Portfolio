@@ -13,6 +13,11 @@ import type { IrsParRate, SimulateRequest, SimulateResponse, Waypoint } from "..
 
 export type RunStatus = "idle" | "running" | "success" | "error";
 
+/** N1 — the pillar the designed path/target pins (국고 curve). Owner-fixed
+ * choice set; 3Y is the legacy anchor and the default. */
+export type AnchorTenor = "1Y" | "3Y" | "5Y" | "10Y";
+export const ANCHOR_TENOR_CHOICES: readonly AnchorTenor[] = ["1Y", "3Y", "5Y", "10Y"];
+
 /**
  * Ambient inputs the screen depends on but does NOT own — supplied by the host
  * (in the source these arrive as props on <ScenarioSimulator>, fed by the Excel
@@ -58,6 +63,14 @@ export interface ScenarioParams {
    * {simDays, baseShockBp} on every horizon/target change; a touched one is
    * byte-preserved. Not read by buildSimulateRequest (payload unchanged). */
   touchedWaypointDays: number[];
+  /** N1 — which 국고 pillar the target/waypoints/drag design (owner ruling:
+   * 1Y/3Y/5Y/10Y, default 3Y). The WIRE stays 3Y-normalized: at request-build
+   * time the design is re-expressed via base_wire = X − s_rel(τa) (tenor
+   * spreads stay defined vs 3Y — the anchor moves the path, not the spread
+   * reference). Anchor 3Y ⇒ the conversion is the identity ⇒ pre-N1 payloads
+   * byte-for-byte (golden pin). OPTIONAL: absent ≡ "3Y" everywhere (old
+   * in-memory param states and pre-N1 fixtures stay valid and identical). */
+  anchorTenor?: AnchorTenor;
 }
 
 export interface SimulationDataPort {
@@ -112,6 +125,7 @@ export const DEFAULT_SCENARIO_PARAMS: ScenarioParams = {
   sigmaBp: "2.0",
   fundingStepping: false,
   touchedWaypointDays: [],
+  anchorTenor: "3Y",
 };
 
 export const EMPTY_SIMULATION_INPUTS: SimulationInputs = {
