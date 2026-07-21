@@ -40,9 +40,21 @@ const TENOR_SPREADS = [
   { key: "spread30y", label: "30Y 기준" },
 ] as const;
 
-// Horizon presets, all multiples of 30 so the waypoint regen (floor(simDays/30))
-// lands on clean 30d steps. 180 is DEFAULT_SCENARIO_PARAMS.simDays.
-const HORIZON_CHOICES = [30, 60, 90, 180, 270, 365] as const;
+// FB4 T1 — the horizon is edited as a 마감일 calendar date; the store contract
+// stays baseDate + simDays (마감일 is DERIVED, never stored). 365 is the same
+// max the old 30D~365D segment row offered — exceeding it is an explicit
+// validation message, never a silent clamp.
+export const MAX_HORIZON_DAYS = 365;
+
+/** ISO date + n days (UTC arithmetic — the codebase's established pattern). */
+export function addDaysIso(iso: string, n: number): string {
+  return new Date(Date.parse(iso) + n * 86400000).toISOString().slice(0, 10);
+}
+
+/** Whole days from ISO a → b (positive when b is after a). */
+export function diffDaysIso(a: string, b: string): number {
+  return Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+}
 
 
 /**
@@ -108,77 +120,103 @@ function BpStepperField({
 }
 
 /**
- * 평가 기준일 control (demo sprint, two-pane) — a date field plus ◀/▶ steppers
- * over the backend's available market-data dates and an 오늘 reset. Writes the
- * slice's userBaseDate; the app-layer bridge folds it into inputs.baseDate, so
- * the preview quotes, swap filtering, and the simulate payload all follow one
- * date. Stepping is over available_dates only — no fabricated dates.
+ * FB4 T1 — 시작일 calendar (= 평가 기준일 / baseDate). Replaces the old
+ * stepper control: a plain calendar field bounded by the backend's market-data
+ * range, plus the 오늘로 reset. Writes the slice's userBaseDate exactly as
+ * before (the app-layer bridge folds it into inputs.baseDate, so the preview
+ * quotes, swap filtering, and the simulate payload all follow one date).
+ * Weekend/holiday dates behave exactly as the old control did — the value is
+ * taken as typed, no snapping invented (the backend answers honestly for
+ * non-business days; s18 rule).
  */
-function BaseDateControl({ baseDate }: { baseDate: string }) {
+function StartDateControl({ baseDate }: { baseDate: string }) {
   const userBaseDate = useSimulationDataStore((s) => s.userBaseDate);
   const setUserBaseDate = useSimulationDataStore((s) => s.setUserBaseDate);
   const { data: range } = useMarketDateRange();
 
-  const dates = range?.available_dates ?? [];
-  // Index of the latest available date ≤ current — the step anchor even when
-  // the current date itself (e.g. today, weekend) has no snapshot.
-  let anchor = -1;
-  for (let i = 0; i < dates.length; i++) {
-    if (dates[i] <= baseDate) anchor = i;
-    else break;
-  }
-  // ◀ from a date with no snapshot (e.g. today before quotes land) goes to the
-  // latest QUOTED date first, not past it; from a quoted date it steps back one.
-  const prevDate =
-    anchor === -1 ? null : dates[anchor] < baseDate ? dates[anchor] : anchor > 0 ? dates[anchor - 1] : null;
-  const next = anchor >= 0 && anchor < dates.length - 1 ? dates[anchor + 1] : null;
-
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <label className="text-label uppercase text-fg-muted">평가 기준일</label>
+        <label className="text-label uppercase text-fg-muted label-nowrap">
+          시작일 (평가 기준일)
+        </label>
         {userBaseDate && (
           <button
             type="button"
             onClick={() => setUserBaseDate(null)}
-            className="border border-sem-info bg-sem-info-ghost px-2 py-0.5 text-micro text-sem-info transition-colors hover:bg-sem-info-soft"
+            className="border border-sem-info bg-sem-info-ghost px-2 py-0.5 text-micro text-sem-info transition-colors hover:bg-sem-info-soft label-nowrap"
           >
             오늘로
           </button>
         )}
       </div>
-      <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          variant="icon"
-          size="sm"
-          aria-label="이전 영업일"
-          disabled={!prevDate}
-          onClick={() => prevDate && setUserBaseDate(prevDate)}
-        >
-          ◀
-        </Button>
-        <div className="min-w-0 flex-1">
-          <Input
-            type="date"
-            aria-label="평가 기준일"
-            data-num
-            value={baseDate}
-            min={range?.min_date}
-            max={range?.max_date}
-            onChange={(e) => setUserBaseDate(e.target.value || null)}
-          />
-        </div>
-        <Button
-          type="button"
-          variant="icon"
-          size="sm"
-          aria-label="다음 영업일"
-          disabled={!next}
-          onClick={() => next && setUserBaseDate(next)}
-        >
-          ▶
-        </Button>
+      <Input
+        type="date"
+        aria-label="시작일 (평가 기준일)"
+        data-num
+        value={baseDate}
+        min={range?.min_date}
+        max={range?.max_date}
+        onChange={(e) => setUserBaseDate(e.target.value || null)}
+      />
+    </div>
+  );
+}
+
+/**
+ * FB4 T1 — 마감일 calendar (= horizon end). Replaces the 30D~365D segment
+ * row. DERIVED editor over the existing contract: value = 시작일 + simDays;
+ * committing a date writes simDays = diffDays(시작일, 마감일). Invalid picks
+ * (마감일 ≤ 시작일, or beyond the 365-day cap) show an EXPLICIT message and
+ * write nothing — never a silent clamp. Changing 시작일 keeps simDays (the
+ * 마감일 display shifts with it), preserving the old control's semantics.
+ */
+function EndDateControl({ baseDate, simDays }: { baseDate: string; simDays: number }) {
+  const { patchParams } = useSimulationPort();
+  const [error, setError] = useState<string | null>(null);
+
+  const endDate = baseDate ? addDaysIso(baseDate, simDays) : "";
+  const maxEnd = baseDate ? addDaysIso(baseDate, MAX_HORIZON_DAYS) : undefined;
+
+  const commit = (raw: string) => {
+    if (!raw || !baseDate) return;
+    const d = diffDaysIso(baseDate, raw);
+    if (d <= 0) {
+      setError("마감일은 시작일 이후여야 합니다.");
+      return;
+    }
+    if (d > MAX_HORIZON_DAYS) {
+      setError(`최대 기간 ${MAX_HORIZON_DAYS}일을 초과합니다 — ${maxEnd} 이하로 선택하세요.`);
+      return;
+    }
+    setError(null);
+    patchParams({ simDays: d });
+  };
+
+  return (
+    <div>
+      <label className="mb-2 block text-label uppercase text-fg-muted label-nowrap">
+        마감일 (시뮬레이션 종료)
+      </label>
+      <Input
+        type="date"
+        aria-label="마감일 (시뮬레이션 종료)"
+        data-num
+        value={endDate}
+        min={baseDate ? addDaysIso(baseDate, 1) : undefined}
+        max={maxEnd}
+        disabled={!baseDate}
+        onChange={(e) => commit(e.target.value)}
+      />
+      <div className="mt-1 flex items-baseline justify-between gap-2">
+        {error ? (
+          <span className="text-micro text-sem-danger">{error}</span>
+        ) : (
+          <span />
+        )}
+        <span data-num className="text-right text-body-strong text-sem-info label-nowrap">
+          {simDays} Days
+        </span>
       </div>
     </div>
   );
@@ -251,21 +289,11 @@ export function ConfigureStage() {
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto lg:grid-cols-[minmax(320px,420px)_1fr] lg:overflow-hidden">
         {/* ── Controls column ── */}
         <div className="space-y-5 lg:overflow-y-auto lg:pr-1">
-          {/* 0. 평가 기준일 (demo sprint) — valuation-date toggle on top */}
-          <BaseDateControl baseDate={inputs.baseDate} />
-
-          {/* 1. 시뮬레이션 기간 — segmented buttons (s11 T2) */}
-          <div>
-            <label className="mb-2 block text-label uppercase text-fg-muted">시뮬레이션 기간</label>
-            <SegmentedButtons
-              choices={HORIZON_CHOICES}
-              value={params.simDays}
-              onChange={(v) => patchParams({ simDays: v })}
-              format={(v) => `${v}D`}
-              label="시뮬레이션 기간"
-            />
-            <div data-num className="mt-1 text-right text-body-strong text-sem-info">{params.simDays} Days</div>
-          </div>
+          {/* 0/1. FB4 T1 — 시작일/마감일 date pickers (replace the 평가 기준일
+              stepper + the 30D~365D segment row; store contract unchanged:
+              baseDate + simDays, 마감일 derived). */}
+          <StartDateControl baseDate={inputs.baseDate} />
+          <EndDateControl baseDate={inputs.baseDate} simDays={params.simDays} />
 
           {/* 1b. N1 — 목표 앵커 테너: which 국고 pillar the target/path/drag
               design. Owner-fixed choices; the wire stays 3Y-정규화 (재표현). */}

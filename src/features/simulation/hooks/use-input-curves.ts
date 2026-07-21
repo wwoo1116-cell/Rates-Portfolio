@@ -19,11 +19,17 @@ import { tenorToYears, yearsToTenorLabel, type BaseQuote } from "../lib/input-cu
 
 const BOND_SECTOR = "국고채";
 
+/** FB4 T2 — the bond families the 커브형 preview can offer, in chip order.
+ * A family renders only when the credit taxonomy actually carries it ("every
+ * family the snapshot carries", never a fabricated curve). */
+export const PREVIEW_BOND_SECTORS = ["국고채", "통안채", "회사채", "여전채"] as const;
+
 export const INPUT_CURVE_KEYS = {
   dateRange: ["simulation", "market-date-range"] as const,
   taxonomy: ["simulation", "credit-taxonomy"] as const,
   swapQuotes: (d: string) => ["simulation", "input-curves", "swap", d] as const,
-  bondQuotes: (d: string) => ["simulation", "input-curves", "bond", d] as const,
+  bondQuotes: (d: string, sector: string = BOND_SECTOR) =>
+    ["simulation", "input-curves", "bond", sector, d] as const,
 };
 
 /** Available market-data dates — bounds + steps for the baseDate toggle. */
@@ -60,9 +66,12 @@ export function useSwapInputQuotes(baseDate: string, enabled = true) {
   });
 }
 
-/** 국고채 par yields per taxonomy tenor for the date → BaseQuote[]; a tenor
- * with no point on the date stays rate:null (rendered —, never +0). */
-export function useBondInputQuotes(baseDate: string, enabled = true) {
+/** FB4 T2 — per-SECTOR par yields per taxonomy tenor for the date →
+ * BaseQuote[]; a tenor with no point on the date stays rate:null (rendered
+ * —, never +0). Generalizes the old 국고채-only hook: same query shape, the
+ * sector is part of the cache key, and `carried` reports whether the credit
+ * taxonomy offers the sector at all (chip renders only when it does). */
+export function useSectorInputQuotes(sector: string, baseDate: string, enabled = true) {
   const taxonomy = useQuery({
     queryKey: INPUT_CURVE_KEYS.taxonomy,
     queryFn: () => creditCurveApi.taxonomy(),
@@ -71,17 +80,16 @@ export function useBondInputQuotes(baseDate: string, enabled = true) {
     enabled,
   });
 
-  const tenors =
-    taxonomy.data?.sectors.find((s) => s.sector === BOND_SECTOR)?.tenors ?? [];
+  const tenors = taxonomy.data?.sectors.find((s) => s.sector === sector)?.tenors ?? [];
 
   const series = useQuery({
-    queryKey: INPUT_CURVE_KEYS.bondQuotes(baseDate),
+    queryKey: INPUT_CURVE_KEYS.bondQuotes(baseDate, sector),
     enabled: enabled && !!baseDate && tenors.length > 0,
     staleTime: Infinity,
     retry: false,
     queryFn: async (): Promise<BaseQuote[]> => {
       const res = await creditCurveApi.series({
-        legs: tenors.map((tenor) => ({ sector: BOND_SECTOR, rating: null, tenor })),
+        legs: tenors.map((tenor) => ({ sector, rating: null, tenor })),
         start_date: baseDate,
         end_date: baseDate,
       });
@@ -96,5 +104,17 @@ export function useBondInputQuotes(baseDate: string, enabled = true) {
     },
   });
 
-  return { ...series, taxonomyError: taxonomy.isError };
+  return {
+    ...series,
+    taxonomyError: taxonomy.isError,
+    /** Taxonomy resolved AND carries this sector. */
+    carried: (taxonomy.data?.sectors.some((s) => s.sector === sector) ?? false),
+    taxonomyLoaded: taxonomy.isSuccess,
+  };
+}
+
+/** 국고채 par yields — the pre-FB4 export, now a thin alias (same cache key
+ * as before via the sector-keyed variant; existing consumers unaffected). */
+export function useBondInputQuotes(baseDate: string, enabled = true) {
+  return useSectorInputQuotes(BOND_SECTOR, baseDate, enabled);
 }
