@@ -370,8 +370,8 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
       lwProps!.onCrosshairMove!({
         time: dayToTime("2026-07-15", 30),
         points: [
-          { label: "국고채 3Y", color: "#111111", value: 5 },
-          { label: "국고채 5Y", color: "#222222", value: null }, // whitespace
+          { label: "국고채 3Y", color: "rgb(1,1,1)", value: 5 },
+          { label: "국고채 5Y", color: "rgb(2,2,2)", value: null }, // whitespace
         ],
       });
     });
@@ -390,7 +390,7 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     act(() => {
       lwProps!.onCrosshairMove!({
         time: dayToTime("2026-07-15", 30),
-        points: [{ label: "국고채 3Y", color: "#111111", value: 5 }],
+        points: [{ label: "국고채 3Y", color: "rgb(1,1,1)", value: 5 }],
       });
     });
     expect(screen.getByText("2026-08-14")).toBeTruthy();

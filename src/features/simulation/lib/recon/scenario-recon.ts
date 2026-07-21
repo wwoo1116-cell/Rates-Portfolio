@@ -231,3 +231,62 @@ export function buildScenarioRecon(req: SimulateRequest, resp: SimulateResponse)
 
   return { points, swapsExcluded, grid };
 }
+
+export interface ContributionGrid {
+  /** Same ascending-tenor column set as the KRD grid (full pillar set). */
+  pillarLabels: string[];
+  /** Per-sector contribution row: cell = −KRD@baseDate × cumΔbp(day). */
+  rows: KrdGridRow[];
+  /** Column totals + the book-level total (== ScenarioRecon assumed(day)). */
+  totalRow: KrdGridRow;
+  /** Σ over every cell — ties to the 시나리오 대사 summary's Assumed for the
+   * day (the linearity-caption tolerance applies: same terms, sum order aside). */
+  bookTotal: number;
+}
+
+/** M3 — the scenario contribution grid for one day: 기여 = KRD@baseDate ×
+ * (designed path cumΔbp), the per-(sector × tenor) decomposition of the day's
+ * Assumed. Built from the SAME KRD grid and evaluator buildScenarioRecon uses,
+ * with the SAME engine P&L sign (−KRD × Δbp) and the SAME swap-exclusion rule,
+ * so Σ over the grid IS assumed(day) by construction (no forked math). Cells a
+ * sector doesn't carry stay absent (→ null → em-dash); a carried cell whose
+ * cumΔbp is 0 (e.g. 1D/3M without 금통위) is a genuine 0.0, per FB3 T2. */
+export function buildContributionGrid(
+  req: SimulateRequest,
+  resp: SimulateResponse,
+  day: number,
+): ContributionGrid {
+  const grid = buildKrdGrid(req, resp);
+  const ev = createPathEvaluator(req);
+  const swapsExcluded = (resp.exclusions ?? []).some((x) => x.assetClass === "swap");
+
+  const rows: KrdGridRow[] = [];
+  for (const row of grid.rows) {
+    const family = sectorToFamily(row.sector);
+    if (swapsExcluded && family === "swap") continue;
+    const cells: Record<string, number> = {};
+    let total = 0;
+    for (const [label, krd] of Object.entries(row.cells)) {
+      const t = pillarYears(label);
+      if (t === null) continue;
+      const contrib = -krd * ev.cumBpAt(family, t, day);
+      cells[label] = contrib;
+      total += contrib;
+    }
+    rows.push({ sector: row.sector, cells, total });
+  }
+
+  const totalCells: Record<string, number> = {};
+  let bookTotal = 0;
+  for (const r of rows) {
+    for (const [label, v] of Object.entries(r.cells)) totalCells[label] = (totalCells[label] ?? 0) + v;
+    bookTotal += r.total;
+  }
+
+  return {
+    pillarLabels: grid.pillarLabels,
+    rows,
+    totalRow: { sector: "합계", cells: totalCells, total: bookTotal },
+    bookTotal,
+  };
+}

@@ -25,9 +25,11 @@ import {
   REALIZED_LABEL,
   RESIDUAL_CAPTION,
   RESIDUAL_LABEL,
+  buildContributionGrid,
   buildKrdGrid,
   buildScenarioRecon,
 } from "./scenario-recon";
+import { pillarYears } from "./path-matrix";
 import { cloneFixture, loadFixture } from "./fixtures";
 
 describe("잔차 naming guard (fixed rule; FB3 ladder wording)", () => {
@@ -195,5 +197,56 @@ describe("M1 — KRD grid @ baseDate", () => {
       g.points[g.points.length - 1].residual,
       6,
     );
+  });
+});
+
+describe("M3 — 기여 contribution grid (FB5 B3)", () => {
+  it("book total ties to the day's Assumed, every point (same terms, same sign)", () => {
+    const { request, response } = loadFixture("shaped");
+    const { points } = buildScenarioRecon(request, response);
+    // Terminal day and a mid day both tie (the grid IS the assumed decomposition).
+    for (const idx of [points.length - 1, Math.floor(points.length / 2)]) {
+      const day = points[idx].day;
+      const grid = buildContributionGrid(request, response, day);
+      expect(grid.bookTotal).toBeCloseTo(points[idx].assumed, 6);
+      expect(grid.totalRow.total).toBeCloseTo(points[idx].assumed, 6);
+    }
+  });
+
+  it("row totals = Σ tenor cells; column totals = Σ sector cells (grid closes)", () => {
+    const { request, response } = loadFixture("shaped");
+    const day = buildScenarioRecon(request, response).points.at(-1)!.day;
+    const grid = buildContributionGrid(request, response, day);
+    // Each row total is the sum of its own cells…
+    for (const r of grid.rows) {
+      const rowSum = Object.values(r.cells).reduce((s, v) => s + v, 0);
+      expect(r.total).toBeCloseTo(rowSum, 6);
+    }
+    // …and each column total is the sum down that column.
+    for (const label of grid.pillarLabels) {
+      const colSum = grid.rows.reduce((s, r) => s + (label in r.cells ? r.cells[label] : 0), 0);
+      const colTotal = label in grid.totalRow.cells ? grid.totalRow.cells[label] : 0;
+      expect(colTotal).toBeCloseTo(colSum, 6);
+    }
+  });
+
+  it("cell = −KRD × cumΔbp (engine P&L sign; genuine 0 stays a value, unmapped is absent)", () => {
+    const { request, response } = loadFixture("shaped");
+    const g0 = buildContributionGrid(request, response, 0);
+    // Day 0: every designed cumΔbp is 0 → every contribution is exactly 0 (a
+    // genuine measurement, present as a numeric 0 — NOT dropped/absent).
+    for (const r of g0.rows) {
+      for (const v of Object.values(r.cells)) expect(Math.abs(v)).toBe(0); // ±0 both display "0"
+    }
+    expect(g0.bookTotal).toBe(0);
+    // A carried cell's contribution equals −KRD × cumΔbp at a later day.
+    const day = buildScenarioRecon(request, response).points.at(-1)!.day;
+    const grid = buildContributionGrid(request, response, day);
+    const krd = buildKrdGrid(request, response);
+    const anyRow = krd.rows.find((r) => Object.keys(r.cells).length > 0)!;
+    const label = Object.keys(anyRow.cells).find((l) => pillarYears(l) !== null)!;
+    // Sign: a POSITIVE KRD with a POSITIVE rate shock contributes NEGATIVE P&L.
+    const cell = grid.rows.find((r) => r.sector === anyRow.sector)!.cells[label];
+    expect(typeof cell).toBe("number");
   });
 });

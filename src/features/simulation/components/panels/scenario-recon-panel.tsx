@@ -18,6 +18,7 @@
 import { useMemo, useState } from "react";
 
 import { MatrixGrid, type MatrixGridRow } from "@/components/ui/matrix-grid";
+import { Slider } from "@/components/ui/slider";
 import { formatKrwAxisSigned } from "@/lib/format";
 
 import type { IrsDailyReconRow } from "../../api/simulate-dto";
@@ -30,6 +31,7 @@ import {
   REALIZED_LABEL,
   RESIDUAL_CAPTION,
   RESIDUAL_LABEL,
+  buildContributionGrid,
   buildScenarioRecon,
 } from "../../lib/recon/scenario-recon";
 import { buildSettlementLane } from "../../lib/recon/settlement-lane";
@@ -37,12 +39,13 @@ import { useSimulationPort } from "../../hooks/use-simulation";
 import { SegmentedButtons } from "../segmented-buttons";
 import { LwLineChart, dayToTime, type LwSeriesDef } from "../charts/lw-line-chart";
 
-const VIEWS = ["recon", "krd", "path", "cash"] as const;
+const VIEWS = ["recon", "krd", "path", "contrib", "cash"] as const;
 type ViewKey = (typeof VIEWS)[number];
 const VIEW_LABELS: Record<ViewKey, string> = {
   recon: "대사",
   krd: "KRD 그리드",
   path: "경로 매트릭스",
+  contrib: "기여",
   cash: "정산 CF",
 };
 
@@ -66,6 +69,8 @@ function LegendSwatch({ color, label, dashed }: { color: string; label: string; 
 export function ScenarioReconPanel() {
   const { lastRun, lastRunRequest } = useSimulationPort();
   const [view, setView] = useState<ViewKey>("recon");
+  // M3 기여 grid — the day under inspection (null = terminal day, the default).
+  const [contribDay, setContribDay] = useState<number | null>(null);
 
   const recon = useMemo(
     () => (lastRun && lastRunRequest ? buildScenarioRecon(lastRunRequest, lastRun) : null),
@@ -76,6 +81,17 @@ export function ScenarioReconPanel() {
     return buildPathMatrix(lastRunRequest, "국채", recon.points.map((p) => p.day));
   }, [lastRunRequest, recon]);
 
+  // M3 — the selected point (default terminal) and its contribution grid.
+  const contribIdx =
+    recon && recon.points.length > 0
+      ? Math.min(contribDay ?? recon.points.length - 1, recon.points.length - 1)
+      : 0;
+  const contribPoint = recon?.points[contribIdx] ?? null;
+  const contribGrid = useMemo(() => {
+    if (!lastRunRequest || !lastRun || !contribPoint) return null;
+    return buildContributionGrid(lastRunRequest, lastRun, contribPoint.day);
+  }, [lastRunRequest, lastRun, contribPoint]);
+
   if (!lastRun || !lastRunRequest) return null;
 
   const baseDate = lastRunRequest.baseDate;
@@ -85,8 +101,8 @@ export function ScenarioReconPanel() {
     <div className="bg-bg-secondary p-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-h2 text-fg-primary">시나리오 대사</h2>
-        {/* FB3 F4b: wide enough that 경로 매트릭스/정산 CF fit un-wrapped. */}
-        <div className="w-96 max-w-full">
+        {/* FB3 F4b / FB5 B3: wide enough that all five views (…기여/정산 CF) fit. */}
+        <div className="w-[30rem] max-w-full">
           <SegmentedButtons
             choices={VIEWS}
             value={view}
@@ -137,6 +153,64 @@ export function ScenarioReconPanel() {
               : "엔진 응답(pvbpSensitivity)의 KRD 그대로."}
           </p>
         </>
+      ) : view === "contrib" ? (
+        contribGrid &&
+        contribPoint && (
+          <>
+            {/* Day selector — default terminal, navigable across the path
+                (the same scrubber convention the preview uses). */}
+            <div className="mb-2 flex items-center gap-3">
+              <span data-num className="shrink-0 text-micro text-fg-muted label-nowrap">
+                {contribPoint.date} (D+{contribPoint.day})
+              </span>
+              <Slider
+                aria-label="기여 그리드 일자 (D+n)"
+                min={0}
+                max={recon.points.length - 1}
+                step={1}
+                value={contribIdx}
+                onChange={(e) => setContribDay(Number(e.target.value))}
+                className="w-56 max-w-full"
+              />
+            </div>
+            <MatrixGrid
+              columns={contribGrid.pillarLabels}
+              rows={[
+                ...contribGrid.rows.map(
+                  (r): MatrixGridRow => ({
+                    key: r.sector,
+                    label: r.sector,
+                    cells: contribGrid.pillarLabels.map((c) =>
+                      c in r.cells ? r.cells[c] : null,
+                    ),
+                    total: r.total,
+                  }),
+                ),
+                {
+                  key: "합계",
+                  label: "합계",
+                  cells: contribGrid.pillarLabels.map((c) =>
+                    c in contribGrid.totalRow.cells ? contribGrid.totalRow.cells[c] : null,
+                  ),
+                  total: contribGrid.totalRow.total,
+                  emphasis: true,
+                },
+              ]}
+              cellRange={Math.max(1, ...contribGrid.rows.flatMap((r) => Object.values(r.cells).map(Math.abs)))}
+              leadHeader="Sector"
+              // FB3 T2 — a carried cell whose designed cumΔbp is 0 (e.g. the
+              // 1D/3M short end without 금통위 events) is a genuine 0.0; only an
+              // unmapped tenor (absent from the row) is the em-dash.
+              zeroAsDash={false}
+            />
+            <p data-num className="mt-2 text-micro text-fg-dim">
+              기여 = KRD @ {baseDate} × 설계 경로 누적 Δbp (₩ · 000, 손익 부호 −KRD×Δbp) —
+              {contribPoint.date} 시점. 합계 {formatKrwAxisSigned(contribGrid.bookTotal)} = 시나리오
+              대사의 가정(Assumed) {formatKrwAxisSigned(contribPoint.assumed)} (동일 선형화, 반올림 오차 내 일치).
+              {recon.swapsExcluded ? " 스왑 제외 실행 — 스왑 행 제외." : ""}
+            </p>
+          </>
+        )
       ) : (
         pathMatrix && (
           <>

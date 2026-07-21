@@ -102,11 +102,14 @@ export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS,
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   // FB5 B2 — the crosshair handler is registered ONCE (in the create effect) but
   // must read the latest series defs (labels/colors) and callback: mirror both
-  // into refs each render so a series rebuild never needs a re-subscription.
+  // into refs (updated in a commit-phase effect, never during render) so a
+  // series rebuild never needs a re-subscription.
   const seriesDefsRef = useRef<LwSeriesDef[]>(series);
-  seriesDefsRef.current = series;
   const onCrosshairMoveRef = useRef<LwLineChartProps["onCrosshairMove"]>(onCrosshairMove);
-  onCrosshairMoveRef.current = onCrosshairMove;
+  useEffect(() => {
+    seriesDefsRef.current = series;
+    onCrosshairMoveRef.current = onCrosshairMove;
+  });
   // Guards every deferred callback that closes over `chart`. lightweight-charts
   // throws "Object is disposed" if anything touches a chart after remove(), and
   // a ResizeObserver notification already queued when the panel unmounts can
@@ -168,7 +171,9 @@ export function LwLineChart({ series, zeroLine = false, markers = EMPTY_MARKERS,
       const points: LwCrosshairPoint[] = seriesRef.current.map((api, i) => {
         const datum = param.seriesData.get(api) as LineData<Time> | undefined;
         const value = datum && typeof datum.value === "number" ? datum.value : null;
-        return { label: defs[i]?.label, color: defs[i]?.color ?? "#000", value };
+        // Every LwSeriesDef carries a color; "transparent" is an unreachable
+        // fallback (no raw hex — the slice's no-color lint).
+        return { label: defs[i]?.label, color: defs[i]?.color ?? "transparent", value };
       });
       cb({ time: param.time as UTCTimestamp, points });
     };

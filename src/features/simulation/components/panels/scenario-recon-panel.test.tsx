@@ -132,6 +132,39 @@ describe("ScenarioReconPanel (RECON-SCEN M1–M3)", () => {
     expect(screen.getByText(/시계열형 미리보기와 동일한 원천/)).toBeTruthy();
   });
 
+  it("B3 기여 subtab: sector×tenor contribution grid whose 합계 ties to the day's Assumed", () => {
+    seedRun();
+    const { request, response } = loadFixture("linear");
+    const { points } = buildScenarioRecon(request, response);
+    const terminal = points.at(-1)!;
+
+    render(<ScenarioReconPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "기여" }));
+
+    // Full pillar columns + sector rows + emphasized 합계 (same MatrixGrid grammar).
+    for (const col of ["1D", "3M", "10Y"]) {
+      expect(screen.getByRole("columnheader", { name: col })).toBeTruthy();
+    }
+    expect(screen.getByText("합계")).toBeTruthy();
+    // Default day = terminal; a day selector is present.
+    expect(screen.getByLabelText("기여 그리드 일자 (D+n)")).toBeTruthy();
+    expect(screen.getByText(new RegExp(`${terminal.date} \\(D\\+${terminal.day}\\)`))).toBeTruthy();
+    // The tie-out caption names both sides (the grid book total == Assumed(day)).
+    expect(screen.getByText(/기여 = KRD @ 2026-04-01 × 설계 경로 누적 Δbp/)).toBeTruthy();
+    expect(screen.getByText(/가정\(Assumed\)/)).toBeTruthy();
+  });
+
+  it("B3 기여: the day selector moves the grid to another point (day 0 → all-zero contributions)", () => {
+    seedRun();
+    render(<ScenarioReconPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "기여" }));
+    const slider = screen.getByLabelText("기여 그리드 일자 (D+n)") as HTMLInputElement;
+    fireEvent.change(slider, { target: { value: "0" } });
+    // Day 0 is the base date — every designed cumΔbp is 0 → book total 0.
+    const { request } = loadFixture("linear");
+    expect(screen.getByText(new RegExp(`${request.baseDate} \\(D\\+0\\)`))).toBeTruthy();
+  });
+
   it("FB3 F4a — M2 renders the genuinely-zero short end as 0.0, never the unmapped — (0.0-vs-— rule)", () => {
     // Live-app regime: no 금통위 events → the FE-built curves pin the short
     // nodes at 0 (the committed fixture ships an explicit flat short end, so
@@ -196,7 +229,7 @@ describe("ScenarioReconPanel (RECON-SCEN M1–M3)", () => {
   it("FB3 F4b — subtab labels carry the shared label-nowrap utility (경로 매트릭스 never breaks mid-word)", () => {
     seedRun();
     render(<ScenarioReconPanel />);
-    for (const name of ["대사", "KRD 그리드", "경로 매트릭스", "정산 CF"]) {
+    for (const name of ["대사", "KRD 그리드", "경로 매트릭스", "기여", "정산 CF"]) {
       expect(
         (screen.getByRole("button", { name }) as HTMLButtonElement).className,
         name,
