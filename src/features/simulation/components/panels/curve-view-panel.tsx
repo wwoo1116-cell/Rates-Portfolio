@@ -34,7 +34,7 @@
  * below, never a silent +0; a missing snapshot renders the whole curve as
  * absent with an explicit notice.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 
 import { sectorColor } from "@/lib/chart-colors";
@@ -144,9 +144,13 @@ export function CurveViewPanel() {
   // N1 — switching the anchor auto-selects its tenor chip: the waypoint dots
   // and drag must always have their honest host series available one click
   // after an anchor change (existing selections are kept, nothing deselects).
-  useEffect(() => {
-    setSelTenors((sel) => (sel.includes(anchorTenor) ? sel : [...sel, anchorTenor]));
-  }, [anchorTenor]);
+  // Render-phase reconcile (the React adjust-state-during-render pattern),
+  // not an effect — a synchronous setState in an effect cascades renders.
+  const [reconciledAnchor, setReconciledAnchor] = useState(anchorTenor);
+  if (reconciledAnchor !== anchorTenor) {
+    setReconciledAnchor(anchorTenor);
+    if (!selTenors.includes(anchorTenor)) setSelTenors([...selTenors, anchorTenor]);
+  }
 
   // SIM2-3 — live chart/series refs for the drag overlay, via the
   // onSeriesRebuilt seam. Stable callback: the series effect lists it as a dep.
@@ -226,7 +230,8 @@ export function CurveViewPanel() {
       });
     }
     return defs;
-  }, [isPath, pathModel, selFamilies, selTenors, baseDate]);
+    // N1: anchorTenor is a real input — it decides isAnchor (sort + width).
+  }, [isPath, pathModel, selFamilies, selTenors, baseDate, anchorTenor]);
 
   // Waypoint dots on the anchor line — one marker per store waypoint. Without
   // the anchor on screen the dots (and drag) have no honest host series.
