@@ -157,12 +157,51 @@ export interface TotalReturnDecomposition {
   total: number;
 }
 
+/** RECON-SCEN — one refixing settlement the engine's FM path produced
+ * (chart.py scf_s collection): the projected net settlement cash of one swap
+ * on one day under SCENARIO fixings. Sign: receive-fixed collects
+ * (fixed − float). These fields were always on the wire (backend
+ * IrsSettlementEvent model, simulate.py) — previously typed `unknown`. */
+export interface IrsSettlementEvent {
+  day: number;
+  date: string | null;
+  positionName: string;
+  positionId: string;
+  notional: number;
+  direction: number;
+  fixedRate: number;
+  settledCf: number;
+}
+
+/** RECON-SCEN — one business day of the engine's internal IRS daily recon
+ * loop (SIM2-4 aligned; backend IrsDailyReconRow, simulate.py): per-tenor
+ * daily KRD (`pvbp`), the applied cumulative/daily Δbp per tenor, the
+ * per-tenor linear P&L estimate, and the actual-vs-estimate lanes. NOTE the
+ * `residual` here is the engine's DAILY-linearization residual (actual −
+ * Σ −pvbp(day)×dailyΔbp) — related to but not the same object as the
+ * baseDate-KRD 잔차 path the 시나리오 대사 view derives (scenario-recon.ts). */
+export interface IrsDailyReconRow {
+  date: string;
+  day: number;
+  pvbp: Record<string, number>;
+  cumulativeBp: Record<string, number>;
+  dailyDbp: Record<string, number>;
+  pnl: Record<string, number>;
+  totalEstPnl: number;
+  totalActual: number;
+  settleCf: number;
+  npvChange: number;
+  residual: number;
+  thetaPnl: number;
+  valuationPnl: number;
+}
+
 /** Response body of POST /api/simulate. */
 export interface SimulateResponse {
   chartData: SimulationChartPoint[];
   summary: SimulationSummary;
-  irsSettlementEvents?: unknown[];
-  irsDailyReconciliation?: unknown[];
+  irsSettlementEvents?: IrsSettlementEvent[];
+  irsDailyReconciliation?: IrsDailyReconRow[];
   pvbpSensitivity?: PVBPSensitivity[];
   bookDailyPnLs?: BookDailyPnL[];
   // s11 additive fields — optional so cached/older responses stay valid.
