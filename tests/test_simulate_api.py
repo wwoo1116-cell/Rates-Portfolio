@@ -45,8 +45,19 @@ DATA = Path(__file__).parent / "data"
 REPRESENTATIVE_REQUEST = json.loads(
     (DATA / "simulate_request_representative.json").read_text(encoding="utf-8")
 )
+# [CHANGED, DV01-B] The golden is now the CURRENT backend's captured response
+# (simulate_golden_dv01_response.json). Byte-parity with the SOURCE capture
+# (simulate_golden_source_response.json, kept in-repo as the historical
+# record) held until DV01-FIX Phase B intentionally departed on the bond MtM
+# path: bond pvbp is re-derived server-side (services/bond_risk bump-reval)
+# instead of trusting the wire's frozen-blotter figure. Representative-fixture
+# delta at the departure: finalMTM −254,095,011 → −255,182,266 (+0.43% —
+# the fixture's wire pvbp was internally consistent, so the re-derivation
+# moves it only by the schedule/yield-base refinement; real stale blotters
+# correct by ×0.678 aggregate, see DV01_FIX_REPORT.md); finalCarry/finalSwap
+# byte-identical (swaps and carry never touch this data).
 GOLDEN_RESPONSE = json.loads(
-    (DATA / "simulate_golden_source_response.json").read_text(encoding="utf-8")
+    (DATA / "simulate_golden_dv01_response.json").read_text(encoding="utf-8")
 )
 
 
@@ -166,21 +177,26 @@ def test_matches_source_backend_golden(representative_response: dict) -> None:
     # is asserted over every key the source emitted, at full depth, and the
     # extras must be EXACTLY the known extensions (an unlisted key is a
     # contract change, not an extension, and must fail here).
-    assert set(representative_response) - set(GOLDEN_RESPONSE) == {
-        "fundingCurve", "distribution", "exclusions", "totalReturnDecomposition",
-        "decompositionDaily", "fundingBasis",
-    }
+    # [CHANGED, DV01-B] the golden is now a full current-contract capture, so
+    # there are no extension keys beyond it. The historical additive-extension
+    # provenance (fundingCurve → … → fundingBasis over the SOURCE golden) is
+    # recorded at the GOLDEN_RESPONSE loader comment; an unlisted NEW key must
+    # still fail here — the empty set stays the strictest possible pin.
+    assert set(representative_response) - set(GOLDEN_RESPONSE) == set()
     _assert_deep_close(
         {k: representative_response[k] for k in GOLDEN_RESPONSE}, GOLDEN_RESPONSE
     )
 
     # Spot-pin the headline numbers so a stale/regenerated golden file can't
-    # silently weaken this test (values from the 2026-07-15 source capture).
+    # silently weaken this test. [CHANGED, DV01-B] from the 2026-07-15 source
+    # capture's finalMTM −254,095,011 / finalTotal −191,006,631: the bond MtM
+    # leg now rides bond_risk's reval DV01 (derivation in the module comment
+    # above); carry and swap legs are byte-identical to the source.
     assert representative_response["summary"] == {
-        "finalMTM": -254_095_011,
+        "finalMTM": -255_182_266,
         "finalCarry": 36_920_495,
         "finalSwap": 26_167_885,
-        "finalTotal": -191_006_631,
+        "finalTotal": -192_093_885,
         "breakEvenDay": -1,
     }
     assert len(representative_response["chartData"]) == 61

@@ -138,3 +138,64 @@ def enrich_irs_pvbp(
         }))
 
     return enriched
+
+
+def enrich_bond_dv01(
+    positions: list[FrontendPosition],
+    base_date_str: str = "2026-01-01",
+) -> list[FrontendPosition]:
+    """DV01-FIX Phase B — bond pvbp re-derived server-side on the SAME
+    derivation point Home/recon uses (services/bond_risk; owner ruling: no
+    parallel math). The wire's pvbp is the frozen blotter snapshot figure
+    (2026-03-23 in the current export — DV01_DIAG_REPORT.md); every simulate
+    consumer (calculate_daily_mtm aging, aggregates bondValuation, zone
+    PVBP, 시나리오 대사 lanes) scales with it.
+
+    Per bond: fixed-coupon reval at base_date, bump base = the position's own
+    민평수익율 (the wire carries no rating for a curve lookup), maturity-
+    anchored synthetic schedule (no 발행일자 on the wire — pinned ≤2% vs the
+    true-issue anchor). FRN '(변)' rows and rows the engine cannot revalue
+    keep the wire figure — identical carve-out semantics to Phase A. Swap
+    positions pass through untouched (their pvbp is enrich_irs_pvbp's).
+
+    remainingDays is deliberately NOT rewritten here (aging anchor follow-up,
+    enumerated in DV01_FIX_REPORT.md) — this phase replaces the SENSITIVITY,
+    not the calendar columns.
+    """
+    from .. import bond_risk
+
+    try:
+        base_date = date.fromisoformat(str(base_date_str)[:10])
+    except Exception:
+        base_date = date.today()
+
+    enriched: list[FrontendPosition] = []
+    for p in positions:
+        if p.bondType == "swap":
+            enriched.append(p)
+            continue
+        maturity = None
+        if p.maturityDate:
+            try:
+                maturity = date.fromisoformat(str(p.maturityDate)[:10])
+            except Exception:
+                maturity = None
+        res = bond_risk.bond_dv01(
+            name=p.name or p.id,
+            sector=p.sector,
+            rating=None,
+            valuation_date=base_date,
+            sheet_pvbp=p.pvbp or 0.0,
+            stale_bucket=None,
+            maturity_date=maturity,
+            coupon_rate=p.couponRate,
+            payment_frequency=p.frequency,
+            notional=p.notional,
+            issue_date=None,
+            market_yield=(p.mtmYield / 100.0) if p.mtmYield else None,
+        )
+        if res.source == "reval":
+            enriched.append(p.model_copy(update={"pvbp": res.dv01}))
+        else:
+            enriched.append(p)
+    return enriched

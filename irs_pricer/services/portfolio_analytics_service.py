@@ -12,6 +12,7 @@ from ..engine import fixings as fixings_mod
 from ..engine.instruments import VanillaSwap
 from ..engine.quant_engine import next_kr_business_day
 from . import allocation_history_service
+from . import bond_risk  # DV01-FIX: the single bond-DV01 derivation point
 from . import credit_curve_service
 from . import market_data_service
 from . import portfolio_service
@@ -155,15 +156,42 @@ def build_pvbp_sensitivity(
     snapshot: MarketSnapshot,
     fixings: dict[date, float]
 ) -> list[dict]:
+    """DV01-FIX (owner ruling, option A): bond cells are BUMP-REVAL DV01 at
+    the request's valuation date with FRESH remaining-maturity bucketing —
+    the workbook pvbp/잔존일수 columns are a frozen blotter snapshot
+    (2026-03-23 in the current export; see DV01_DIAG_REPORT.md) and are kept
+    only for the FRN carve-out (reset-linked sheet duration IS the floater's
+    risk) and as the fallback for rows the engine cannot revalue. The mixed
+    basis is EXPLICIT: every row carries additive `dv01_sources` counts, the 합계
+    row additionally `blotter_as_of` (detected from the 잔존일수 fingerprint,
+    ≈ today on a fresh export) and the enumerated `frn_positions`."""
     sectors = {p.sector for p in positions}
     rows = {sec: {c: 0.0 for c in _TENOR_COLUMNS} for sec in sectors}
-    
+
     irs_positions = [p for p in positions if p.instrument_type == "irs"]
     bond_positions = [p for p in positions if p.instrument_type == "bond"]
-    
+
+    source_counts: dict[str, Counter] = defaultdict(Counter)
+    frn_positions: list[str] = []
     for b in bond_positions:
-        if b.pvbp is not None and b.tenor_bucket in rows[b.sector]:
-            rows[b.sector][b.tenor_bucket] += b.pvbp
+        res = bond_risk.bond_dv01(
+            name=b.position_id,
+            sector=b.sector,
+            rating=b.rating,
+            valuation_date=snapshot.valuation_date,
+            sheet_pvbp=b.pvbp or 0.0,
+            stale_bucket=b.tenor_bucket,
+            maturity_date=b.maturity_date,
+            coupon_rate=b.coupon_rate,
+            payment_frequency=b.payment_frequency,
+            notional=b.notional,
+            issue_date=b.issue_date,
+        )
+        source_counts[b.sector][res.source] += 1
+        if res.source == "sheet_frn":
+            frn_positions.append(b.position_id)
+        if res.bucket and res.bucket in rows[b.sector]:
+            rows[b.sector][res.bucket] += res.dv01
 
     if irs_positions:
         swaps = [_to_swap(p) for p in irs_positions]
@@ -182,13 +210,32 @@ def build_pvbp_sensitivity(
         row = {"sector": sec}
         row.update(values)
         row["total"] = sum(values.values())
+        # DV01-FIX additive: how this sector's bond cells were derived. The
+        # FE's dead-man switch only names unknown keys when the numeric
+        # totals stop reconciling, so additive metadata keys are inert there.
+        if source_counts.get(sec):
+            row["dv01_sources"] = dict(source_counts[sec])
         result.append(row)
-        
+
     result = _sort_sector_rows(result)
 
     total_row = {"sector": _TOTAL_SECTOR, "total": sum(r["total"] for r in result)}
     for c in _TENOR_COLUMNS:
         total_row[c] = sum(r[c] for r in result)
+    if bond_positions:
+        agg = Counter()
+        for c_ in source_counts.values():
+            agg.update(c_)
+        total_row["dv01_sources"] = dict(agg)
+        # The blotter's own as-of (uniform 잔존일수 fingerprint); ≈ the request
+        # valuation date on a fresh export — the honest-notice hook for the FE.
+        as_of = bond_risk.detect_blotter_as_of(
+            (b.maturity_date, b.remaining_days) for b in bond_positions
+        )
+        if as_of is not None:
+            total_row["blotter_as_of"] = as_of.isoformat()
+        if frn_positions:
+            total_row["frn_positions"] = frn_positions
     result.append(total_row)
 
     return result
