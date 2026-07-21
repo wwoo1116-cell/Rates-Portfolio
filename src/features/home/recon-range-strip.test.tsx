@@ -97,6 +97,34 @@ describe("ReconRangeStrip", () => {
     expect(cells[6]).toBe("-750.0%");
   });
 
+  it("A3.5 %-guard: 예상 below the floor → % shows — with a tooltip; 잔차 (absolute) stays", () => {
+    // 예상 = +300,000 (< ₩1M floor); a raw residualPct would read −2459.5%.
+    const smallExpected = [
+      {
+        asOf: "2026-07-17",
+        close: "2026-07-16",
+        theta: 100_000,
+        assumed: 200_000,
+        expected: 300_000,
+        realized: -7_078_500,
+        residual: -7_378_500,
+        residualPct: -2459.5,
+      },
+    ];
+    state({ rows: smallExpected });
+    render(<ReconRangeStrip />);
+
+    const row = screen.getByText("2026-07-17").closest("tr")!;
+    const cells = Array.from(row.querySelectorAll("td"));
+    const pctCell = cells[6];
+    expect(pctCell.textContent?.trim()).toBe("—");
+    expect(pctCell.querySelector("span")?.getAttribute("title")).toBe("예상 소액 — %가 왜곡됨");
+    // The −2459.5% blowup never renders.
+    expect(row.textContent).not.toContain("2459.5");
+    // Absolute 잔차 is untouched (its own column still shows the figure).
+    expect(cells[5].textContent?.trim()).toBe("-7.4M");
+  });
+
   it("renders a mismatched/incomplete day as — with its reason, never 0", () => {
     state({ rows: ROWS });
     render(<ReconRangeStrip />);

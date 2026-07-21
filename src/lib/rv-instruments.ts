@@ -161,6 +161,37 @@ export interface BuiltSeries {
   lineData: { time: string; value: number }[];
 }
 
+/** FB5-A A1 — one chart series' value at the traced date, carried into the PnL
+ * Trace panel so the "traced-date rate context" is drawn from the SAME already-
+ * loaded series the chart plots (no re-fetch). `value` keeps the series' native
+ * unit (decimal-% for outrights, bp for spreads); `null` = the series has no
+ * quote on that date (honest —, never a stale carry-forward). Label + color are
+ * the series' own, so the context row's chip matches the chart line. */
+export interface TraceSeriesContext {
+  id: string;
+  kind: "outright" | "spread";
+  label: string;
+  color: string;
+  value: number | null;
+}
+
+/** Snapshot every built series at one date — the exact values the chart is
+ * drawing there. Same-source by construction: it reads BuiltSeries.lineData (a
+ * point missing that date → null), so the PnL Trace context row and the chart
+ * line can never disagree about a date (pinned). */
+export function traceSeriesContextAt(series: BuiltSeries[], date: string): TraceSeriesContext[] {
+  return series.map((s) => {
+    const point = s.lineData.find((d) => d.time === date);
+    return {
+      id: s.id,
+      kind: s.kind,
+      label: s.label,
+      color: s.color,
+      value: point ? point.value : null,
+    };
+  });
+}
+
 /**
  * Resolve each selected instrument into a plottable series. Outrights carry
  * decimal values (formatted as % on the right axis); spreads carry bp values

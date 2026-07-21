@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 /**
- * FB3 F3 — spread coefficients are FIXED semantics (owner ruling: weights
- * carry no meaning as user input): 2-leg = +1/−1, 3-leg fly = +1/−2/+1.
- * Pins: the weight INPUTS are gone (read-only coefficient labels instead),
- * Add Spread emits exactly the canonical weights and the weight-encoded id,
- * and the old weight-sum warning is unreachable (both canonical sets sum 0).
+ * FB3 F3 / FB5-A A2 — spread coefficients are FIXED semantics (owner ruling:
+ * weights carry no meaning as user input): 2-leg = +1/−1, 3-leg fly = +1/−2/+1.
+ * FB5-A A2 removed the read-only +1/−1 coefficient LABELS entirely — a leg row
+ * reads as the instrument alone. Pins: no weight inputs AND no coefficient
+ * labels on the builder surface (label-absence pin), Add Spread still emits
+ * exactly the canonical weights and the weight-encoded id (fixed coefficients
+ * unchanged, reference-level pin stays green), and the old weight-sum warning
+ * is unreachable (both canonical sets sum 0).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -31,23 +34,26 @@ function renderSpreadMode(onAdd = vi.fn<(i: SelectedInstrument) => void>()) {
 afterEach(cleanup);
 
 describe("InstrumentSelector — F3 fixed spread coefficients", () => {
-  it("renders NO weight inputs; 2-leg shows read-only +1/−1 coefficients", () => {
+  it("A2 label-absence: NO weight inputs AND NO +1/−1 coefficient labels (2-leg)", () => {
     renderSpreadMode();
 
     expect(screen.queryByLabelText(/weight/i)).toBeNull();
     // The filter box is the only text input; no number inputs remain.
     expect(screen.queryAllByRole("spinbutton")).toHaveLength(0);
-    expect(screen.getByLabelText("Leg 1 coefficient").textContent).toBe("+1");
-    expect(screen.getByLabelText("Leg 2 coefficient").textContent).toBe("-1");
+    // A2 — the read-only coefficient labels are gone entirely: no aria-labelled
+    // coefficient element and no "+1"/"-1" text on the builder surface.
+    expect(screen.queryByLabelText(/coefficient/i)).toBeNull();
+    expect(screen.queryByText("+1")).toBeNull();
+    expect(screen.queryByText("-1")).toBeNull();
   });
 
-  it("3-leg (fly) shows +1/−2/+1", () => {
+  it("A2 label-absence: 3-leg (fly) shows no +1/−2/+1 coefficient labels", () => {
     renderSpreadMode();
     fireEvent.click(screen.getByText("3-leg (fly)"));
 
-    expect(screen.getByLabelText("Leg 1 coefficient").textContent).toBe("+1");
-    expect(screen.getByLabelText("Leg 2 coefficient").textContent).toBe("-2");
-    expect(screen.getByLabelText("Leg 3 coefficient").textContent).toBe("+1");
+    expect(screen.queryByLabelText(/coefficient/i)).toBeNull();
+    expect(screen.queryByText("+1")).toBeNull();
+    expect(screen.queryByText("-2")).toBeNull();
   });
 
   it("Add Spread emits exactly the canonical 2-leg weights and the weight-encoded id", () => {

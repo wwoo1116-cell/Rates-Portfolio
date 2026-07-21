@@ -31,6 +31,7 @@ import {
   buildInstrumentSeries,
   creditLegsOf,
   outrightId,
+  traceSeriesContextAt,
   type Leg,
   type SelectedInstrument,
 } from "@/lib/rv-instruments";
@@ -138,11 +139,14 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
         id: PNL_TRACE_PANEL_ID,
         component: "pnltrace",
         title: "PnL Trace",
-        params: { point },
+        // A1: carry every currently-charted series' value AT this date (drawn
+        // from the same builtSeries the chart plots) so the panel's traced-date
+        // context is same-source, not a re-fetch.
+        params: { point, seriesContext: traceSeriesContextAt(builtSeries, date) },
         position,
       });
     },
-    [api, instruments, points],
+    [api, instruments, points, builtSeries],
   );
 
   const addInstrument = useCallback((inst: SelectedInstrument) => {

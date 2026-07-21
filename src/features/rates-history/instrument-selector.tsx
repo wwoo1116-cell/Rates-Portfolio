@@ -122,30 +122,23 @@ interface SpreadLegRowProps {
   index: number;
   sectors: TaxonomySectorOut[];
   filter: string;
-  /** FB3 F3 (owner ruling: weights carry no meaning) — the coefficient is
-   * FIXED by leg count (2-leg = +1/−1, 3-leg fly = +1/−2/+1) and rendered as
-   * a read-only label; the numeric weight input is gone. */
-  weight: number;
   onLegChange: (index: number, leg: Leg | null) => void;
 }
 
 /** One term of the spread expression. Exists as its own component so
  * each row can hand LegPicker an identity-stable onChange -- LegPicker keeps
  * onChange in an effect dependency list, so an inline arrow here would re-fire
- * that effect every render and loop through the parent's setState. */
-function SpreadLegRow({ index, sectors, filter, weight, onLegChange }: SpreadLegRowProps) {
+ * that effect every render and loop through the parent's setState.
+ *
+ * FB5-A A2 (owner ruling): the read-only +1/−1 coefficient labels are gone —
+ * a leg row reads as the instrument alone. The fixed coefficients still drive
+ * the spread math (DEFAULT_SPREAD_WEIGHTS in handleAddSpread); they are simply
+ * no longer surfaced. */
+function SpreadLegRow({ index, sectors, filter, onLegChange }: SpreadLegRowProps) {
   const handleLeg = useCallback((leg: Leg | null) => onLegChange(index, leg), [index, onLegChange]);
 
   return (
     <div className="flex items-center gap-1.5">
-      <span
-        data-num
-        aria-label={`Leg ${index + 1} coefficient`}
-        className="inline-flex h-7 min-w-9 items-center justify-center border border-border-subtle bg-bg-tertiary px-1.5 text-body tabular-nums text-fg-secondary"
-      >
-        {weight > 0 ? `+${weight}` : weight}
-      </span>
-      <span className="text-micro text-fg-dim">×</span>
       <LegPicker sectors={sectors} filter={filter} onChange={handleLeg} />
     </div>
   );
@@ -252,7 +245,6 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
                   index={i}
                   sectors={sectors}
                   filter={filter}
-                  weight={spreadWeights[i] ?? 0}
                   onLegChange={handleLegChange}
                 />
               ))}

@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BLOTTER_STALE_THRESHOLD_DAYS,
   RESIDUAL_CAPTION,
   RESIDUAL_LABEL,
   bridgeLadder,
   contributionRows,
   deltaBpByTenor,
+  dv01Meta,
   excludedTenors,
+  isBlotterStale,
   pillarRates,
 } from "./daily-recon-math";
 import type { MarketDataResponse } from "./api-types";
@@ -124,6 +127,69 @@ describe("contributionRows / excludedTenors — M3 = M1 × M2", () => {
     const ex = excludedTenors(cols, pvbpRows[2], deltaBp);
     expect(ex).toEqual([{ tenor: "1D", krd: 500_000 }]);
     // 30Y is unmapped but massless — nothing was excluded there.
+  });
+
+  it("A3.4 honest-zero vs no-KRD: KRD present + Δbp 0.0 → numeric 0; KRD absent → null", () => {
+    // 2Y: KRD present (2M) and a REAL 0.0bp move → honest ₩0 (renders 0, not —).
+    // 5Y: no KRD mass (0) but Δbp present → null (— reserved for no-KRD).
+    // 7Y: unmapped Δbp (null) with KRD mass → null (— for "don't know").
+    const cols2 = ["2Y", "5Y", "7Y"] as const;
+    const dbp: Record<string, number | null> = { "2Y": 0.0, "5Y": -3.0, "7Y": null };
+    const rows = contributionRows(cols2, [
+      { sector: "국고채", "2Y": 2_000_000, "5Y": 0, "7Y": 4_000_000, total: 6_000_000 },
+    ], dbp);
+    const r = rows[0];
+    expect(r.cells["2Y"]).toBe(0); // honest ₩0 — numeric, not null
+    expect(Object.is(r.cells["2Y"], -0)).toBe(false); // and not the JS −0
+    expect(r.cells["5Y"]).toBeNull(); // no KRD mass → —
+    expect(r.cells["7Y"]).toBeNull(); // unmapped Δbp → —
+    // The honest 0 and the null cells all contribute 0 mass — total unchanged.
+    expect(r.total).toBe(0);
+  });
+});
+
+describe("dv01Meta / isBlotterStale — FB5-A A3.2/A3.3 basis metadata", () => {
+  const pvbpRows = [
+    { sector: "국고채", "3Y": 1, total: 1, dv01_sources: { reval: 12, sheet_fallback: 2 } },
+    { sector: "여전채", "3Y": 1, total: 1, dv01_sources: { sheet_frn: 3 } },
+    {
+      sector: "합계",
+      "3Y": 2,
+      total: 2,
+      dv01_sources: { reval: 12, sheet_fallback: 2, sheet_frn: 3 },
+      blotter_as_of: "2026-03-23",
+      frn_positions: ["FRN-1", "FRN-2", "FRN-3"],
+    },
+  ];
+
+  it("reads the 합계 row's mixed-basis counts, blotter as-of, and FRN count", () => {
+    const meta = dv01Meta(pvbpRows);
+    expect(meta.sources).toEqual({ reval: 12, sheet_fallback: 2, sheet_frn: 3 });
+    expect(meta.blotterAsOf).toBe("2026-03-23");
+    expect(meta.frnCount).toBe(3);
+  });
+
+  it("degrades to empty/null when there is no 합계 row or no bond metadata", () => {
+    expect(dv01Meta(undefined)).toEqual({ sources: {}, blotterAsOf: null, frnCount: 0 });
+    expect(dv01Meta([{ sector: "합계", total: 0 }])).toEqual({
+      sources: {},
+      blotterAsOf: null,
+      frnCount: 0,
+    });
+  });
+
+  it("isBlotterStale: a frozen 2026-03-23 blotter is stale against a July close, fresh export is not", () => {
+    // Current export: blotter 2026-03-23 vs a July D−1 close → months of lag.
+    expect(isBlotterStale("2026-03-23", "2026-07-14")).toBe(true);
+    // Fresh export: as-of ≈ the priced close (same day / within threshold) → hidden.
+    expect(isBlotterStale("2026-07-13", "2026-07-14")).toBe(false);
+    expect(isBlotterStale("2026-07-14", "2026-07-14")).toBe(false);
+    // Just over the threshold flips it.
+    const justOver = BLOTTER_STALE_THRESHOLD_DAYS + 1;
+    expect(justOver).toBeGreaterThan(BLOTTER_STALE_THRESHOLD_DAYS);
+    // Null inputs are never stale (nothing honest to say).
+    expect(isBlotterStale(null, "2026-07-14")).toBe(false);
+    expect(isBlotterStale("2026-03-23", null)).toBe(false);
   });
 });
 

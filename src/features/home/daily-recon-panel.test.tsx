@@ -242,6 +242,63 @@ describe("DailyReconPanel honest disabled states", () => {
   });
 });
 
+describe("DailyReconPanel DV01 basis chips + M3 honest-zero (FB5-A A3)", () => {
+  it("A3.2/A3.3: surfaces mixed-basis counts and the STALE blotter as-of", () => {
+    const total = {
+      ...pvbpRow("합계", { "1D": 500_000, "3M": 1_000_000, "4Y": 2_000_000 }),
+      dv01_sources: { reval: 40, sheet_fallback: 2, sheet_frn: 3 },
+      blotter_as_of: "2026-03-23", // vs resolvedClose 2026-07-14 → stale
+      frn_positions: ["a", "b", "c"],
+    };
+    recon({ pvbpRows: [pvbpRow("국고채", { "4Y": 2_000_000 }), pvbpRow("IRS", { "3M": 1_000_000 }), total] });
+    render(<DailyReconPanel />);
+
+    const chip = screen.getByTestId("dv01-sources-chip").textContent ?? "";
+    expect(chip).toContain("reval 40");
+    expect(chip).toContain("FRN 3");
+    expect(chip).toContain("fallback 2");
+    expect(screen.getByTestId("blotter-asof-chip").textContent).toContain("2026-03-23");
+  });
+
+  it("A3.2: a fresh blotter (as-of ≈ close) hides the as-of chip but keeps the basis chip", () => {
+    const total = {
+      ...pvbpRow("합계", { "3M": 1_000_000, "4Y": 2_000_000 }),
+      dv01_sources: { reval: 40 },
+      blotter_as_of: "2026-07-14", // == resolvedClose → fresh
+    };
+    recon({ pvbpRows: [pvbpRow("IRS", { "3M": 1_000_000 }), pvbpRow("국고채", { "4Y": 2_000_000 }), total] });
+    render(<DailyReconPanel />);
+
+    expect(screen.queryByTestId("blotter-asof-chip")).toBeNull();
+    expect(screen.getByTestId("dv01-sources-chip")).toBeDefined();
+  });
+
+  it("A3.4: M3 renders KRD-present + Δbp-0.0 as 0, and no-KRD / unmapped as —", () => {
+    const deltaBp = Object.fromEntries(
+      TENOR_COLS.map((c) => [c, c === "5Y" ? null : c === "3M" ? 2.0 : 0.0]),
+    );
+    recon({
+      pvbpRows: [
+        pvbpRow("IRS", { "3M": 1_000_000 }),
+        pvbpRow("국고채", { "2Y": 2_000_000, "5Y": 1_000_000 }),
+        pvbpRow("합계", { "2Y": 2_000_000, "3M": 1_000_000, "5Y": 1_000_000 }),
+      ],
+      deltaBp,
+    });
+    render(<DailyReconPanel />);
+
+    const m3Table = screen.getByText(/M3 · 기여도/).closest("div")!.querySelector("table")!;
+    const totalRow = Array.from(m3Table.querySelectorAll("tbody tr")).find((tr) =>
+      tr.textContent?.includes("합계"),
+    )!;
+    const cells = Array.from(totalRow.querySelectorAll("td")).map((td) => td.textContent?.trim());
+    const idx = (c: string) => 1 + (TENOR_COLS as readonly string[]).indexOf(c);
+    expect(cells[idx("2Y")]).toBe("0"); // KRD present, Δbp real 0.0 → honest ₩0
+    expect(cells[idx("5Y")]).toBe("—"); // unmapped Δbp → —
+    expect(cells[idx("1Y")]).toBe("—"); // no KRD mass → —
+  });
+});
+
 describe("DailyReconPanel mount parity (Home vs Rates History)", () => {
   /** The two mounts are the same component over the same hook — this pin
    * proves a single fixture produces IDENTICAL closure numbers on both, and

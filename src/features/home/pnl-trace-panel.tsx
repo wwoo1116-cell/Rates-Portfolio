@@ -21,15 +21,31 @@ import { CHART_CHROME_COLORS, PNL_COLORS } from "@/lib/chart-colors";
 // formatter since s14 — full-digit strings were the pre-s14 formatPnlKrw.
 import { formatKrwAxisSigned } from "@/lib/format";
 import { useHistoricalQuote, useMarketDataRange, useNpvTrace } from "@/hooks/use-api";
-import { RATE_SERIES_OPTIONS, rateValue } from "@/lib/rate-history-helpers";
+import { rateValue } from "@/lib/rate-history-helpers";
+import type { TraceSeriesContext } from "@/lib/rv-instruments";
 import type { RateHistoryPointOut, NpvTracePointOut } from "@/lib/api-client";
 
 export interface PnlTracePanelParams {
   point: RateHistoryPointOut;
+  /** A1 — the chart series present when this date was clicked, each snapshotted
+   * at the traced date (see traceSeriesContextAt). Optional: a panel opened
+   * without chart context (older detach state, direct construction) still shows
+   * the IRS 3Y/10Y benchmark pair from `point`. */
+  seriesContext?: TraceSeriesContext[];
+}
+
+/** A1 — one series' value formatted in its native unit: outrights are decimal
+ * yields shown as %, spreads are already bp. A series with no quote on the
+ * traced date renders an honest — (never a stale carry-forward). */
+function formatContextValue(ctx: TraceSeriesContext): string {
+  if (ctx.value == null) return "—";
+  return ctx.kind === "spread"
+    ? `${ctx.value.toFixed(2)}bp`
+    : `${(ctx.value * 100).toFixed(4)}%`;
 }
 
 export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
-  const { point } = props.params;
+  const { point, seriesContext = [] } = props.params;
   const rangeQuery = useMarketDataRange();
   const endDate = rangeQuery.data?.max_date ?? point.valuation_date;
 
@@ -227,28 +243,56 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
         <span className="text-h2 text-fg-primary">PnL Trace</span>
       </div>
 
-      {/* Top: market rates for the clicked date */}
-      <div className="flex flex-col gap-1.5 border-b border-border-subtle pb-3">
-        <span className="text-label font-bold text-fg-muted uppercase">Market Rates -- {point.valuation_date}</span>
+      {/* Top: traced-date rate context (A1). The IRS 3Y/10Y benchmark pair is
+          always shown (from the clicked point); below it, every series that was
+          on the chart when this date was clicked, at that date, with its own
+          label + color chip — same-source values (no re-fetch). */}
+      <div className="flex flex-col gap-2 border-b border-border-subtle pb-3">
+        <span className="text-label font-bold text-fg-muted uppercase">Rate Context -- {point.valuation_date}</span>
         {/* SIM2-7 provenance: the trace's funding leg accrues at each date's
             ACTUAL BOK base rate + 10bp (historical stairs), not today's
             constant — 실적(BOK) 기준. */}
         <span className="text-micro text-fg-dim" data-testid="trace-funding-provenance">
           조달 기준: 실적(BOK) + 10bp — 과거 일자는 해당 시점 기준금리로 계상
         </span>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          {RATE_SERIES_OPTIONS.map((opt) => {
-            const value = rateValue(point, opt.key);
+
+        {/* Benchmark pair: the two curve anchors, always present. */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1" data-testid="trace-benchmark-rates">
+          {(["3Y", "10Y"] as const).map((tenor) => {
+            const value = rateValue(point, tenor);
             return (
-              <div key={opt.key} className="flex items-center justify-between gap-2">
-                <span className="text-micro text-fg-muted">{opt.label}</span>
-                <span className="text-body font-normal text-fg-primary">
+              <div key={tenor} className="flex items-center justify-between gap-2">
+                <span className="text-micro text-fg-muted">IRS {tenor}</span>
+                <span className="text-body font-normal text-fg-primary tabular-nums">
                   {value != null ? `${(value * 100).toFixed(4)}%` : "—"}
                 </span>
               </div>
             );
           })}
         </div>
+
+        {/* Charted series at the traced date, each with its own color chip. */}
+        {seriesContext.length > 0 && (
+          <div className="flex flex-col gap-1 border-t border-border-dim pt-2" data-testid="trace-series-context">
+            <span className="text-micro font-bold text-fg-dim uppercase">차트 시리즈 · {point.valuation_date}</span>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              {seriesContext.map((ctx) => (
+                <div key={ctx.id} className="flex items-center justify-between gap-2" data-testid={`trace-ctx-${ctx.id}`}>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: ctx.color }}
+                    />
+                    <span className="truncate text-micro text-fg-muted">{ctx.label}</span>
+                  </span>
+                  <span className="text-body font-normal text-fg-primary tabular-nums">
+                    {formatContextValue(ctx)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Inputs. Enter in any field == RUN (same guard: no-op while invalid
