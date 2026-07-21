@@ -91,7 +91,11 @@ def bond_dv01(
     payment_frequency: int | None,
     notional: float | None,
     issue_date: date | None,
+    market_yield: float | None = None,
 ) -> BondDv01:
+    """`market_yield` (decimal): explicit bump base overriding the credit-curve
+    lookup — the simulate wire carries no rating but does carry the bond's own
+    민평수익율, which is the better base there (Phase B)."""
     from ..loaders.portfolio import _bucket_for_years  # local: avoids cycle
 
     fresh_years = (
@@ -118,7 +122,11 @@ def bond_dv01(
     freq = payment_frequency_for(sector, payment_frequency)
     issue = issue_date or _synthetic_issue(maturity_date, freq, valuation_date)
     try:
-        y = credit_curve_service.market_yield_for(sector, rating, fresh_years, valuation_date)
+        y = (
+            market_yield
+            if market_yield is not None
+            else credit_curve_service.market_yield_for(sector, rating, fresh_years, valuation_date)
+        )
 
         def npv(yy: float) -> float:
             return bond_valuation.value_bond(

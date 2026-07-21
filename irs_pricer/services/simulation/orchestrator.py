@@ -15,7 +15,7 @@ from .aggregates import build_book_daily_pnl, build_frontend_pvbp_sensitivity
 from .chart import build_chart_data
 from .constants import FUNDING_RATE_KRW
 from .distribution import _DIST_SIGMA_BP_DAILY, build_distribution_bands
-from .enrichment import enrich_irs_pvbp
+from .enrichment import enrich_bond_dv01, enrich_irs_pvbp
 from .kr_calendar import resolve_curve_maturity_dates
 from .models import FrontendPosition, FrontendShockCurves
 from .profiling import _log_profile, _phase, _sim_profiler
@@ -130,6 +130,16 @@ def _run_simulation_profiled(
             positions = enrich_irs_pvbp(positions, irs_curves, base_date)
     except Exception:
         logger.exception("[CRITICAL] enrich_irs_pvbp 실패")
+        raise
+
+    # ── DV01-FIX Phase B: 채권 pvbp를 bond_risk(단일 유도점)로 재산출 ─────────
+    # 와이어의 pvbp는 동결 블로터 스냅샷 값 — Home/recon과 같은 기준으로 교체.
+    # FRN/재평가불가 행은 와이어 값 유지 (enrich_bond_dv01 docstring 참조).
+    try:
+        with _phase(_prof, "bond-dv01 (enrich)"):
+            positions = enrich_bond_dv01(positions, base_date)
+    except Exception:
+        logger.exception("[CRITICAL] enrich_bond_dv01 실패")
         raise
 
     funding_events = funding_events or (shock_curves.fundingEvents if shock_curves else [])

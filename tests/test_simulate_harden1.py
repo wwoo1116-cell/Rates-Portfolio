@@ -75,10 +75,16 @@ def test_swap_carry_nonzero_and_pinned_on_fan_fixture(client) -> None:
     assert d["swapMtm"] == pytest.approx(125_508_190.65524912, abs=1.0)
     assert d["swapMtm"] + d["swapCarry"] == pytest.approx(83_114_335.82955563, abs=1.0)
     # Unchanged components (pre-fix captures, exact to the float).
-    assert d["bondMtm"] == pytest.approx(-75_833_596.48720416, abs=1e-3)
+    # [CHANGED, DV01-B] bondMtm −75,833,596.48720416 → −50,977,444.638177246
+    # (and total by exactly that delta, +24,856,151.849): the fixture's wire
+    # pvbp is a frozen-blotter figure, now re-derived via bond_risk reval at
+    # the request base date (enrich_bond_dv01). bondCarry / fundingCost /
+    # swapMtm / swapCarry are BYTE-IDENTICAL — only the bond sensitivity leg
+    # consumes the replaced pvbp (derivation: DV01_FIX_REPORT.md Phase B).
+    assert d["bondMtm"] == pytest.approx(-50_977_444.638177246, abs=1e-3)
     assert d["bondCarry"] == pytest.approx(285_483_035.32653785, abs=1e-3)
     assert d["fundingCost"] == pytest.approx(-264_574_470.08219185, abs=1e-3)
-    assert d["total"] == pytest.approx(28_189_304.58669749, abs=1e-3)
+    assert d["total"] == pytest.approx(53_045_456.43572441, abs=1e-3)
 
 
 def test_swap_carry_pinned_on_representative_fixture(client) -> None:
