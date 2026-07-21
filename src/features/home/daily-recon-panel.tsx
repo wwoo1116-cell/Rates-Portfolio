@@ -11,11 +11,13 @@
  * owner ruling: no new matrix design), full 16-column KRD pillar grid:
  *   M1  KRD @D−1        (as-of variant of the PVBP Sensitivity panel)
  *   M2  Δbp D−1 → D     (signed, 1 decimal bp; unmapped pillar = — )
- *   M3  기여도 = M1 × M2 (₩; row/column sums; Jade/Berry heat)
- * plus the closure footer:  Assumed | Realized (채권평가+스왑평가) | 잔차 —
- * and the engine-supplied 계산 테타/펀딩 chips OUTSIDE the comparison
- * ("비교 대상 아님"). The residual is 잔차, never a theta word — pinned by
- * RESIDUAL_LABEL and its test.
+ *   M3  기여도 = M1 × (−M2) (₩; first-order P&L sign — [CHANGED, FB3])
+ * plus the FB3 bridge ladder (owner spec, every 대사 surface):
+ *   테타 (T−1 기지) → + Assumed (PVBP×Δbp) → = 예상 PnL
+ *     → vs Realized (테타+채권평가+스왑평가) → 잔차 (컨벡시티+베이시스)
+ * with 펀딩 the one chip OUTSIDE the comparison ("비교 대상 아님"). The
+ * residual is 잔차, never a theta word — 테타 is the ladder's first rung,
+ * not a name for the residual; pinned by RESIDUAL_LABEL and its tests.
  *
  * Blank policy: an unmapped tenor renders — and is EXCLUDED from every Σ with
  * a visible note; a missing/incomplete realized decomposition disables the
@@ -25,12 +27,13 @@
 import { Spinner } from "@blueprintjs/core";
 import { useDailyRecon } from "@/hooks/use-daily-recon";
 import {
+  RESIDUAL_CAPTION,
   RESIDUAL_LABEL,
-  closureFooter,
+  bridgeLadder,
   contributionRows,
   excludedTenors,
   realizedFromByClass,
-  type ClosureFooter,
+  type BridgeLadder,
 } from "@/lib/daily-recon-math";
 import { CloseDateControl } from "./close-date-control";
 import { formatKrwCompact } from "./pnl-format";
@@ -67,8 +70,10 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <span className="text-label font-bold uppercase text-fg-muted">{children}</span>;
 }
 
-/** 계산 테타/펀딩 — engine figures rendered beside the comparison but outside
- * it. The label says so explicitly; these are NOT what 잔차 reconciles. */
+/** 펀딩 — the one engine figure still rendered beside the comparison but
+ * outside it (FB3 diagnosis: funding is a separate response field, never
+ * inside the compared theta/valuation buckets). 테타 is NOT a chip anymore —
+ * it is the ladder's first rung. */
 function OutsideChip({ label, value }: { label: string; value: number }) {
   return (
     <span className="flex items-baseline gap-1.5 border border-border-subtle px-2 py-0.5">
@@ -79,40 +84,50 @@ function OutsideChip({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ClosureFooterRow({
-  footer,
-  theta,
-  funding,
-}: {
-  footer: ClosureFooter;
-  theta: number;
-  funding: number;
-}) {
+function LadderOp({ children }: { children: string }) {
+  return <span className="text-label text-fg-dim">{children}</span>;
+}
+
+/** FB3 — the bridge ladder (owner spec, every 대사 surface):
+ * 테타 → + Assumed → = 예상 PnL → vs Realized → 잔차 (컨벡시티+베이시스). */
+function BridgeLadderRow({ ladder, funding }: { ladder: BridgeLadder; funding: number }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border-dim pt-2">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border-dim pt-2">
+      <span className="flex items-baseline gap-1.5">
+        <span className="text-label uppercase text-fg-muted">테타</span>
+        <span className="text-micro text-fg-dim">(T−1 기지)</span>
+        <SignedKrw value={ladder.theta} emphasis />
+      </span>
+      <LadderOp>+</LadderOp>
       <span className="flex items-baseline gap-1.5">
         <span className="text-label uppercase text-fg-muted">Assumed</span>
-        <SignedKrw value={footer.assumed} emphasis />
+        <span className="text-micro text-fg-dim">(PVBP×Δbp)</span>
+        <SignedKrw value={ladder.assumed} emphasis />
       </span>
+      <LadderOp>=</LadderOp>
+      <span className="flex items-baseline gap-1.5">
+        <span className="text-label uppercase text-fg-muted">예상 PnL</span>
+        <SignedKrw value={ladder.expected} emphasis />
+      </span>
+      <LadderOp>vs</LadderOp>
       <span className="flex items-baseline gap-1.5">
         <span className="text-label uppercase text-fg-muted">Realized</span>
-        <span className="text-micro text-fg-dim">(채권평가+스왑평가)</span>
-        <SignedKrw value={footer.realized} emphasis />
+        <span className="text-micro text-fg-dim">(테타+채권평가+스왑평가)</span>
+        <SignedKrw value={ladder.realized} emphasis />
       </span>
+      <LadderOp>→</LadderOp>
       <span className="flex items-baseline gap-1.5">
         <span className="text-label uppercase text-fg-muted">{RESIDUAL_LABEL}</span>
-        <SignedKrw value={footer.residual} emphasis />
-        {footer.residualPct !== null && (
+        <span className="text-micro text-fg-dim">{RESIDUAL_CAPTION}</span>
+        <SignedKrw value={ladder.residual} emphasis />
+        {ladder.residualPct !== null && (
           <span className="text-micro text-fg-dim">
-            ({footer.residualPct > 0 ? "+" : ""}
-            {footer.residualPct.toFixed(1)}%)
+            ({ladder.residualPct > 0 ? "+" : ""}
+            {ladder.residualPct.toFixed(1)}%)
           </span>
         )}
       </span>
-      <span className="flex flex-wrap items-center gap-2">
-        <OutsideChip label="계산 테타" value={theta} />
-        <OutsideChip label="펀딩" value={funding} />
-      </span>
+      <OutsideChip label="펀딩" value={funding} />
     </div>
   );
 }
@@ -157,9 +172,9 @@ export function DailyReconPanel({ showRange = false }: { showRange?: boolean } =
 
   const assumedRow = contrib.find((r) => r.sector === "합계");
   const realized = realizedFromByClass(totalRow?.by_class);
-  const footer =
-    assumedRow && "bondMtm" in realized
-      ? closureFooter(assumedRow.total, realized.bondMtm, realized.swapMtm)
+  const ladder: BridgeLadder | undefined =
+    assumedRow && totalRow && "bondMtm" in realized
+      ? bridgeLadder(totalRow.theta, assumedRow.total, realized.bondMtm, realized.swapMtm)
       : undefined;
 
   return (
@@ -178,9 +193,10 @@ export function DailyReconPanel({ showRange = false }: { showRange?: boolean } =
         </div>
       </div>
       <p className="text-micro text-fg-dim">
-        가정 MtM = Σ<sub>테너</sub> KRD@D−1 × Δbp — D일 실현 평가(채권평가+스왑평가)와
-        대사합니다. 채권 KRD는 블로터의 정적 PVBP(버킷별)이며 IRS 행만 D−1 커브로
-        재평가됩니다. 차이는 {RESIDUAL_LABEL}로만 표기합니다.
+        예상 PnL = 테타(T−1 기지) + Σ<sub>테너</sub> KRD@D−1 × (−Δbp) — D일 Realized
+        (테타+채권평가+스왑평가)와 대사하는 브리지입니다. 차이는 {RESIDUAL_LABEL}(
+        {RESIDUAL_CAPTION})로만 표기합니다. 채권 KRD는 블로터의 정적 PVBP(버킷별)이며 IRS
+        행만 D−1 커브로 재평가됩니다.
       </p>
 
       {!hasPositions ? (
@@ -262,8 +278,8 @@ export function DailyReconPanel({ showRange = false }: { showRange?: boolean } =
             )}
           </div>
 
-          {footer && totalRow ? (
-            <ClosureFooterRow footer={footer} theta={totalRow.theta} funding={totalRow.funding} />
+          {ladder && totalRow ? (
+            <BridgeLadderRow ladder={ladder} funding={totalRow.funding} />
           ) : (
             <div className="border-t border-border-dim pt-2 text-label text-fg-dim">
               {!deltaBp

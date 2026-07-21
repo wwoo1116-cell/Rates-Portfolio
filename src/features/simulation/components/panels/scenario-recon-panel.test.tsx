@@ -68,22 +68,28 @@ describe("ScenarioReconPanel (RECON-SCEN M1–M3)", () => {
     expect(screen.getByText("시나리오 대사")).toBeTruthy();
     expect(screen.getByTestId("recon-chart")).toBeTruthy();
 
-    // Three series: assumed (solid), engine (solid), 잔차 (dashed).
+    // [CHANGED, FB3] ladder lanes: 예상 (solid), 실현 (solid), 잔차 (dashed).
     expect(lwProps!.series.length).toBe(3);
     expect(lwProps!.series[2].dashed).toBe(true);
 
-    // Series data == the lib selectors, point for point.
+    // Series data == the lib selectors, point for point — and the 잔차
+    // series is byte-identical to the pre-ladder engine−assumed values.
     const { request, response } = loadFixture("linear");
     const { points } = buildScenarioRecon(request, response);
-    expect(lwProps!.series[0].data.map((p) => p.value)).toEqual(points.map((p) => p.assumed));
-    expect(lwProps!.series[1].data.map((p) => p.value)).toEqual(points.map((p) => p.engine));
+    expect(lwProps!.series[0].data.map((p) => p.value)).toEqual(points.map((p) => p.expected));
+    expect(lwProps!.series[1].data.map((p) => p.value)).toEqual(points.map((p) => p.realized));
     expect(lwProps!.series[2].data.map((p) => p.value)).toEqual(points.map((p) => p.residual));
+    expect(points.map((p) => p.residual)).toEqual(points.map((p) => p.engine - p.assumed));
 
-    // Legend + caption.
-    expect(screen.getByText("가정 경로")).toBeTruthy();
-    expect(screen.getByText("엔진 평가 경로")).toBeTruthy();
+    // Legend (ladder labels) + terminal bridge line + caption.
+    expect(screen.getByText("예상 경로")).toBeTruthy();
+    expect(screen.getByText("실현 경로 (테타+평가)")).toBeTruthy();
     expect(screen.getByText("잔차")).toBeTruthy();
+    expect(screen.getByText(/만기 브리지/)).toBeTruthy();
     expect(screen.getByText(/기준일 KRD 고정/)).toBeTruthy();
+    // [old wording pinned absent]
+    expect(screen.queryByText("엔진 평가 경로")).toBeNull();
+    expect(screen.queryByText("가정 경로")).toBeNull();
 
     // Surfaced SIM2-4 machinery table with its lane headers.
     expect(screen.getByText(/엔진 내부 머시너리/)).toBeTruthy();
@@ -91,13 +97,16 @@ describe("ScenarioReconPanel (RECON-SCEN M1–M3)", () => {
     expect(screen.getByText("실제 P&L")).toBeTruthy();
   });
 
-  it("naming guard in the RENDERED DOM: the 잔차 lane is never captioned 테타/carry", () => {
+  it("naming guard in the RENDERED DOM: the 잔차 lane keeps its own name — 테타 appears only as a ladder term", () => {
     seedRun();
     render(<ScenarioReconPanel />);
     const legendItem = screen.getByText("잔차").closest("span");
     expect(legendItem?.textContent).toBe("잔차");
+    // The caption may DESCRIBE the theta rung (it states the bridge), but the
+    // residual clause names 잔차 as 컨벡시티(+베이시스), never as a theta.
     const caption = screen.getByText(/선형 근사/);
-    expect(/테타|carry|캐리|theta/i.test(caption.textContent ?? "")).toBe(false);
+    expect(caption.textContent).toContain("잔차 = 컨벡시티(+베이시스)");
+    expect(caption.textContent).not.toMatch(/잔차[^.]*(테타|carry|캐리|theta)\s*(이|로|입니다)/);
   });
 
   it("M1 subtab: full pillar columns, sector rows, emphasized 합계", () => {

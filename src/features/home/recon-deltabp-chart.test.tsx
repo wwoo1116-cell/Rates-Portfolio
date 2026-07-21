@@ -48,7 +48,9 @@ const ROWS: ReconRangeRow[] = [
   {
     asOf: "2026-07-15",
     close: "2026-07-14",
+    theta: 5e5,
     assumed: -1e6,
+    expected: -5e5,
     realized: -7e5,
     residual: 3e5,
     residualPct: 42.9,
@@ -57,7 +59,9 @@ const ROWS: ReconRangeRow[] = [
   {
     asOf: "2026-07-16",
     close: "2026-07-15",
+    theta: null,
     assumed: null,
+    expected: null,
     realized: null,
     residual: null,
     residualPct: null,
@@ -67,7 +71,9 @@ const ROWS: ReconRangeRow[] = [
   {
     asOf: "2026-07-20",
     close: "2026-07-16",
+    theta: 0,
     assumed: 0,
+    expected: 0,
     realized: 0,
     residual: 0,
     residualPct: null,

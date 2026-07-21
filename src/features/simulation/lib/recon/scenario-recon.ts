@@ -35,15 +35,23 @@ import {
 /** The residual's ONLY name. A rename to anything containing 테타/carry/캐리
  * fails the guard test — the residual is not a theta and not a carry. */
 export const RESIDUAL_LABEL = "잔차";
+/** FB3 — the residual's fixed caption (owner spec, same as the daily 대사). */
+export const RESIDUAL_CAPTION = "컨벡시티(+베이시스)";
 export const ASSUMED_LABEL = "가정 경로";
-export const ENGINE_LABEL = "엔진 평가 경로";
+/** FB3 ladder series labels — 예상 = 테타 + 가정; 실현 = 테타 + 평가 (the
+ * engine lanes; funding stays outside the comparison). The old standalone
+ * "엔진 평가 경로" label left this surface with the ladder redesign. */
+export const EXPECTED_LABEL = "예상 경로";
+export const REALIZED_LABEL = "실현 경로 (테타+평가)";
 
-/** On-screen linearity caption (M3). One sentence, stating the assumption and
- * what the residual therefore measures. */
+/** On-screen ladder + linearity caption (M3). States the bridge, the
+ * linearity assumption, and what the 잔차 therefore measures. 테타 appears
+ * here as a LADDER TERM — the residual itself is never named with it. */
 export const LINEARITY_CAPTION =
-  "가정 경로 = Σ테너( 기준일 KRD 고정 × 설계 경로 누적Δbp ) — 선형 근사입니다. " +
-  "엔진 평가 경로(채권+스왑 성분)와의 차이가 잔차이며, 잔차는 정확히 이 선형화 " +
-  "(KRD 기준일 고정·에이징/컨벡시티 무시)가 놓치는 부분을 측정합니다.";
+  "예상 경로 = 테타(엔진 캐리 경로) + 가정(Σ테너 기준일 KRD 고정 × 설계 경로 누적Δbp, " +
+  "선형 근사) — 실현 경로(테타+채권·스왑 평가)와 대사합니다. 차이가 잔차 = " +
+  "컨벡시티(+베이시스)이며, 정확히 이 선형화(KRD 기준일 고정·에이징 무시)가 놓치는 " +
+  "부분을 측정합니다. 펀딩은 비교 대상이 아닙니다.";
 
 /** Non-tenor keys the backend folds into krdMap/tenors dicts. */
 const NON_TENOR_KEYS = new Set(["합계", "total"]);
@@ -148,8 +156,19 @@ export interface ReconPoint {
   /** ISO date when the response carries it (recon rows), else derived
    * calendar date baseDate + day. */
   date: string;
+  /** FB3 ladder — 테타(day): the engine's cumulative carry lanes
+   * (decompositionDaily bondCarry + swapCarry; swap lane 0 when excluded). */
+  theta: number;
   assumed: number;
+  /** 테타 + 가정 — the ladder's 예상 path. */
+  expected: number;
+  /** The engine's valuation lanes (bondMtm + swapMtm) — kept under its
+   * original name; the 잔차 is defined against THIS, so its values are
+   * byte-identical to the pre-ladder surface (pinned). */
   engine: number;
+  /** 테타 + engine — the ladder's 실현 path (== decompositionDaily total −
+   * fundingCost, ±₩1 pinned). */
+  realized: number;
   residual: number;
 }
 
@@ -192,11 +211,20 @@ export function buildScenarioRecon(req: SimulateRequest, resp: SimulateResponse)
   const points: ReconPoint[] = (resp.decompositionDaily ?? []).map((row) => {
     const assumed = cells.reduce((s, c) => s - c.krd * ev.cumBpAt(c.family, c.t, row.day), 0);
     const engine = row.bondMtm + (row.swapMtm ?? 0);
+    // FB3 ladder terms. theta = the engine's own cumulative carry lanes
+    // (bondCarry excludes funding by construction — decompositionDaily's
+    // fundingCost is a separate component); realized = theta + valuation
+    // == row.total − row.fundingCost (±₩1, pinned in tests). The 잔차 stays
+    // engine − assumed, byte-identical to the pre-ladder definition.
+    const theta = row.bondCarry + (row.swapCarry ?? 0);
     return {
       day: row.day,
       date: dateByDay.get(row.day) ?? isoDayAfter(req.baseDate, row.day),
+      theta,
       assumed,
+      expected: theta + assumed,
       engine,
+      realized: theta + engine,
       residual: engine - assumed,
     };
   });
