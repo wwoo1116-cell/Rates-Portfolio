@@ -13,6 +13,16 @@ vi.mock("@/hooks/use-recon-range", () => ({
   useReconRange: () => mockReconRange(),
 }));
 
+// RECON2-RH — the Δbp chart is canvas-hosted; its own pins live in
+// recon-deltabp-chart.test.tsx. Here we only pin the strip's view toggle.
+const chartSpy = vi.fn();
+vi.mock("./recon-deltabp-chart", () => ({
+  ReconDeltaBpChart: (props: { rows: unknown }) => {
+    chartSpy(props.rows);
+    return <div data-testid="deltabp-chart" />;
+  },
+}));
+
 const { ReconRangeStrip } = await import("./recon-range-strip");
 
 function state(over: Record<string, unknown> = {}) {
@@ -108,5 +118,40 @@ describe("ReconRangeStrip", () => {
     state({ running: true, progress: { done: 3, total: 20 } });
     render(<ReconRangeStrip />);
     expect(screen.getByText(/3\/20일/)).toBeDefined();
+  });
+
+  // ── RECON2-RH — [잔차 표] [Δbp 시계열] view toggle ──
+
+  it("defaults to the 잔차 table view; the Δbp chart is absent", () => {
+    state({ rows: ROWS });
+    render(<ReconRangeStrip />);
+    expect(
+      (screen.getByRole("button", { name: "잔차 표" }) as HTMLButtonElement).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.getByText("2026-07-15")).toBeDefined(); // table row
+    expect(screen.queryByTestId("deltabp-chart")).toBeNull();
+    expect(chartSpy).not.toHaveBeenCalled();
+  });
+
+  it("Δbp 시계열 swaps the table for the chart, passing the SAME computed rows (no refetch)", () => {
+    const run = vi.fn();
+    state({ rows: ROWS, run });
+    render(<ReconRangeStrip />);
+    fireEvent.click(screen.getByRole("button", { name: "Δbp 시계열" }));
+
+    expect(screen.getByTestId("deltabp-chart")).toBeDefined();
+    expect(screen.queryByText("Assumed")).toBeNull(); // table gone
+    expect(chartSpy).toHaveBeenCalledWith(ROWS); // the same row array, by reference
+    expect(run).not.toHaveBeenCalled(); // toggling never recomputes
+    expect(screen.getByText(/M2 Δbp 시계열/)).toBeDefined(); // heading follows the view
+  });
+
+  it("before a run, the chart view shows the same lazy prompt (nothing to draw, nothing fetched)", () => {
+    state({ rows: undefined });
+    render(<ReconRangeStrip />);
+    fireEvent.click(screen.getByRole("button", { name: "Δbp 시계열" }));
+    expect(screen.getByText(/지연 계산/)).toBeDefined();
+    expect(screen.queryByTestId("deltabp-chart")).toBeNull();
+    expect(chartSpy).not.toHaveBeenCalled();
   });
 });

@@ -43,6 +43,15 @@ export interface ReconRangeRow {
   residualPct: number | null;
   /** Honest reason a figure is missing — rendered, never silently zeroed. */
   note?: string;
+  /** RECON2-RH — the day's per-tenor Δbp map, RETAINED from the loop's ONE
+   * deltaBpByTenor call (the exact object assumedTotal consumed; the Δbp
+   * time-series chart is a view over this retained map — a forked
+   * recomputation fails scripts/check_deltabp_reuse.test.ts). Present
+   * whenever the day's window matched (Δbp is snapshot-derived and valid
+   * even when the closure footer is disabled); absent on window-mismatch
+   * rows, where a Δbp would measure a different window than the label
+   * claims — those days render as whitespace, never zero. */
+  deltaBp?: Record<string, number | null>;
 }
 
 export function useReconRange() {
@@ -120,18 +129,18 @@ export function useReconRange() {
             if (assumed === undefined) {
               out.push({
                 asOf, close, assumed: null, realized: null, residual: null,
-                residualPct: null, note: "KRD 합계 행 없음",
+                residualPct: null, note: "KRD 합계 행 없음", deltaBp,
               });
             } else if ("disabledReason" in realized) {
               out.push({
                 asOf, close, assumed, realized: null, residual: null,
-                residualPct: null, note: realized.disabledReason,
+                residualPct: null, note: realized.disabledReason, deltaBp,
               });
             } else {
               const f = closureFooter(assumed, realized.bondMtm, realized.swapMtm);
               out.push({
                 asOf, close, assumed: f.assumed, realized: f.realized,
-                residual: f.residual, residualPct: f.residualPct,
+                residual: f.residual, residualPct: f.residualPct, deltaBp,
               });
             }
           }

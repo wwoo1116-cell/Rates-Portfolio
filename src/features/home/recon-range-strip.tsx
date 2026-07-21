@@ -7,10 +7,23 @@
  * see use-recon-range.ts), rows appear incrementally, and a missing figure
  * renders — with its reason, never a silent 0.
  */
+import { useState } from "react";
 import { Spinner } from "@blueprintjs/core";
 import { useReconRange } from "@/hooks/use-recon-range";
 import { RESIDUAL_LABEL } from "@/lib/daily-recon-math";
+import { cn } from "@/lib/utils";
 import { formatKrwCompact } from "./pnl-format";
+import { ReconDeltaBpChart } from "./recon-deltabp-chart";
+
+/** RECON2-RH — the two views over one computed row set: the 잔차 table
+ * (default, pre-existing) and the M2 Δbp time series. One 계산 run feeds
+ * both; toggling never refetches. */
+const STRIP_VIEWS = ["table", "chart"] as const;
+type StripView = (typeof STRIP_VIEWS)[number];
+const STRIP_VIEW_LABELS: Record<StripView, string> = {
+  table: "잔차 표",
+  chart: "Δbp 시계열",
+};
 
 function SignedCell({ value }: { value: number | null }) {
   if (value === null) {
@@ -51,14 +64,35 @@ function SignedCell({ value }: { value: number | null }) {
 export function ReconRangeStrip() {
   const { rows, running, progress, error, windowSize, maxWindow, canRun, run, widen } =
     useReconRange();
+  const [view, setView] = useState<StripView>("table");
 
   return (
     <div className="flex flex-col gap-1.5 border-t border-border-subtle pt-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-label font-bold uppercase text-fg-muted">
-          {RESIDUAL_LABEL} 시계열 (일별 Assumed vs Realized)
+          {view === "table"
+            ? `${RESIDUAL_LABEL} 시계열 (일별 Assumed vs Realized)`
+            : "M2 Δbp 시계열 (일별 테너별 금리 변동)"}
         </span>
         <div className="flex items-center gap-2">
+          <div role="group" aria-label="범위 보기" className="flex border border-border-subtle">
+            {STRIP_VIEWS.map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={view === v}
+                onClick={() => setView(v)}
+                className={cn(
+                  "px-2 py-0.5 text-micro",
+                  view === v
+                    ? "bg-sem-info-ghost text-sem-info shadow-[inset_0_0_0_1px_var(--sem-info)]"
+                    : "text-fg-muted",
+                )}
+              >
+                {STRIP_VIEW_LABELS[v]}
+              </button>
+            ))}
+          </div>
           {running && progress && (
             <span className="flex items-center gap-1.5 text-label text-fg-muted">
               <Spinner size={12} /> {progress.done}/{progress.total}일
@@ -93,7 +127,9 @@ export function ReconRangeStrip() {
         </span>
       )}
 
-      {rows && (
+      {rows && view === "chart" && <ReconDeltaBpChart rows={rows} />}
+
+      {rows && view === "table" && (
         <div className="overflow-x-auto">
           <table
             className="w-full border-collapse text-body"

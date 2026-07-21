@@ -267,4 +267,19 @@ describe("DailyReconPanel mount parity (Home vs Rates History)", () => {
     expect(rh.container.textContent).toContain("잔차 시계열");
     expect(home.container.textContent).not.toContain("잔차 시계열");
   });
+
+  it("RECON2-RH is range-mode-only: the Home mount carries no Δbp toggle/chart artifacts", () => {
+    recon();
+    const home = render(<DailyReconPanel />);
+    // No view toggle, no chart host, no D+ chip vocabulary on the single-date mount.
+    expect(home.container.textContent).not.toContain("Δbp 시계열");
+    expect(home.queryByTestId("deltabp-chart-host")).toBeNull();
+    expect(home.container.textContent).not.toContain("D+91");
+    home.unmount();
+
+    // The RH mount offers the toggle (inside the strip).
+    recon();
+    const rh = render(<DailyReconPanel showRange />);
+    expect(rh.getByRole("button", { name: "Δbp 시계열" })).toBeDefined();
+  });
 });
