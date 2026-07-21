@@ -31,16 +31,18 @@ import {
   RESIDUAL_LABEL,
   buildScenarioRecon,
 } from "../../lib/recon/scenario-recon";
+import { buildSettlementLane } from "../../lib/recon/settlement-lane";
 import { useSimulationPort } from "../../hooks/use-simulation";
 import { SegmentedButtons } from "../segmented-buttons";
 import { LwLineChart, dayToTime, type LwSeriesDef } from "../charts/lw-line-chart";
 
-const VIEWS = ["recon", "krd", "path"] as const;
+const VIEWS = ["recon", "krd", "path", "cash"] as const;
 type ViewKey = (typeof VIEWS)[number];
 const VIEW_LABELS: Record<ViewKey, string> = {
   recon: "대사",
   krd: "KRD 그리드",
   path: "경로 매트릭스",
+  cash: "정산 CF",
 };
 
 /** Home PVBP grammar: fill scale saturates at ±10M ₩/bp. */
@@ -100,6 +102,8 @@ export function ScenarioReconPanel() {
         </p>
       ) : view === "recon" ? (
         <ReconView recon={recon} baseDate={baseDate} reconRows={reconRows} />
+      ) : view === "cash" ? (
+        <CashLaneView lane={buildSettlementLane(lastRun)} />
       ) : view === "krd" ? (
         <>
           <MatrixGrid
@@ -156,6 +160,80 @@ export function ScenarioReconPanel() {
         )
       )}
     </div>
+  );
+}
+
+/**
+ * T4b — the swap settlement-cash lane in the PM CashflowTable grammar
+ * (features/portfolio/details-panel.tsx CashflowTable: rounded bg-bg-tertiary
+ * scroll box, Payment-Date/Leg/Rate/Cashflow column shapes, mono tabular
+ * cells). Mirrored, not imported: CashflowTable is file-local to a
+ * lane-A-owned file this session — unification recorded in the report.
+ */
+function CashLaneView({ lane }: { lane: ReturnType<typeof buildSettlementLane> }) {
+  return (
+    <>
+      {lane.days.length === 0 ? (
+        <div className="flex h-16 items-center justify-center rounded bg-bg-tertiary text-micro text-fg-dim">
+          구간 내 스왑 정산일 없음 — 정산일만 표시합니다 (정산 없는 날은 빈칸이 정직한 상태).
+        </div>
+      ) : (
+        <div className="max-h-64 overflow-auto rounded bg-bg-tertiary">
+          <table data-num className="w-full text-body">
+            <thead>
+              <tr className="border-b border-border-subtle">
+                <th className="py-1.5 px-2 text-left text-label font-bold text-fg-muted">결제일</th>
+                <th className="py-1.5 px-2 text-left text-label font-bold text-fg-muted">포지션</th>
+                <th className="py-1.5 px-2 text-right text-label font-bold text-fg-muted">고정금리</th>
+                <th className="py-1.5 px-2 text-right text-label font-bold text-fg-muted">정산 CF</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lane.days.flatMap((d) =>
+                d.rows.map((r, i) => (
+                  <tr key={`${d.day}-${r.positionId}-${i}`} className="border-t border-border-subtle">
+                    <td className="py-1.5 px-2 font-mono tabular-nums text-fg-secondary">
+                      {r.date ?? `D+${r.day}`}
+                    </td>
+                    <td className="py-1.5 px-2 text-fg-muted">{r.positionName || r.positionId}</td>
+                    <td className="py-1.5 px-2 text-right font-mono tabular-nums text-fg-secondary">
+                      {r.fixedRate.toFixed(4)}%
+                    </td>
+                    <td className="py-1.5 px-2 text-right font-mono tabular-nums text-fg-primary">
+                      {Math.round(r.settledCf).toLocaleString()}
+                    </td>
+                  </tr>
+                )),
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {lane.windows.length > 0 &&
+        (lane.allMatch ? (
+          <p className="mt-2 text-micro text-fg-dim">
+            엔진 정산-현금 레인(일별 대사 settleCf)과 창구별 대사 일치 (±₩1).
+          </p>
+        ) : (
+          <div className="mt-2 text-micro text-sem-danger">
+            엔진 정산-현금 레인과 불일치:
+            {lane.windows
+              .filter((w) => !w.match)
+              .map((w) => (
+                <span key={w.reconDay} data-num className="ml-2">
+                  {w.date} 예상 {formatKrwAxisSigned(w.projectedSum)} vs 엔진{" "}
+                  {formatKrwAxisSigned(w.engineSettleCf)}
+                </span>
+              ))}
+          </div>
+        ))}
+      <p className="mt-1 text-micro text-fg-dim">
+        시나리오 픽싱 기준 예상 스왑 순정산 — 엔진 FM 경로가 산출한 정산 이벤트(scf) 그대로이며,
+        이미 픽싱된 구간은 시나리오와 무관하게 실현 정산과 같습니다. 채권 현금흐름은 보류
+        (스왑 전용 레인).
+      </p>
+    </>
   );
 }
 

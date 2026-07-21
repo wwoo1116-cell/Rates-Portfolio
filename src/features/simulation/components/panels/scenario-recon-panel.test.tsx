@@ -123,6 +123,31 @@ describe("ScenarioReconPanel (RECON-SCEN M1–M3)", () => {
     expect(screen.getByText(/시계열형 미리보기와 동일한 원천/)).toBeTruthy();
   });
 
+  it("T4b 정산 CF subtab: settlement rows in the CashflowTable grammar + engine-lane 대사 line", () => {
+    seedRun();
+    render(<ScenarioReconPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "정산 CF" }));
+    // Settlement days only (2026-04-20 / 2026-05-08 in the fixture window).
+    expect(screen.getByText("2026-04-20")).toBeTruthy();
+    expect(screen.getByText("2026-05-08")).toBeTruthy();
+    expect(screen.getByText("IRS-PAY")).toBeTruthy();
+    expect(screen.getByText("-6,164,384")).toBeTruthy();
+    expect(screen.getByText("3,657,534")).toBeTruthy();
+    expect(screen.getByText(/창구별 대사 일치/)).toBeTruthy();
+    expect(screen.getByText(/채권 현금흐름은 보류/)).toBeTruthy();
+  });
+
+  it("T4b honest empty: a run without settlements says so instead of zero rows", () => {
+    seedRun();
+    const fx = cloneFixture(loadFixture("linear"));
+    fx.response.irsSettlementEvents = [];
+    for (const r of fx.response.irsDailyReconciliation ?? []) r.settleCf = 0;
+    useSimulationDataStore.setState({ lastRun: fx.response, lastRunRequest: fx.request });
+    render(<ScenarioReconPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "정산 CF" }));
+    expect(screen.getByText(/구간 내 스왑 정산일 없음/)).toBeTruthy();
+  });
+
   it("honest empty: a run without decompositionDaily explains itself instead of charting nothing", () => {
     seedRun();
     const fx = cloneFixture(loadFixture("linear"));
