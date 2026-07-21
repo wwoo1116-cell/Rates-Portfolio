@@ -98,7 +98,30 @@ export interface SeriesChartClickContext {
   /** Nearest series (resolved through ITS OWN price scale — dual-axis safe)
    * and its pixel distance, so hosts can apply their own hit radius. */
   nearest: { id: string; dist: number } | null;
+  /** FB5R R1 — every visible series' plotted value at the clicked date, sourced
+   * from the chart's own param.seriesData (same-source, no recompute), so hosts
+   * can PIN a crosshair readout to a clicked/traced date. Additive field: click
+   * consumers that ignore it are behaviorally unchanged. */
+  readout: SeriesChartReadout;
   param: MouseEventParams;
+}
+
+/** FB5R R1 — one series' value under the crosshair/click, drawn from the chart's
+ * own plotted point (param.seriesData). `value`/`text` are null on a day the
+ * series has no point (honest —, never a fabricated 0). `text` is pre-formatted
+ * through the series' OWN resolved formatter, so a host readout row can never
+ * disagree with the chart's axis/tooltip. */
+export interface SeriesChartReadoutPoint {
+  id: string;
+  label: string;
+  color: string;
+  value: number | null;
+  text: string | null;
+}
+export interface SeriesChartReadout {
+  /** ISO date under the crosshair/click (null when off the time axis). */
+  date: string | null;
+  points: SeriesChartReadoutPoint[];
 }
 
 interface SeriesChartProps {
@@ -123,6 +146,13 @@ interface SeriesChartProps {
   badgeLimit?: number;
   /** Mount-time chart-option overrides (e.g. canonical --bg-surface canvas). */
   chartOptions?: DeepPartial<ChartOptions>;
+  /** FB5R R1 — opt-in (default off): fires on every crosshair move with each
+   * VISIBLE series' plotted value at the crosshair date, sourced from the
+   * chart's own param.seriesData (same-source, no recompute) and pre-formatted
+   * via each series' resolved formatter; null when the crosshair leaves the
+   * data. Hosts render a readout row bound to the crosshair. Every consumer
+   * that omits this prop is byte-identical — the readout branch never runs. */
+  onCrosshairMove?: (readout: SeriesChartReadout | null) => void;
   onRemoveSeries?: (id: string) => void;
   onClick?: (ctx: SeriesChartClickContext) => void;
   onChartReady?: (chart: IChartApi) => void;
@@ -148,6 +178,7 @@ export function SeriesChart({
   priceLineVisible,
   badgeLimit,
   chartOptions,
+  onCrosshairMove,
   onRemoveSeries,
   onClick,
   onChartReady,
@@ -182,6 +213,8 @@ export function SeriesChart({
   useLayoutEffect(() => { onClickRef.current = onClick; }, [onClick]);
   const tooltipRef = useRef(tooltip);
   useLayoutEffect(() => { tooltipRef.current = tooltip; }, [tooltip]);
+  const onCrosshairMoveRef = useRef(onCrosshairMove);
+  useLayoutEffect(() => { onCrosshairMoveRef.current = onCrosshairMove; }, [onCrosshairMove]);
 
   /** Candidate series for snapping/click resolution — visible ones only. */
   const visibleSeries = useCallback((): Map<string, ISeriesApi<"Line">> => {
@@ -191,6 +224,33 @@ export function SeriesChart({
     }
     return out;
   }, []);
+
+  /** FB5R R1 — snapshot every VISIBLE series at the crosshair/click point from
+   * lightweight-charts' own param.seriesData (the exact points the lines are
+   * drawn from). A visible series with no point at that time reads null (honest
+   * —). `text` is formatted through the series' own resolved formatter, so the
+   * readout row can never disagree with the chart. Same technique as the FB5-B
+   * 시계열형 readout, generalized to the canonical host. */
+  const buildReadout = useCallback((params: MouseEventParams): SeriesChartReadout => {
+    const date = params.time != null ? timeToIsoDate(params.time) : null;
+    const candidates = visibleSeries();
+    const points: SeriesChartReadoutPoint[] = [];
+    for (const def of seriesDefsRef.current) {
+      const s = candidates.get(def.id);
+      if (!s) continue; // hidden/absent series omitted
+      const d = params.seriesData.get(s) as { value?: number } | undefined;
+      const value = d?.value != null && Number.isFinite(d.value) ? d.value : null;
+      const fmt = resolveSeriesFormatter(def) ?? ((v: number) => v.toLocaleString());
+      points.push({
+        id: def.id,
+        label: def.label,
+        color: def.color,
+        value,
+        text: value == null ? null : fmt(value),
+      });
+    }
+    return { date, points };
+  }, [visibleSeries]);
 
   const handleChartReady = useCallback((chart: IChartApi) => {
     chartRef.current = chart;
@@ -204,15 +264,24 @@ export function SeriesChart({
         const hit = seriesDistanceY(param, s);
         if (hit && (nearest == null || hit.dist < nearest.dist)) nearest = { id, dist: hit.dist };
       }
-      cb({ date: param.time != null ? timeToIsoDate(param.time) : null, nearest, param });
+      cb({
+        date: param.time != null ? timeToIsoDate(param.time) : null,
+        nearest,
+        readout: buildReadout(param),
+        param,
+      });
     });
 
     chart.subscribeCrosshairMove((params: MouseEventParams) => {
       if (!params.point) {
         setReticle(null);
         setHover(null);
+        onCrosshairMoveRef.current?.(null);
         return;
       }
+      // FB5R R1 — opt-in per-series readout at the crosshair (same param.seriesData
+      // the tooltip/reticle read). null when off the time axis.
+      onCrosshairMoveRef.current?.(params.time != null ? buildReadout(params) : null);
       const date = params.time != null ? timeToIsoDate(params.time) : undefined;
       const candidates = visibleSeries();
       const snapped = snapReticleToNearestSeries(chart, params, candidates.values());

@@ -1,20 +1,24 @@
 // @vitest-environment jsdom
 /**
- * SIM2-1 — 커브형/시계열형 toggle pins:
+ * SIM2-1 / FB5R — 커브형/시계열형 pins:
  *  - default is 커브형 with the term-structure chart (demo-sprint view intact);
  *  - 시계열형 renders buildTimePath through LwLineChart (dayToTime calendar
  *    slots), waypoint markers, dashed policy series when 금통위 events exist,
  *    and the +X.Xbp axis formatter;
  *  - 시계열형 performs ZERO network calls (base-quote hooks disabled);
  *  - payload parity: buildSimulateRequest is previewMode-blind;
- *  - previewMode survives unmount/remount (store-level, stage navigation).
+ *  - previewMode survives unmount/remount (stage navigation);
+ *  - FB5R R2: BOTH modes select through the SHARED Rate History control row
+ *    (InstrumentSelector: [자산군][등급][테너][Add] + removable chips) — the old
+ *    tenor-button / 곡선군 chip rows are gone;
+ *  - FB5R R3: the crosshair Δbp readout strip is an always-present, wired,
+ *    reserved bar (a flow-level pin the fully-mocked unit pin could not cover).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { buildSimulateRequest } from "../../lib/scenario-curves";
-import { buildScenarioOverlay } from "../../lib/input-curve-preview";
 import { createPathEvaluator } from "../../lib/recon/path-matrix";
 import { sectorColor } from "@/lib/chart-colors";
 import { buildTimePath } from "../../lib/scenario-preview";
@@ -130,6 +134,21 @@ function seed(previewMode: "curve" | "path" = "curve", overrides: Record<string,
   });
 }
 
+/** FB5R R2 — add an instrument through the shared RH control row. Each field is
+ * a Blueprint HTMLSelect labeled 자산군/등급/테너; the Add button emits it. */
+function addInstrument(opts: { family?: string; rating?: string; tenor?: string } = {}) {
+  if (opts.family) fireEvent.change(screen.getByLabelText("자산군"), { target: { value: opts.family } });
+  if (opts.rating) fireEvent.change(screen.getByLabelText("등급"), { target: { value: opts.rating } });
+  if (opts.tenor) fireEvent.change(screen.getByLabelText("테너"), { target: { value: opts.tenor } });
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+}
+
+/** The 자산군 dropdown's offered option values. */
+function familyOptions(): string[] {
+  const select = screen.getByLabelText("자산군") as HTMLSelectElement;
+  return [...select.options].map((o) => o.value);
+}
+
 beforeEach(() => {
   lwProps = null;
   snapshotSpy.mockClear();
@@ -147,8 +166,6 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
   it("defaults to 커브형: term-structure chart + pressed segment", async () => {
     seed("curve");
     render(<CurveViewPanel />);
-    // findBy: the quote queries start pending (loading placeholder) and
-    // resolve in a microtask — the chart mounts once they settle.
     expect(await screen.findByTestId("term-structure")).toBeTruthy();
     expect(screen.queryByTestId("lw-path-chart")).toBeNull();
     expect(
@@ -190,7 +207,7 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     expect(screen.getByText(/점선 = 기준금리 누적 변동/)).toBeTruthy();
   });
 
-  it("시계열형 performs ZERO network calls (base-quote hooks disabled)", () => {
+  it("시계열형 performs ZERO network calls (base-quote AND taxonomy hooks disabled)", () => {
     seed("path");
     render(<CurveViewPanel />);
     expect(screen.getByTestId("lw-path-chart")).toBeTruthy();
@@ -254,27 +271,33 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     expect(screen.queryByLabelText("D+180 웨이포인트 드래그")).toBeNull();
   });
 
-  // ── RECON-SCEN F2 — 시계열형 multi-series (tenor × 곡선군) ──
+  // ── FB5R R2 — 시계열형 series via the shared RH control row ──
 
-  it("F2 defaults: anchor 국고채 3Y pre-selected; every path-machinery pillar offered as a chip", () => {
+  it("R2: 시계열형 selects through the RH control row (자산군+테너 dropdowns + Add); anchor chip is the default", () => {
     seed("path");
     render(<CurveViewPanel />);
-    expect((screen.getByRole("button", { name: "3Y" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
-    expect((screen.getByRole("button", { name: "국고채" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    // The RH selector grammar: 자산군 + 테너 dropdowns and an Add button (the old
+    // 1D~10Y tenor button row is gone).
+    expect(screen.getByLabelText("자산군")).toBeTruthy();
+    expect(screen.getByLabelText("테너")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add" })).toBeTruthy();
+    // 등급 is N/A for the family-based path.
+    expect((screen.getByLabelText("등급") as HTMLSelectElement).disabled).toBe(true);
+    // The tenor dropdown offers every path pillar.
+    const tenorSel = screen.getByLabelText("테너") as HTMLSelectElement;
     for (const pillar of ["1D", "3M", "9Y", "10Y"]) {
-      expect(screen.getByRole("button", { name: pillar })).toBeTruthy();
+      expect([...tenorSel.options].map((o) => o.value)).toContain(pillar);
     }
-    for (const fam of ["IRS", "공사채", "시은채", "회사채", "여전채"]) {
-      expect((screen.getByRole("button", { name: fam }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("false");
-    }
-    expect(lwProps!.series.length).toBe(1); // anchor only, no policy series
+    // Default = the anchor series chip (국고채 3Y), a single drawn series.
+    expect(screen.getByLabelText("Remove 국고채 3Y")).toBeTruthy();
+    expect(lwProps!.series.length).toBe(1);
   });
 
-  it("F2 pin: a selected non-anchor tenor series equals the corresponding M2 matrix row", async () => {
+  it("R2/F2 pin: adding a non-anchor tenor equals the corresponding M2 matrix row; anchor stays series[0]", async () => {
     const { buildPathMatrix, PATH_PILLARS } = await import("../../lib/recon/path-matrix");
     seed("path");
     render(<CurveViewPanel />);
-    fireEvent.click(screen.getByRole("button", { name: "5Y" }));
+    addInstrument({ tenor: "5Y" }); // 국고채 5Y (default family)
 
     expect(lwProps!.series.length).toBe(2); // anchor first + 5Y
     const request = buildSimulateRequest(useSimulationDataStore.getState().inputs, DEFAULT_SCENARIO_PARAMS);
@@ -288,7 +311,7 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     expect(lwProps!.series[0].data.map((p) => p.value)).toEqual(expected.map((p) => p.gov3y));
   });
 
-  it("F2 pin: a family series equals base + its spread staircase (여전채 → 카드채 curve)", async () => {
+  it("R2/F2 pin: a family series equals base + its spread staircase (여전채 → 카드채 curve)", async () => {
     const { buildPathMatrix, PATH_PILLARS, createPathEvaluator } = await import("../../lib/recon/path-matrix");
     const params = {
       ...DEFAULT_SCENARIO_PARAMS,
@@ -296,7 +319,7 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     };
     seed("path", { params });
     render(<CurveViewPanel />);
-    fireEvent.click(screen.getByRole("button", { name: "여전채" }));
+    addInstrument({ family: "여전채", tenor: "3Y" });
 
     expect(lwProps!.series.length).toBe(2); // anchor + 여전채 3Y
     const request = buildSimulateRequest(useSimulationDataStore.getState().inputs, params);
@@ -314,28 +337,18 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     });
   });
 
-  it("F2: deselecting the anchor removes waypoint markers and disables drag (no fake host series)", async () => {
+  it("R2/F2: removing the anchor chip removes waypoint markers and disables drag (no fake host series)", async () => {
     seed("path", { params: GRID });
     render(<CurveViewPanel />);
     await screen.findByLabelText("D+30 웨이포인트 드래그");
-    fireEvent.click(screen.getByRole("button", { name: "5Y" })); // keep a tenor selected
-    fireEvent.click(screen.getByRole("button", { name: "3Y" })); // drop the anchor
+    addInstrument({ tenor: "5Y" }); // keep a non-anchor series drawn
+    fireEvent.click(screen.getByLabelText("Remove 국고채 3Y")); // drop the anchor
     expect(screen.queryByLabelText("D+30 웨이포인트 드래그")).toBeNull();
     expect(lwProps!.markers!.length).toBe(0);
     expect(screen.getByText(/드래그는 국고채 3Y 표시 중에만/)).toBeTruthy();
   });
 
-  it("F2: the last selected tenor/family cannot be deselected (never an empty chart)", () => {
-    seed("path");
-    render(<CurveViewPanel />);
-    fireEvent.click(screen.getByRole("button", { name: "3Y" }));
-    expect((screen.getByRole("button", { name: "3Y" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "국고채" }));
-    expect((screen.getByRole("button", { name: "국고채" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
-    expect(lwProps!.series.length).toBe(1);
-  });
-
-  it("F2: composite overlay — families × tenors, family colors distinct, policy series appended last", () => {
+  it("R2/F2: composite overlay — families × tenors, family colors distinct, policy series appended last", () => {
     seed("path", {
       params: {
         ...DEFAULT_SCENARIO_PARAMS,
@@ -343,21 +356,32 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
       },
     });
     render(<CurveViewPanel />);
-    fireEvent.click(screen.getByRole("button", { name: "10Y" }));
-    fireEvent.click(screen.getByRole("button", { name: "IRS" }));
-    // 2 tenors × 2 families + dashed policy = 5 series, anchor first, policy last.
+    addInstrument({ tenor: "10Y" }); // 국고채 10Y
+    addInstrument({ family: "IRS", tenor: "3Y" }); // IRS 3Y
+    addInstrument({ family: "IRS", tenor: "10Y" }); // IRS 10Y
+    // anchor 국고채3Y + 국고채10Y + IRS3Y + IRS10Y + dashed policy = 5.
     expect(lwProps!.series.length).toBe(5);
     expect(lwProps!.series[4].dashed).toBe(true);
     const colors = new Set(lwProps!.series.slice(0, 4).map((s) => s.color));
     expect(colors.size).toBe(2); // one established color per family
   });
 
-  // ── FB5 B2 — 시계열형 per-series crosshair Δbp readout ──
+  // ── FB5R R3 — 시계열형 crosshair Δbp readout (relocated + flow pin) ──
 
-  it("B2: crosshair readout shows each visible series' Δbp under the date; — on a whitespace day", () => {
+  it("R3 flow pin: the readout strip is present by default (not gated) and onCrosshairMove is wired to the chart", () => {
+    seed("path");
+    render(<CurveViewPanel />);
+    // Reserved strip mounted with NO hover — the gap the fully-mocked unit pin
+    // left (it hand-called onCrosshairMove and never asserted the wiring/strip).
+    expect(screen.getByTestId("path-crosshair-readout")).toBeTruthy();
+    expect(screen.getByText(/차트에 커서를 올리면/)).toBeTruthy();
+    expect(typeof lwProps!.onCrosshairMove).toBe("function");
+  });
+
+  it("R3/B2: crosshair readout shows each visible series' Δbp under the date; — on a whitespace day", () => {
     seed("path", { params: GRID });
     render(<CurveViewPanel />);
-    fireEvent.click(screen.getByRole("button", { name: "5Y" })); // 2 tenor series
+    addInstrument({ tenor: "5Y" }); // 2 tenor series
 
     // Series carry per-series labels for the readout (family + tenor).
     const labels = lwProps!.series.map((s) => s.label);
@@ -376,15 +400,16 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
       });
     });
 
-    expect(screen.getByText("2026-08-14")).toBeTruthy(); // baseDate + 30d (UTC)
-    expect(screen.getByText("+5.0bp")).toBeTruthy();
-    expect(screen.getByText("국고채 5Y")).toBeTruthy();
+    const strip = screen.getByTestId("path-crosshair-readout");
+    expect(within(strip).getByText("2026-08-14")).toBeTruthy(); // baseDate + 30d (UTC)
+    expect(within(strip).getByText("+5.0bp")).toBeTruthy();
+    expect(within(strip).getByText("국고채 5Y")).toBeTruthy();
     // The null series reads — (honest whitespace), never a fabricated +0.0bp.
-    expect(screen.queryByText("+0.0bp")).toBeNull();
-    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    expect(within(strip).queryByText("+0.0bp")).toBeNull();
+    expect(within(strip).getAllByText("—").length).toBeGreaterThan(0);
   });
 
-  it("B2: crosshair leaving the data (null readout) hides the readout row", () => {
+  it("R3/B2: crosshair leaving the data (null readout) falls back to the idle hint (strip stays)", () => {
     seed("path", { params: GRID });
     render(<CurveViewPanel />);
     act(() => {
@@ -396,24 +421,28 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     expect(screen.getByText("2026-08-14")).toBeTruthy();
     act(() => lwProps!.onCrosshairMove!(null));
     expect(screen.queryByText("2026-08-14")).toBeNull();
+    // Strip is reserved (never unmounts) — the idle hint returns.
+    expect(screen.getByTestId("path-crosshair-readout")).toBeTruthy();
+    expect(screen.getByText(/차트에 커서를 올리면/)).toBeTruthy();
   });
 
-  // ── FB4 T2 — 커브형: base curves × families + scenario overlay ──
+  // ── FB5R R2 — 커브형: base curves × families via the shared control row ──
 
-  it("FB4/FB5: 국고채+IRS pressed; 여전채 offered (taxonomy-carried, full PVBP name); 통안채 NOT offered (no snapshot curve)", async () => {
+  it("R2/FB5: default 국고채+IRS chips; 자산군 offers 여전채 (carried), never 통안채 (no snapshot curve)", async () => {
     seed("curve");
     render(<CurveViewPanel />);
     expect(await screen.findByTestId("term-structure")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "국고채" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
-    expect((screen.getByRole("button", { name: "IRS" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
-    expect((screen.getByRole("button", { name: "여전채" }) as HTMLButtonElement).getAttribute("aria-pressed")).toBe("false");
-    // 통안채/특은채 carry no distinct curve in the credit-matrix snapshot → absent,
-    // never a clickable chip that silently draws nothing (FB5 honesty).
-    expect(screen.queryByRole("button", { name: "통안채" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "특은채" })).toBeNull();
+    // Default family chips.
+    expect(screen.getByLabelText("Remove 국고채")).toBeTruthy();
+    expect(screen.getByLabelText("Remove IRS")).toBeTruthy();
+    // 테너 is N/A for whole-curve selection.
+    expect((screen.getByLabelText("테너") as HTMLSelectElement).disabled).toBe(true);
+    await waitFor(() => expect(familyOptions()).toContain("여전채"));
+    expect(familyOptions()).not.toContain("통안채");
+    expect(familyOptions()).not.toContain("특은채");
   });
 
-  it("FB4 curves: solid base + same-color DASHED ghost per family — sector tokens only, no new hues", async () => {
+  it("R2/FB4 curves: solid base + same-color DASHED ghost per family — sector tokens only, no new hues", async () => {
     seed("curve");
     render(<CurveViewPanel />);
     await screen.findByTestId("term-structure");
@@ -426,45 +455,51 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     expect(govBase.color).toBe(sectorColor("국고채"));
     expect(irsGhost.dashed).toBe(true);
     expect(irsGhost.color).toBe(irsBase.color); // Tangerine — the established IRS hue
-    // No-forked-math (panel-level): the ghost values ARE the lib overlay's.
-    const { inputs, params } = useSimulationDataStore.getState();
-    const req = buildSimulateRequest(inputs, params);
-    const expected = buildScenarioOverlay(req, params.simDays, [
-      { key: "국고채", quotes: [{ t: 1, label: "1Y", rate: 0.026 }, { t: 3, label: "3Y", rate: 0.027 }] },
-    ]);
-    expect(expected.series[0].shockedPct.length).toBeGreaterThan(0); // machinery reachable
   });
 
-  it("FB4: selecting 여전채 adds its base+ghost pair in its sector token", async () => {
+  it("R2/FB4: adding 여전채 appends its base+ghost pair in its sector token", async () => {
     seed("curve");
     render(<CurveViewPanel />);
     await screen.findByTestId("term-structure");
-    fireEvent.click(screen.getByRole("button", { name: "여전채" }));
+    await waitFor(() => expect(familyOptions()).toContain("여전채"));
+    addInstrument({ family: "여전채" });
     await waitFor(() => expect(termProps!.curves.length).toBe(6));
     const card = termProps!.curves.find((c) => c.label === "여전채")!;
     expect(card.color).toBe(sectorColor("여전채"));
     expect(termProps!.curves.find((c) => c.label === "여전채 시나리오")!.dashed).toBe(true);
   });
 
-  it("FB5 B1: a RATED sector fetches its base curve at the representative rating (not the silent rating:null)", async () => {
+  it("R2/FB5 B1: adding a RATED sector fetches its base curve at the default representative rating (ratings[0])", async () => {
     seed("curve");
     render(<CurveViewPanel />);
     await screen.findByTestId("term-structure");
-    fireEvent.click(screen.getByRole("button", { name: "여전채" }));
-    // The offered chip DRAWS (base+ghost pair present) — no silent blank…
+    await waitFor(() => expect(familyOptions()).toContain("여전채"));
+    addInstrument({ family: "여전채" }); // 등급 defaults to ratings[0] = "AAA (카드)"
     await waitFor(() => expect(termProps!.curves.some((c) => c.label === "여전채")).toBe(true));
-    // …because the request carried the taxonomy's representative rating
-    // (ratings[0]) for every 여전채 leg, never null (the FB5 root-cause fix).
     await waitFor(() => {
       const cardLegs = seriesSpy.mock.calls.flatMap((c) => c[0].legs).filter((l) => l.sector === "여전채");
       expect(cardLegs.length).toBeGreaterThan(0);
       expect(cardLegs.every((l) => l.rating === "AAA (카드)")).toBe(true);
     });
-    // And the representative rating is disclosed (never passed off as the whole sector).
+    // …and the tier is disclosed (never passed off as the whole sector).
     expect(screen.getByText(/기준 등급:.*여전채 AAA \(카드\)/)).toBeTruthy();
   });
 
-  it("FB5 B1: 국고채 (unrated) still fetches with rating:null", async () => {
+  it("R2 amendment: the live 등급 dropdown redraws the family's curve at the CHOSEN tier", async () => {
+    seed("curve");
+    render(<CurveViewPanel />);
+    await screen.findByTestId("term-structure");
+    await waitFor(() => expect(familyOptions()).toContain("여전채"));
+    addInstrument({ family: "여전채", rating: "AA (카드)" }); // pick the second tier
+    await waitFor(() => {
+      const cardLegs = seriesSpy.mock.calls.flatMap((c) => c[0].legs).filter((l) => l.sector === "여전채");
+      expect(cardLegs.length).toBeGreaterThan(0);
+      expect(cardLegs.every((l) => l.rating === "AA (카드)")).toBe(true);
+    });
+    expect(screen.getByText(/기준 등급:.*여전채 AA \(카드\)/)).toBeTruthy();
+  });
+
+  it("R2/FB5 B1: 국고채 (unrated) still fetches with rating:null", async () => {
     seed("curve");
     render(<CurveViewPanel />);
     await screen.findByTestId("term-structure");
@@ -475,20 +510,19 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     });
   });
 
-  it("FB5 B1 (ruling ④): every offered 커브형 family label is a PVBP sector name (or IRS)", async () => {
+  it("R2/FB5 B1 (ruling ④): every offered 커브형 자산군 option is a PVBP sector name (or IRS)", async () => {
     const { SECTOR_ORDER } = await import("@/lib/chart-colors");
     const allowed = new Set<string>([...SECTOR_ORDER, "IRS"]);
     seed("curve");
     render(<CurveViewPanel />);
     await screen.findByTestId("term-structure");
-    // The 곡선군 chip row: labels come straight from the PVBP taxonomy.
-    for (const name of ["국고채", "IRS", "여전채"]) {
+    await waitFor(() => expect(familyOptions()).toContain("여전채"));
+    for (const name of familyOptions()) {
       expect(allowed.has(name)).toBe(true);
-      expect(screen.getByRole("button", { name })).toBeTruthy();
     }
   });
 
-  it("FB4: a PARALLEL scenario shows ONE terminal overlay — no scrubber; legend names the slice", async () => {
+  it("R2/FB4: a PARALLEL scenario shows ONE terminal overlay — no scrubber; legend names the slice", async () => {
     seed("curve"); // DEFAULT params: exact linear ramp → not shaped
     render(<CurveViewPanel />);
     await screen.findByTestId("term-structure");
@@ -496,7 +530,7 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     expect(screen.getByText(/점선 = 시나리오 \(D\+180\)/)).toBeTruthy();
   });
 
-  it("FB4: a SHAPED scenario gets the D+n scrubber, readout bound to the slice, ghosts re-sliced through the evaluator", async () => {
+  it("R2/FB4: a SHAPED scenario gets the D+n scrubber, readout bound to the slice, ghosts re-sliced", async () => {
     const shaped = {
       ...DEFAULT_SCENARIO_PARAMS,
       simDays: 90,
@@ -512,16 +546,12 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
 
     const scrubber = screen.getByLabelText("시나리오 시점 (D+n)") as HTMLInputElement;
     expect(scrubber.max).toBe("90");
-    // Default position = horizon end (the readout's exact D+n +bp format —
-    // distinct from the header's unformatted "+30bp").
     expect(screen.getByText("D+90 +30.0bp")).toBeTruthy();
 
     fireEvent.change(scrubber, { target: { value: "45" } });
-    // Readout binds to the slice: designed anchor bp at D+45 is the waypoint's 25.
     expect(screen.getByText("D+45 +25.0bp")).toBeTruthy();
     expect(screen.getByText(/점선 = 시나리오 \(D\+45\)/)).toBeTruthy();
 
-    // Ghost points re-slice through the SAME evaluator (no forked math).
     await waitFor(() => {
       const govGhost = termProps!.curves.find((c) => c.label === "국고채 시나리오")!;
       const { inputs, params } = useSimulationDataStore.getState();
@@ -538,7 +568,7 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     });
   });
 
-  it("FB4: an unselected family costs no request (per-family fetch gating)", async () => {
+  it("R2/FB4: an unselected family costs no request (per-family fetch gating)", async () => {
     seed("curve");
     render(<CurveViewPanel />);
     await screen.findByTestId("term-structure");
@@ -563,33 +593,32 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
 });
 
 describe("CurveViewPanel — N1 anchor-driven gating", () => {
-  it("anchor 5Y: its tenor chip auto-selects, drag caption names the anchor, markers ride it", () => {
+  it("anchor 5Y: its series chip auto-adds, drag caption names the anchor, markers ride it", () => {
     seed("path", {
       params: { ...DEFAULT_SCENARIO_PARAMS, anchorTenor: "5Y" },
     });
     render(<CurveViewPanel />);
 
-    // The 5Y chip is pressed (auto-selected for the anchor)…
-    const chip5y = screen.getAllByRole("button", { name: "5Y" })[0] as HTMLButtonElement;
-    expect(chip5y.getAttribute("aria-pressed")).toBe("true");
+    // The 국고채 5Y anchor chip is present (auto-added for the anchor)…
+    expect(screen.getByLabelText("Remove 국고채 5Y")).toBeTruthy();
     // …the caption names the anchor pillar…
     expect(screen.getByText(/국고채 5Y 드래그 가능/)).toBeTruthy();
     // …and waypoint markers exist (anchor visible ⇒ dots have a host series).
     expect(lwProps?.markers?.length).toBeGreaterThan(0);
   });
 
-  it("anchor switch AFTER mount adds the new anchor chip without deselecting the old", () => {
+  it("anchor switch AFTER mount adds the new anchor chip without dropping the old", () => {
     seed("path");
     render(<CurveViewPanel />);
-    expect((screen.getAllByRole("button", { name: "3Y" })[0] as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByLabelText("Remove 국고채 3Y")).toBeTruthy();
 
     act(() => {
       useSimulationDataStore.setState((s) => ({
         params: { ...s.params, anchorTenor: "10Y" },
       }));
     });
-    expect((screen.getAllByRole("button", { name: "10Y" })[0] as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
-    expect((screen.getAllByRole("button", { name: "3Y" })[0] as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByLabelText("Remove 국고채 10Y")).toBeTruthy();
+    expect(screen.getByLabelText("Remove 국고채 3Y")).toBeTruthy();
     expect(screen.getByText(/국고채 10Y 드래그 가능|드래그는 국고채 10Y 표시 중에만/)).toBeTruthy();
   });
 });
