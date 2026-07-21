@@ -76,4 +76,18 @@ behavioral vitest pin + route health (all routes 200). Summary:
   `api-client.ts`/`api-types.ts`) remain untouched.
 
 ## Push confirmation
-<!-- filled after push -->
+`git push origin --all` then `--tags` to `github.com/wwoo1116-cell/Rates-Portfolio`:
+- `feat/simulation-migration`: **`0471ed4..97d550c`** (fast-forward, backup).
+- `[new branch] fb5/rh-trace`, `[new branch] fb5/sim-recon-display` (lane branches retained).
+- `[new tag] fb5` → **`430ee53`** (annotated, pointing at the landed head `97d550c`).
+- Remote verify: `refs/tags/fb5 = 430ee53`, `refs/heads/feat/simulation-migration = 97d550c` ✓.
+- Worktrees: `wt-fb5-rh` + `wt-fb5-sim` removed (git-deregistered + on-disk cleaned,
+  main pnpm store intact); branches `fb5/rh-trace` + `fb5/sim-recon-display` retained.
+
+*(This trailing note is committed as a doc addendum on top of `97d550c`; the `fb5`
+tag intentionally marks `97d550c` — the merges + landing report + smoke evidence.)*
+
+---
+**Landed FE mainline head: `97d550c` (tag `fb5`), doc addendum on top.**
+:3000 rebuilt + RUNNING on the merged head (PID 16188, 200); :8000 BE untouched
+(PID 12596, 200). **Servers RUNNING — owner verification may begin.**
