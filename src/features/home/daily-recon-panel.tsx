@@ -79,7 +79,7 @@ function OutsideChip({ label, value }: { label: string; value: number }) {
     <span className="flex items-baseline gap-1.5 border border-border-subtle px-2 py-0.5">
       <span className="text-micro uppercase text-fg-dim">{label}</span>
       <SignedKrw value={value} />
-      <span className="text-micro text-fg-dim">비교 대상 아님</span>
+      <span className="text-micro text-fg-dim label-nowrap">비교 대상 아님</span>
     </span>
   );
 }
@@ -95,30 +95,30 @@ function BridgeLadderRow({ ladder, funding }: { ladder: BridgeLadder; funding: n
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border-dim pt-2">
       <span className="flex items-baseline gap-1.5">
         <span className="text-label uppercase text-fg-muted">테타</span>
-        <span className="text-micro text-fg-dim">(T−1 기지)</span>
+        <span className="text-micro text-fg-dim label-nowrap">(T−1 기지)</span>
         <SignedKrw value={ladder.theta} emphasis />
       </span>
       <LadderOp>+</LadderOp>
       <span className="flex items-baseline gap-1.5">
         <span className="text-label uppercase text-fg-muted">Assumed</span>
-        <span className="text-micro text-fg-dim">(PVBP×Δbp)</span>
+        <span className="text-micro text-fg-dim label-nowrap">(PVBP×Δbp)</span>
         <SignedKrw value={ladder.assumed} emphasis />
       </span>
       <LadderOp>=</LadderOp>
       <span className="flex items-baseline gap-1.5">
-        <span className="text-label uppercase text-fg-muted">예상 PnL</span>
+        <span className="text-label uppercase text-fg-muted label-nowrap">예상 PnL</span>
         <SignedKrw value={ladder.expected} emphasis />
       </span>
       <LadderOp>vs</LadderOp>
       <span className="flex items-baseline gap-1.5">
         <span className="text-label uppercase text-fg-muted">Realized</span>
-        <span className="text-micro text-fg-dim">(테타+채권평가+스왑평가)</span>
+        <span className="text-micro text-fg-dim label-nowrap">(테타+채권평가+스왑평가)</span>
         <SignedKrw value={ladder.realized} emphasis />
       </span>
       <LadderOp>→</LadderOp>
       <span className="flex items-baseline gap-1.5">
         <span className="text-label uppercase text-fg-muted">{RESIDUAL_LABEL}</span>
-        <span className="text-micro text-fg-dim">{RESIDUAL_CAPTION}</span>
+        <span className="text-micro text-fg-dim label-nowrap">{RESIDUAL_CAPTION}</span>
         <SignedKrw value={ladder.residual} emphasis />
         {ladder.residualPct !== null && (
           <span className="text-micro text-fg-dim">

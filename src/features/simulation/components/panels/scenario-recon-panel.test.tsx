@@ -193,6 +193,17 @@ describe("ScenarioReconPanel (RECON-SCEN M1–M3)", () => {
     expect(screen.getByText(/구간 내 스왑 정산일 없음/)).toBeTruthy();
   });
 
+  it("FB3 F4b — subtab labels carry the shared label-nowrap utility (경로 매트릭스 never breaks mid-word)", () => {
+    seedRun();
+    render(<ScenarioReconPanel />);
+    for (const name of ["대사", "KRD 그리드", "경로 매트릭스", "정산 CF"]) {
+      expect(
+        (screen.getByRole("button", { name }) as HTMLButtonElement).className,
+        name,
+      ).toContain("label-nowrap");
+    }
+  });
+
   it("honest empty: a run without decompositionDaily explains itself instead of charting nothing", () => {
     seedRun();
     const fx = cloneFixture(loadFixture("linear"));

@@ -85,7 +85,8 @@ export function ScenarioReconPanel() {
     <div className="bg-bg-secondary p-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-h2 text-fg-primary">시나리오 대사</h2>
-        <div className="w-72">
+        {/* FB3 F4b: wide enough that 경로 매트릭스/정산 CF fit un-wrapped. */}
+        <div className="w-96 max-w-full">
           <SegmentedButtons
             choices={VIEWS}
             value={view}

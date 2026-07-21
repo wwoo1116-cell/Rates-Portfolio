@@ -15,7 +15,7 @@ export function Chip({ label, value, onRemove, className }: ChipProps) {
   return (
     <span
       className={cn(
-        "inline-flex h-7 items-center overflow-hidden rounded bg-bg-secondary",
+        "inline-flex h-7 items-center overflow-hidden rounded bg-bg-secondary label-nowrap",
         className,
       )}
       title={rest.length > 0 ? values.join(", ") : undefined}

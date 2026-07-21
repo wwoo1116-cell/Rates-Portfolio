@@ -83,7 +83,7 @@ export function ReconRangeStrip() {
                 aria-pressed={view === v}
                 onClick={() => setView(v)}
                 className={cn(
-                  "px-2 py-0.5 text-micro",
+                  "px-2 py-0.5 text-micro label-nowrap",
                   view === v
                     ? "bg-sem-info-ghost text-sem-info shadow-[inset_0_0_0_1px_var(--sem-info)]"
                     : "text-fg-muted",
@@ -102,7 +102,7 @@ export function ReconRangeStrip() {
             <button
               type="button"
               onClick={widen}
-              className="border border-border-dim px-2 py-0.5 text-micro text-fg-muted transition-colors hover:bg-bg-tertiary"
+              className="border border-border-dim px-2 py-0.5 text-micro text-fg-muted transition-colors hover:bg-bg-tertiary label-nowrap"
             >
               +20일 확장
             </button>
@@ -111,7 +111,7 @@ export function ReconRangeStrip() {
             type="button"
             onClick={run}
             disabled={!canRun || running}
-            className="border border-sem-info bg-sem-info-ghost px-2 py-0.5 text-micro text-sem-info transition-colors hover:bg-sem-info-soft disabled:opacity-50"
+            className="border border-sem-info bg-sem-info-ghost px-2 py-0.5 text-micro text-sem-info transition-colors hover:bg-sem-info-soft disabled:opacity-50 label-nowrap"
           >
             {rows ? "재계산" : "계산"}
           </button>
