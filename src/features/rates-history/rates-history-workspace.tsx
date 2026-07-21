@@ -11,6 +11,7 @@ import {
 } from "dockview-react";
 import { RateHistoryChart } from "@/features/home/rate-history-chart";
 import { PnlTracePanel } from "@/features/home/pnl-trace-panel";
+import { DailyReconPanel } from "@/features/home/daily-recon-panel";
 import {
   SpreadPositionPanel,
   type SpreadPositionPanelParams,
@@ -34,10 +35,18 @@ const SpreadPositionPanelMemo = memo(function SpreadPositionPanelMemo(props: IDo
   return <SpreadPositionPanel params={props.params as SpreadPositionPanelParams} />;
 });
 
+// RECON-DAILY: the SAME shared component as Home's 일별 대사 tab (one
+// component + one endpoint set + one shared date pick = no mount divergence),
+// with the Rates-History-only range mode (per-day residual strip) enabled.
+const DailyReconPanelMemo = memo(function DailyReconPanelMemo() {
+  return <DailyReconPanel showRange />;
+});
+
 const components = {
   rates: (props: IDockviewPanelProps) => <RateHistoryPanel {...props} />,
   pnltrace: (props: IDockviewPanelProps) => <PnlTracePanelMemo {...props} />,
   spreadposition: (props: IDockviewPanelProps) => <SpreadPositionPanelMemo {...props} />,
+  dailyrecon: () => <DailyReconPanelMemo />,
 };
 
 const defaultTabComponent = (props: IDockviewPanelHeaderProps) => <DockviewTab {...props} />;
@@ -45,19 +54,37 @@ const rightHeaderActionsComponent = (props: IDockviewHeaderActionsProps) => (
   <DockviewActions {...props} />
 );
 
-const STORAGE_KEY = "dockview-layout:rates-history-v1";
+// v2 (RECON-DAILY): added the 일별 대사 하위탭 to the defaults — the bump
+// makes it appear for users with a saved v1 layout (same rationale as the
+// Home workspace's v8 bump).
+const STORAGE_KEY = "dockview-layout:rates-history-v2";
 const WORKSPACE_ID = "rates-history";
 
 const MANAGED_PANELS: ManagedPanelDef[] = [
   { id: "rh-rates-panel", title: "Rate History", component: "rates" },
+  {
+    id: "rh-dailyrecon-panel",
+    title: "일별 대사",
+    component: "dailyrecon",
+    referencePanelId: "rh-rates-panel",
+    direction: "within",
+  },
 ];
 
 function addDefaultPanels(api: DockviewApi) {
   api.clear();
-  api.addPanel({
+  const ratesPanel = api.addPanel({
     id: "rh-rates-panel",
     component: "rates",
     title: "Rate History",
+  });
+  api.addPanel({
+    id: "rh-dailyrecon-panel",
+    component: "dailyrecon",
+    title: "일별 대사",
+    position: { referencePanel: ratesPanel, direction: "within" },
+    // Rate History stays the tab a user lands on; recon is the drill-in.
+    inactive: true,
   });
 }
 

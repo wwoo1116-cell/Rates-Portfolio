@@ -29,13 +29,14 @@ import {
   closureFooter,
   contributionRows,
   excludedTenors,
+  realizedFromByClass,
   type ClosureFooter,
 } from "@/lib/daily-recon-math";
 import { CloseDateControl } from "./close-date-control";
 import { formatKrwCompact } from "./pnl-format";
 import { SectorTenorMatrix, type MatrixRow } from "./sector-tenor-matrix";
 import { TENOR_COLS, toMatrixRows } from "./pvbp-sensitivity-table";
-import type { DailyPnlFigures } from "@/lib/api-types";
+import { ReconRangeStrip } from "./recon-range-strip";
 
 /** Same saturation cap as the PVBP Sensitivity panel (±10M ₩/bp). */
 const KRD_CELL_RANGE = 10_000_000;
@@ -77,29 +78,6 @@ function OutsideChip({ label, value }: { label: string; value: number }) {
   );
 }
 
-/** The realized side of the comparison, or the honest reason there isn't one.
- * A class ABSENT from the book contributes 0 (a fact); a class whose mtm is
- * null or partial makes the whole footer unknowable (never partial-as-total). */
-function realizedBuckets(byClass?: { bond?: DailyPnlFigures; swap?: DailyPnlFigures }):
-  | { bondMtm: number; swapMtm: number }
-  | { disabledReason: string } {
-  const classes = [
-    { label: "채권평가", cls: byClass?.bond },
-    { label: "스왑평가", cls: byClass?.swap },
-  ];
-  for (const { label, cls } of classes) {
-    if (cls && (cls.mtm === null || !cls.mtm_complete)) {
-      return {
-        disabledReason: `실현 ${label}이 미완성입니다 (호가 미도착) — 부분값으로 ${RESIDUAL_LABEL}를 만들지 않습니다.`,
-      };
-    }
-  }
-  return {
-    bondMtm: byClass?.bond?.mtm ?? 0,
-    swapMtm: byClass?.swap?.mtm ?? 0,
-  };
-}
-
 function ClosureFooterRow({
   footer,
   theta,
@@ -138,7 +116,7 @@ function ClosureFooterRow({
   );
 }
 
-export function DailyReconPanel() {
+export function DailyReconPanel({ showRange = false }: { showRange?: boolean } = {}) {
   const {
     hasPositions,
     picked,
@@ -176,7 +154,7 @@ export function DailyReconPanel() {
   const excluded = deltaBp ? excludedTenors(TENOR_COLS, totalPvbpRow, deltaBp) : [];
 
   const assumedRow = contrib.find((r) => r.sector === "합계");
-  const realized = realizedBuckets(totalRow?.by_class);
+  const realized = realizedFromByClass(totalRow?.by_class);
   const footer =
     assumedRow && "bondMtm" in realized
       ? closureFooter(assumedRow.total, realized.bondMtm, realized.swapMtm)
@@ -290,6 +268,11 @@ export function DailyReconPanel() {
                   : "실현 평가 분해가 없어 대사를 표시하지 않습니다."}
             </div>
           )}
+
+          {/* Range mode (Rates History mount only): per-day residual strip.
+              Same lib arithmetic as the footer above — a strip row and the
+              single-date view cannot disagree about a date. */}
+          {showRange && <ReconRangeStrip />}
         </div>
       )}
     </div>

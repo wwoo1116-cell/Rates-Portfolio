@@ -24,6 +24,12 @@ vi.mock("@/hooks/use-api", () => ({
   useMarketDataRange: () => mockRange(),
   useMarketDataSnapshot: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
+// Range strip's compute hook — idle fixture; its own behavior is pinned in
+// recon-range-strip.test.tsx.
+const mockReconRange = vi.fn();
+vi.mock("@/hooks/use-recon-range", () => ({
+  useReconRange: () => mockReconRange(),
+}));
 
 const { DailyReconPanel } = await import("./daily-recon-panel");
 const { TENOR_COLS } = await import("./pvbp-sensitivity-table");
@@ -62,7 +68,22 @@ const TOTAL_ROW = {
   },
 };
 
+function reconRangeIdle() {
+  mockReconRange.mockReturnValue({
+    rows: undefined,
+    running: false,
+    progress: null,
+    error: null,
+    windowSize: 20,
+    maxWindow: 3,
+    canRun: true,
+    run: vi.fn(),
+    widen: vi.fn(),
+  });
+}
+
 function recon(over: Record<string, unknown> = {}) {
+  reconRangeIdle();
   mockRecon.mockReturnValue({
     hasPositions: true,
     picked: null,
@@ -186,5 +207,36 @@ describe("DailyReconPanel honest disabled states", () => {
     recon({ hasPositions: false, pvbpRows: undefined, totalRow: undefined });
     render(<DailyReconPanel />);
     expect(screen.getByText(/Upload portfolio data/)).toBeDefined();
+  });
+});
+
+describe("DailyReconPanel mount parity (Home vs Rates History)", () => {
+  /** The two mounts are the same component over the same hook — this pin
+   * proves a single fixture produces IDENTICAL closure numbers on both, and
+   * that the only difference is the Rates-History-only range strip. */
+  function footerText(container: HTMLElement): string[] {
+    const footer = Array.from(container.querySelectorAll("div")).find((d) =>
+      d.className.includes("border-t") && /Assumed/.test(d.textContent ?? ""),
+    )!;
+    return Array.from(footer.querySelectorAll("span.flex.items-baseline")).map(
+      (el) => el.textContent?.trim() ?? "",
+    );
+  }
+
+  it("renders identical closure numbers from one fixture on both mounts", () => {
+    recon();
+    const home = render(<DailyReconPanel />);
+    const homeFooter = footerText(home.container);
+    home.unmount();
+
+    recon();
+    const rh = render(<DailyReconPanel showRange />);
+    const rhFooter = footerText(rh.container);
+
+    expect(homeFooter.length).toBeGreaterThan(0);
+    expect(rhFooter).toEqual(homeFooter);
+    // The strip exists only on the Rates History mount.
+    expect(rh.container.textContent).toContain("잔차 시계열");
+    expect(home.container.textContent).not.toContain("잔차 시계열");
   });
 });

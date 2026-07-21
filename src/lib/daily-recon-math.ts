@@ -12,7 +12,7 @@
  * its own — both mounts render these functions' outputs, so two mounts can
  * never disagree about the same date.
  */
-import type { MarketDataResponse } from "@/lib/api-types";
+import type { DailyPnlFigures, MarketDataResponse } from "@/lib/api-types";
 
 /** The residual slot's label. Exported so the naming pin can assert on the
  * single source: the residual is 잔차 (what the first-order KRD estimate does
@@ -129,6 +129,43 @@ export interface ClosureFooter {
   residual: number;
   /** residual as a share of |realized|; null when realized == 0. */
   residualPct: number | null;
+}
+
+/** The realized side of the comparison, or the honest reason there isn't
+ * one. A class ABSENT from the book contributes 0 (a fact: no positions); a
+ * class whose mtm is null or partial makes the whole footer unknowable —
+ * never a partial value presented as the realized total. Shared by the
+ * single-date footer and the range strip so both mounts apply one rule. */
+export function realizedFromByClass(byClass?: {
+  bond?: DailyPnlFigures;
+  swap?: DailyPnlFigures;
+}): { bondMtm: number; swapMtm: number } | { disabledReason: string } {
+  const classes = [
+    { label: "채권평가", cls: byClass?.bond },
+    { label: "스왑평가", cls: byClass?.swap },
+  ];
+  for (const { label, cls } of classes) {
+    if (cls && (cls.mtm === null || !cls.mtm_complete)) {
+      return {
+        disabledReason: `실현 ${label}이 미완성입니다 (호가 미도착) — 부분값으로 ${RESIDUAL_LABEL}를 만들지 않습니다.`,
+      };
+    }
+  }
+  return {
+    bondMtm: byClass?.bond?.mtm ?? 0,
+    swapMtm: byClass?.swap?.mtm ?? 0,
+  };
+}
+
+/** The Assumed figure: the 합계 row's contribution total (Σ over MAPPED
+ * tenors of KRD@D−1 × Δbp). undefined when the response has no 합계 row. */
+export function assumedTotal(
+  columns: readonly string[],
+  pvbpRows: Array<Record<string, unknown>>,
+  deltaBp: Record<string, number | null>,
+): number | undefined {
+  const rows = contributionRows(columns, pvbpRows, deltaBp);
+  return rows.find((r) => r.sector === "합계")?.total;
 }
 
 /** Footer arithmetic. Callers must only invoke this when BOTH realized
