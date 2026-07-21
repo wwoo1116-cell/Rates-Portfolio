@@ -20,6 +20,7 @@ import { sectorColor } from "@/lib/chart-colors";
 import { buildTimePath } from "../../lib/scenario-preview";
 import { DEFAULT_SCENARIO_PARAMS, EMPTY_SIMULATION_INPUTS } from "../../types/simulation-port";
 import { useSimulationDataStore } from "../../store/simulation-data-store";
+import { dayToTime } from "../charts/lw-line-chart";
 import type { LwLineChartProps } from "../charts/lw-line-chart";
 
 // Chart hosts are canvas — mock both and capture the path-branch props.
@@ -349,6 +350,52 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     expect(lwProps!.series[4].dashed).toBe(true);
     const colors = new Set(lwProps!.series.slice(0, 4).map((s) => s.color));
     expect(colors.size).toBe(2); // one established color per family
+  });
+
+  // ── FB5 B2 — 시계열형 per-series crosshair Δbp readout ──
+
+  it("B2: crosshair readout shows each visible series' Δbp under the date; — on a whitespace day", () => {
+    seed("path", { params: GRID });
+    render(<CurveViewPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "5Y" })); // 2 tenor series
+
+    // Series carry per-series labels for the readout (family + tenor).
+    const labels = lwProps!.series.map((s) => s.label);
+    expect(labels).toContain("국고채 3Y");
+    expect(labels).toContain("국고채 5Y");
+
+    // Feed the readout the way LwLineChart does from param.seriesData — the
+    // panel renders those values verbatim (no recomputation), — for the null.
+    act(() => {
+      lwProps!.onCrosshairMove!({
+        time: dayToTime("2026-07-15", 30),
+        points: [
+          { label: "국고채 3Y", color: "#111111", value: 5 },
+          { label: "국고채 5Y", color: "#222222", value: null }, // whitespace
+        ],
+      });
+    });
+
+    expect(screen.getByText("2026-08-14")).toBeTruthy(); // baseDate + 30d (UTC)
+    expect(screen.getByText("+5.0bp")).toBeTruthy();
+    expect(screen.getByText("국고채 5Y")).toBeTruthy();
+    // The null series reads — (honest whitespace), never a fabricated +0.0bp.
+    expect(screen.queryByText("+0.0bp")).toBeNull();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  it("B2: crosshair leaving the data (null readout) hides the readout row", () => {
+    seed("path", { params: GRID });
+    render(<CurveViewPanel />);
+    act(() => {
+      lwProps!.onCrosshairMove!({
+        time: dayToTime("2026-07-15", 30),
+        points: [{ label: "국고채 3Y", color: "#111111", value: 5 }],
+      });
+    });
+    expect(screen.getByText("2026-08-14")).toBeTruthy();
+    act(() => lwProps!.onCrosshairMove!(null));
+    expect(screen.queryByText("2026-08-14")).toBeNull();
   });
 
   // ── FB4 T2 — 커브형: base curves × families + scenario overlay ──

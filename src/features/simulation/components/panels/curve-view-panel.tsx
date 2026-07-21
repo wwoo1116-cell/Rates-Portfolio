@@ -57,7 +57,13 @@ import { useSimulationPort } from "../../hooks/use-simulation";
 import { useSimulationDataStore } from "../../store/simulation-data-store";
 import { SegmentedButtons } from "../segmented-buttons";
 import { TermStructureChart, type TermCurveDef } from "../charts/term-structure-chart";
-import { LwLineChart, dayToTime, type LwMarker, type LwSeriesDef } from "../charts/lw-line-chart";
+import {
+  LwLineChart,
+  dayToTime,
+  type LwCrosshairReadout,
+  type LwMarker,
+  type LwSeriesDef,
+} from "../charts/lw-line-chart";
 import { WaypointDragOverlay } from "../charts/waypoint-drag-overlay";
 
 const PREVIEW_MODES = ["curve", "path"] as const;
@@ -103,6 +109,14 @@ const formatBpAxis = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}bp`;
 /** Display rounding for series points — the same 0.1bp-legible 2dp the
  * original buildTimePath view used. */
 const round2 = (v: number) => parseFloat(v.toFixed(2));
+
+/** FB5 B2 — the crosshair date label (UTC seconds → YYYY-MM-DD), matching the
+ * dayToTime UTC-slot convention the series use. */
+function formatCrosshairDate(tsSeconds: number): string {
+  const d = new Date(tsSeconds * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
 
 /** Multi-select toggle chip — the SegmentedButtons pressed recipe, minus the
  * mutual exclusion. */
@@ -188,6 +202,12 @@ export function CurveViewPanel() {
   // Scrubber position for SHAPED scenarios (null = horizon end).
   const [scrubDay, setScrubDay] = useState<number | null>(null);
 
+  // FB5 B2 — the 시계열형 per-series Δbp readout under the crosshair date. The
+  // values are the chart's own plotted points (LwLineChart sources them from
+  // param.seriesData), so this never recomputes and never disagrees with the
+  // lines. null = crosshair off the data.
+  const [readout, setReadout] = useState<LwCrosshairReadout | null>(null);
+
   // ONE request → ONE evaluator for both preview modes — the same structural
   // identity the payload-parity pin protects, and the T2 no-forked-math rule:
   // every overlay value flows through createPathEvaluator.
@@ -266,6 +286,8 @@ export function CurveViewPanel() {
     const defs: LwSeriesDef[] = combos.map(({ key, curve, pillar, isAnchor }) => ({
       color: familyColor(key),
       lineWidth: isAnchor ? 2 : 1,
+      // FB5 B2 — the crosshair-readout name (family + tenor).
+      label: `${key} ${pillar.label}`,
       data: days.map((d) => ({
         time: dayToTime(baseDate, d),
         value: round2(evaluator.cumBpAt(curve, pillar.t, d)),
@@ -277,6 +299,7 @@ export function CurveViewPanel() {
         color: t.axis,
         lineWidth: 2,
         dashed: true,
+        label: "기준금리",
         data: days.map((d) => ({ time: dayToTime(baseDate, d), value: evaluator.bokCumBpAt(d) })),
       });
     }
@@ -423,6 +446,7 @@ export function CurveViewPanel() {
               markers={pathMarkers}
               formatValue={formatBpAxis}
               onSeriesRebuilt={handleSeriesRebuilt}
+              onCrosshairMove={setReadout}
             />
             <WaypointDragOverlay
               chart={pathHost?.chart ?? null}
@@ -442,6 +466,29 @@ export function CurveViewPanel() {
 
       {isPath ? (
         <>
+          {/* FB5 B2 — per-series Δbp readout under the crosshair date. Each
+              value is the chart's own plotted point (never recomputed); a
+              series with no point on a whitespace day reads —. */}
+          {readout && readout.time != null && (
+            <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-micro">
+              <span data-num className="font-bold text-fg-secondary label-nowrap">
+                {formatCrosshairDate(readout.time)}
+              </span>
+              {readout.points.map((p, i) => (
+                <span
+                  key={p.label ?? i}
+                  data-num
+                  className="inline-flex items-center gap-1.5 label-nowrap"
+                >
+                  <span className="inline-block h-0.5 w-3" style={{ backgroundColor: p.color }} />
+                  <span className="text-fg-muted">{p.label ?? "—"}</span>
+                  <span className="text-fg-primary">
+                    {p.value == null ? "—" : formatBpAxis(p.value)}
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
           {/* Legend: established family colors for the selected 곡선군. */}
           <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-micro">
             {PREVIEW_FAMILIES.filter((key) => selFamilies.includes(key)).map((key) => (
