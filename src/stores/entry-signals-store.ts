@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { spreadId, type Leg, type SelectedInstrument } from "@/lib/rv-instruments";
+import { DEFAULT_SPREAD_WEIGHTS, spreadId, type Leg, type SelectedInstrument } from "@/lib/rv-instruments";
 
 /**
  * Shared state for the Entry Signals (Z-Score) tab. Every dockview panel in
@@ -137,6 +137,27 @@ export function migrateInstrumentV0(inst: unknown): SelectedInstrument | null {
   return inst as SelectedInstrument;
 }
 
+/**
+ * v1 -> v2 (FB3 F3, owner ruling: weights carry no meaning): spread weights
+ * are FIXED semantics now — 2-leg = +1/−1, 3-leg fly = +1/−2/+1 — and the
+ * weight input left the selector. A v1 watchlist can hold user-typed
+ * non-default weights; normalize them to the canonical set for their leg
+ * count (leg ORDER is preserved — the sign pattern is positional) and
+ * re-derive the id (weights are encoded in it). A spread already on
+ * canonical weights passes through BYTE-identical (same object shape, same
+ * id — pinned). Leg counts without a canonical set (impossible via any
+ * shipped UI) pass through untouched rather than being guessed at.
+ * Same one-time colorForId consequence as v0→v1 for renormalized ids.
+ */
+export function normalizeInstrumentV1(inst: SelectedInstrument | null): SelectedInstrument | null {
+  if (inst == null || inst.kind !== "spread") return inst;
+  const canonical = DEFAULT_SPREAD_WEIGHTS[inst.legs.length];
+  if (!canonical) return inst;
+  if (inst.legs.every((l, i) => l.weight === canonical[i])) return inst;
+  const legs = inst.legs.map((l, i) => ({ leg: l.leg, weight: canonical[i] }));
+  return { kind: "spread", id: spreadId(legs), legs };
+}
+
 const DEFAULT_PARAMS = {
   lookback: 60,
   entryZ: 2.0,
@@ -216,14 +237,23 @@ export const useEntrySignalsStore = create<EntrySignalsState>()(
       // Anyone with a saved watchlist is on v0 (persist writes version 0 when
       // unset), so without this their spreads would rehydrate with legs
       // undefined and blow up in buildInstrumentSeries.
-      version: 1,
+      // v2 (FB3 F3): weights are fixed semantics — persisted non-default
+      // weights normalize to the canonical set (see normalizeInstrumentV1).
+      version: 2,
       migrate: (persisted, fromVersion) => {
         const s = persisted as Partial<EntrySignalsState> | undefined;
-        if (!s || fromVersion >= 1) return s as EntrySignalsState;
+        if (!s || fromVersion >= 2) return s as EntrySignalsState;
+        const v1focused = fromVersion < 1 ? migrateInstrumentV0(s.focused) : (s.focused ?? null);
+        const v1watchlist =
+          fromVersion < 1
+            ? (s.watchlist ?? []).map(migrateInstrumentV0).filter((i): i is SelectedInstrument => i != null)
+            : (s.watchlist ?? []);
         return {
           ...s,
-          focused: migrateInstrumentV0(s.focused),
-          watchlist: (s.watchlist ?? []).map(migrateInstrumentV0).filter((i): i is SelectedInstrument => i != null),
+          focused: normalizeInstrumentV1(v1focused),
+          watchlist: v1watchlist
+            .map(normalizeInstrumentV1)
+            .filter((i): i is SelectedInstrument => i != null),
         } as EntrySignalsState;
       },
       partialize: (s) => ({
