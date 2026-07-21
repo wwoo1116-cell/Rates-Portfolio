@@ -299,8 +299,6 @@ export function CurveViewPanel() {
     }));
   }, [isPath, anchorVisible, params.waypoints, baseDate]);
 
-  const t = getSimulationChartTheme();
-
   // FB4 T2 — solid base + same-color DASHED scenario ghost per selected
   // family (RH rendering grammar: sector tokens; IRS keeps the established
   // Tangerine — no new hues).
