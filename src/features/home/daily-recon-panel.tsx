@@ -217,6 +217,9 @@ export function DailyReconPanel({ showRange = false }: { showRange?: boolean } =
                   formatCell={formatBp}
                   leadHeader=""
                   totalHeader=""
+                  // A 0.0bp move is a MEASUREMENT, not absent mass — it must
+                  // not render like an unmapped pillar's em-dash.
+                  zeroAsDash={false}
                 />
               </div>
             ) : (

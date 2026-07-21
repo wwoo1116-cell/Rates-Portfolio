@@ -33,10 +33,12 @@ function Cell({
   value,
   range,
   format,
+  zeroAsDash,
 }: {
   value: number | null;
   range: number;
   format: (v: number) => string;
+  zeroAsDash: boolean;
 }) {
   // range > 0 → the PVBP heat treatment (Jade/Berry ramp, white text).
   // range 0 → no fill; the signed Jade/Berry pair colors the text instead
@@ -64,7 +66,7 @@ function Cell({
         fontSize: 11,
       }}
     >
-      {value == null || value === 0 ? "—" : format(value)}
+      {value == null || (value === 0 && zeroAsDash) ? "—" : format(value)}
     </span>
   );
 }
@@ -81,6 +83,7 @@ export function SectorTenorMatrix({
   formatCell = formatCellK,
   leadHeader = "Sector",
   totalHeader = "Total",
+  zeroAsDash = true,
 }: {
   columns: readonly string[];
   rows: MatrixRow[];
@@ -90,6 +93,12 @@ export function SectorTenorMatrix({
   formatCell?: (v: number) => string;
   leadHeader?: string;
   totalHeader?: string;
+  /** true (default, PVBP grammar): a zero renders the muted em-dash — right
+   * for aggregation matrices where 0 means "no mass here". The Δbp row passes
+   * FALSE: there 0 is a real measurement ("didn't move"), and rendering it
+   * like an unmapped pillar's — would make "didn't move" look like "don't
+   * know" — the exact blank-vs-zero confusion the honesty rules ban. */
+  zeroAsDash?: boolean;
 }) {
   // The width at which all columns render at full size. Narrower panels get
   // a horizontal scrollbar (callers wrap in overflow-auto) instead of
@@ -141,11 +150,11 @@ export function SectorTenorMatrix({
             </td>
             {row.cells.map((v, i) => (
               <td key={columns[i]} className="py-1">
-                <Cell value={v} range={cellRange} format={formatCell} />
+                <Cell value={v} range={cellRange} format={formatCell} zeroAsDash={zeroAsDash} />
               </td>
             ))}
             <td className="py-1">
-              <Cell value={row.total} range={cellRange} format={formatCell} />
+              <Cell value={row.total} range={cellRange} format={formatCell} zeroAsDash={zeroAsDash} />
             </td>
           </tr>
         ))}

@@ -166,6 +166,29 @@ describe("DailyReconPanel closure footer", () => {
   });
 });
 
+describe("DailyReconPanel M2 zero-vs-unmapped distinction", () => {
+  it("renders a real 0.0bp move as 0.0 and ONLY the unmapped pillar as —", () => {
+    // Live-data finding (2026-07-15 capture): CD's genuine 0.0bp day rendered
+    // — like an unmapped pillar, making "didn't move" look like "don't know".
+    recon();
+    const { container } = render(<DailyReconPanel />);
+
+    const m2Label = screen.getByText(/M2 · Δbp/);
+    const m2Table = m2Label.closest("div")!.querySelector("table")!;
+    const cells = Array.from(m2Table.querySelectorAll("tbody td")).map(
+      (td) => td.textContent?.trim(),
+    );
+    // Layout: [row label "Δbp", ...16 tenor cells, total]. Fixture: 1D null
+    // (unmapped), 3M +2.0, 4Y −1.5, everything else a REAL 0.0.
+    const idx = (c: string) => 1 + (TENOR_COLS as readonly string[]).indexOf(c);
+    expect(cells[idx("1D")]).toBe("—");
+    expect(cells[idx("3M")]).toBe("+2.0");
+    expect(cells[idx("4Y")]).toBe("-1.5");
+    expect(cells[idx("2Y")]).toBe("0.0");
+    expect(container).toBeDefined();
+  });
+});
+
 describe("DailyReconPanel missing-pillar exclusion", () => {
   it("shows the unmapped tenor as — in M3, names it in the note, and keeps it out of Σ", () => {
     recon();
