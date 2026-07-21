@@ -40,19 +40,25 @@ function state(over: Record<string, unknown> = {}) {
   });
 }
 
+// [CHANGED, FB3] rows carry the ladder terms (테타/예상) and the sign-fixed
+// Assumed; identities: 예상 = 테타 + Assumed, 잔차 = Realized − 예상.
 const ROWS = [
   {
     asOf: "2026-07-15",
     close: "2026-07-14",
-    assumed: -1_000_000,
-    realized: -700_000,
-    residual: 300_000,
-    residualPct: 42.857,
+    theta: 700_000,
+    assumed: 1_000_000,
+    expected: 1_700_000,
+    realized: 200_000,
+    residual: -1_500_000,
+    residualPct: -750,
   },
   {
     asOf: "2026-07-16",
     close: "2026-07-15",
+    theta: null,
     assumed: null,
+    expected: null,
     realized: null,
     residual: null,
     residualPct: null,
@@ -77,16 +83,18 @@ describe("ReconRangeStrip", () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
-  it("renders computed rows with signed figures and the 잔차 column", () => {
+  it("renders the ladder columns 테타|Assumed|예상|Realized|잔차 with signed figures [CHANGED, FB3]", () => {
     state({ rows: ROWS });
     render(<ReconRangeStrip />);
 
     const row = screen.getByText("2026-07-15").closest("tr")!;
     const cells = Array.from(row.querySelectorAll("td")).map((td) => td.textContent?.trim());
-    expect(cells[1]).toBe("-1.0M");
-    expect(cells[2]).toBe("-700,000");
-    expect(cells[3]).toBe("+300,000");
-    expect(cells[4]).toBe("+42.9%");
+    expect(cells[1]).toBe("+700,000"); // 테타 (T−1 기지)
+    expect(cells[2]).toBe("+1.0M"); // Assumed (sign-fixed)
+    expect(cells[3]).toBe("+1.7M"); // 예상 = 테타 + Assumed
+    expect(cells[4]).toBe("+200,000"); // Realized (테타+평가)
+    expect(cells[5]).toBe("-1.5M"); // 잔차 = Realized − 예상
+    expect(cells[6]).toBe("-750.0%");
   });
 
   it("renders a mismatched/incomplete day as — with its reason, never 0", () => {
@@ -95,10 +103,8 @@ describe("ReconRangeStrip", () => {
 
     const row = screen.getByText("2026-07-16").closest("tr")!;
     const cells = Array.from(row.querySelectorAll("td")).map((td) => td.textContent?.trim());
-    expect(cells[1]).toBe("—");
-    expect(cells[2]).toBe("—");
-    expect(cells[3]).toBe("—");
-    expect(cells[5]).toContain("창 불일치로 제외");
+    for (const i of [1, 2, 3, 4, 5, 6]) expect(cells[i]).toBe("—");
+    expect(cells[7]).toContain("창 불일치로 제외");
     // No zero masquerading as a figure in this row.
     expect(row.textContent).not.toMatch(/(^|[^\d.,])0([^\d.,]|$)/);
   });

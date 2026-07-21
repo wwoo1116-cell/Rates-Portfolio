@@ -20,24 +20,40 @@ import { describe, expect, it } from "vitest";
 import { PATH_PILLARS } from "./path-matrix";
 import {
   ASSUMED_LABEL,
-  ENGINE_LABEL,
+  EXPECTED_LABEL,
   LINEARITY_CAPTION,
+  REALIZED_LABEL,
+  RESIDUAL_CAPTION,
   RESIDUAL_LABEL,
   buildKrdGrid,
   buildScenarioRecon,
 } from "./scenario-recon";
 import { cloneFixture, loadFixture } from "./fixtures";
 
-describe("잔차 naming guard (fixed rule: NEVER 테타/carry)", () => {
-  it("the residual label is 잔차 and contains no 테타/carry wording", () => {
+describe("잔차 naming guard (fixed rule; FB3 ladder wording)", () => {
+  it("the RESIDUAL is 잔차 (캡션 컨벡시티+베이시스) and is never named with 테타/carry", () => {
     expect(RESIDUAL_LABEL).toBe("잔차");
-    for (const label of [RESIDUAL_LABEL, ASSUMED_LABEL, ENGINE_LABEL]) {
+    expect(RESIDUAL_CAPTION).toBe("컨벡시티(+베이시스)");
+    // The residual's own name/caption and the assumed/expected labels carry
+    // no theta word. REALIZED_LABEL legitimately NAMES theta as a ladder
+    // component ("실현 경로 (테타+평가)") — that is the bridge, not a rename
+    // of the residual.
+    for (const label of [RESIDUAL_LABEL, RESIDUAL_CAPTION, ASSUMED_LABEL, EXPECTED_LABEL]) {
       expect(/테타|carry|캐리|theta/i.test(label)).toBe(false);
     }
-    // The caption must state the linearity assumption (KRD fixed @ baseDate).
+    expect(REALIZED_LABEL).toContain("테타");
+    // [CHANGED, FB3] the caption states the ladder AND the linearity
+    // assumption; the old two-term wording is pinned absent below.
     expect(LINEARITY_CAPTION).toContain("기준일 KRD 고정");
     expect(LINEARITY_CAPTION).toContain(RESIDUAL_LABEL);
-    expect(/테타|carry|캐리|theta/i.test(LINEARITY_CAPTION)).toBe(false);
+    expect(LINEARITY_CAPTION).toContain("컨벡시티(+베이시스)");
+    expect(LINEARITY_CAPTION).toContain("펀딩은 비교 대상이 아닙니다");
+  });
+
+  it("old wording pinned ABSENT: the pre-ladder standalone engine-lane label is gone", () => {
+    expect(REALIZED_LABEL).not.toBe("엔진 평가 경로");
+    expect(EXPECTED_LABEL).not.toBe("엔진 평가 경로");
+    expect(LINEARITY_CAPTION).not.toContain("엔진 평가 경로(채권+스왑 성분)와의 차이가 잔차");
   });
 });
 
@@ -53,12 +69,32 @@ describe("M3 — assumed vs engine vs 잔차", () => {
       expect(Math.abs(p.residual)).toBeLessThanOrEqual(Math.max(100_000, 0.018 * Math.abs(p.assumed)));
     }
     // Deterministic worst (final day) — cross-checked against an independent
-    // Python evaluation of the same fixture.
+    // Python evaluation of the same fixture. These values are ALSO the FB3
+    // regression anchor: the ladder redesign must not move the 잔차 by ₩1.
     const last = points[points.length - 1];
     expect(last.day).toBe(44);
     expect(last.assumed).toBeCloseTo(-35_187_852.56, 0);
     expect(last.engine).toBeCloseTo(-34_621_695.06, 0);
     expect(last.residual).toBeCloseTo(566_157.5, 0);
+  });
+
+  it("FB3 ladder identities hold per day (±₩1): 예상=테타+가정, 실현=테타+평가=total−funding, 잔차=실현−예상", () => {
+    const { request, response } = loadFixture("shaped");
+    const { points } = buildScenarioRecon(request, response);
+    const dailyByDay = new Map((response.decompositionDaily ?? []).map((r) => [r.day, r]));
+    for (const p of points) {
+      expect(Math.abs(p.expected - (p.theta + p.assumed))).toBeLessThanOrEqual(1);
+      expect(Math.abs(p.realized - (p.theta + p.engine))).toBeLessThanOrEqual(1);
+      expect(Math.abs(p.realized - p.expected - p.residual)).toBeLessThanOrEqual(1);
+      // The compared bucket is exactly the engine's total ex funding.
+      const row = dailyByDay.get(p.day)!;
+      expect(Math.abs(p.realized - (row.total - row.fundingCost))).toBeLessThanOrEqual(1);
+    }
+    // And the 잔차 is byte-identical to the pre-ladder definition (engine −
+    // assumed) — the theta rung cancels out of the residual.
+    for (const p of points) {
+      expect(p.residual).toBe(p.engine - p.assumed);
+    }
   });
 
   it("shaped fixture: 잔차 equals the engine-vs-linear gap, pinned", () => {

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  RESIDUAL_CAPTION,
   RESIDUAL_LABEL,
-  closureFooter,
+  bridgeLadder,
   contributionRows,
   deltaBpByTenor,
   excludedTenors,
@@ -11,10 +12,10 @@ import {
 import type { MarketDataResponse } from "./api-types";
 
 /**
- * RECON-DAILY math pins. The component does no arithmetic of its own, so
- * these fixtures ARE the panel's numbers: exact-match pillar mapping (no
- * interpolated risk), Δbp in bp, M3 = M1 × M2 with null-exclusion (never
- * zero-fill), and the closure footer identity.
+ * RECON-DAILY / FB3 math pins. The component does no arithmetic of its own,
+ * so these fixtures ARE the panel's numbers: exact-match pillar mapping (no
+ * interpolated risk), Δbp in bp, M3 = M1 × (−M2) with null-exclusion (never
+ * zero-fill), and the FB3 bridge-ladder identities (±₩1 per term).
  */
 
 const COLS = ["1D", "3M", "6M", "9M", "1Y", "1.5Y", "2Y", "4Y", "30Y"] as const;
@@ -103,17 +104,20 @@ describe("contributionRows / excludedTenors — M3 = M1 × M2", () => {
     { sector: "합계", "1D": 500_000, "3M": 1_000_000, "4Y": 2_000_000, "30Y": 0, total: 3_500_000 },
   ];
 
-  it("multiplies cell-wise and EXCLUDES null-Δbp columns from row totals", () => {
+  it("multiplies cell-wise with the P&L sign KRD×(−Δbp) and EXCLUDES null-Δbp columns [CHANGED, FB3]", () => {
+    // [CHANGED, FB3] sign fix: first-order P&L = KRD × (−Δbp) — the realized
+    // buckets' own convention (long DV01 loses when yields rise). The old
+    // ×(+Δbp) values were inverted; every expectation below flipped sign.
     const rows = contributionRows(cols, pvbpRows, deltaBp);
     const ktb = rows[0];
     expect(ktb.cells["1D"]).toBeNull(); // excluded, not zero
-    expect(ktb.cells["4Y"]).toBeCloseTo(-3_000_000, 3);
-    expect(ktb.total).toBeCloseTo(-3_000_000, 3); // 1D mass NOT summed
+    expect(ktb.cells["4Y"]).toBeCloseTo(3_000_000, 3); // yields fell → long gains
+    expect(ktb.total).toBeCloseTo(3_000_000, 3); // 1D mass NOT summed
     const irs = rows[1];
-    expect(irs.cells["3M"]).toBeCloseTo(2_000_000, 3);
-    expect(irs.total).toBeCloseTo(2_000_000, 3);
+    expect(irs.cells["3M"]).toBeCloseTo(-2_000_000, 3); // yields rose → loses
+    expect(irs.total).toBeCloseTo(-2_000_000, 3);
     // 합계 row total = the panel's Assumed figure.
-    expect(rows[2].total).toBeCloseTo(-1_000_000, 3);
+    expect(rows[2].total).toBeCloseTo(1_000_000, 3);
   });
 
   it("names only unmapped tenors that carry non-zero KRD mass", () => {
@@ -123,23 +127,37 @@ describe("contributionRows / excludedTenors — M3 = M1 × M2", () => {
   });
 });
 
-describe("closureFooter", () => {
-  it("realized = 채권평가 + 스왑평가; 잔차 = realized − assumed; % of |realized|", () => {
-    const f = closureFooter(-1_000_000, -2_500_000, 1_800_000);
-    expect(f.assumed).toBe(-1_000_000);
-    expect(f.realized).toBe(-700_000);
-    expect(f.residual).toBe(300_000);
-    expect(f.residualPct).toBeCloseTo((300_000 / 700_000) * 100, 6);
+describe("bridgeLadder (FB3 — replaces the old two-term closure footer)", () => {
+  it("holds the ladder identities exactly: 예상=테타+Assumed, Realized=테타+평가, 잔차=Realized−예상", () => {
+    const f = bridgeLadder(700_000, 1_000_000, -2_500_000, 2_000_000);
+    expect(f.theta).toBe(700_000);
+    expect(f.assumed).toBe(1_000_000);
+    expect(f.expected).toBe(1_700_000); // theta + assumed, exact
+    expect(f.realized).toBe(200_000); // theta + bondMtm + swapMtm, exact
+    expect(f.residual).toBe(-1_500_000); // realized − expected
+    // …which is identically (mtm − assumed): the theta rung cancels — the
+    // terms are mutually exclusive and collectively account for the bucket.
+    expect(f.residual).toBe(-2_500_000 + 2_000_000 - 1_000_000);
+    expect(f.residualPct).toBeCloseTo((-1_500_000 / 200_000) * 100, 6);
+  });
+
+  it("±₩1 grain: the ladder is closed under integer-won inputs (no rounding leak)", () => {
+    const f = bridgeLadder(123_456_789, -987_654_321, 55_555_555, -1_234_567);
+    expect(f.expected - f.theta - f.assumed).toBe(0);
+    expect(f.realized - f.theta - (55_555_555 - 1_234_567)).toBe(0);
+    expect(f.realized - f.expected - f.residual).toBe(0);
   });
 
   it("suppresses the percentage (null) when realized is exactly zero", () => {
-    expect(closureFooter(50, 0, 0).residualPct).toBeNull();
+    expect(bridgeLadder(-50, 50, 25, 25).residualPct).toBeNull();
   });
 });
 
-describe("잔차-naming pin (owner core rule)", () => {
-  it("the residual slot is 잔차 and may never contain a theta/carry word", () => {
+describe("잔차-naming pin (owner core rule, FB3 wording)", () => {
+  it("the residual slot is 잔차, captioned 컨벡시티(+베이시스), never a theta/carry word", () => {
     expect(RESIDUAL_LABEL).toBe("잔차");
     expect(RESIDUAL_LABEL).not.toMatch(/테타|theta|carry|캐리/i);
+    expect(RESIDUAL_CAPTION).toBe("컨벡시티(+베이시스)");
+    expect(RESIDUAL_CAPTION).not.toMatch(/테타|theta|carry|캐리/i);
   });
 });

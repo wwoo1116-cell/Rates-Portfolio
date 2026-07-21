@@ -1,11 +1,23 @@
 /**
- * RECON-DAILY — pure arithmetic for the 일별 대사 (daily reconciliation) panel.
+ * RECON-DAILY / FB3 — pure arithmetic for the 일별 대사 panel.
  *
- * Core rule (owner-fixed, not re-derivable):
- *   Assumed MtM = Σ_tenor ( KRD_tenor@D−1 × Δbp_tenor )
- * compared against the REALIZED valuation buckets (채권평가 + 스왑평가) as of
- * D; the difference is 잔차 — NEVER "theta". 계산 테타/펀딩 are engine-supplied
- * side chips outside the comparison.
+ * Core rule (owner-fixed FB3 bridge, not re-derivable): the footer is a
+ * bridge LADDER,
+ *   테타 (T−1 기지값) → + Assumed (Σ KRD@D−1 × (−Δbp)) → = 예상 PnL
+ *     → vs Realized (테타 + 채권평가 + 스왑평가) → 잔차 (컨벡시티+베이시스)
+ * The terms are mutually exclusive and collectively account for the compared
+ * bucket (theta + valuation, funding excluded): 예상 − 테타 ≡ Assumed and
+ * Realized − 예상 ≡ 잔차 hold exactly (±₩1 pinned). 펀딩 stays an
+ * engine-supplied chip OUTSIDE the comparison — FB3 diagnosis confirmed it is
+ * a separate response field, never inside mtm/theta.
+ *
+ * SIGN (FB3 Phase-1 finding, the +705% residual's primary cause): first-order
+ * P&L per cell is KRD × (−Δbp) — the SAME convention the realized buckets
+ * use (backend `_bond_pnl`: mtm = pvbp×(−dy_bp); simulate aggregates:
+ * "MTM = pvbp * (-sbp)"; long DV01 loses when yields rise). The previous
+ * KRD × (+Δbp) inverted the Assumed leg: on 2026-07-14 (live-reproduced)
+ * the swap grid said +218.1M vs realized −219.8M — sign-corrected, the swap
+ * 잔차 is −1.7M. See FB3_RECON_REPORT.md for the full decomposition.
  *
  * Everything here is pure and fixture-testable (daily-recon-math.test.ts).
  * The component (features/home/daily-recon-panel.tsx) does no arithmetic of
@@ -15,11 +27,15 @@
 import type { DailyPnlFigures, MarketDataResponse, PortfolioCashFlowOut } from "@/lib/api-types";
 
 /** The residual slot's label. Exported so the naming pin can assert on the
- * single source: the residual is 잔차 (what the first-order KRD estimate does
- * NOT explain — curve shape between pillars, convexity, credit-vs-swap
- * basis), and must never be renamed into a carry/theta word — 테타 is a
- * separately-computed engine figure that renders OUTSIDE this comparison. */
+ * single source: the residual is 잔차 — captioned 컨벡시티(+베이시스), which
+ * FB3 measured as credit-vs-swap-pillar basis + workbook-PVBP grain (true
+ * convexity ≈ ₩0 at single-digit-bp moves). It must never be renamed into a
+ * carry/theta word — 테타 is its own LADDER RUNG (the T−1 기지값), a
+ * different term of the bridge, not a name for the residual. */
 export const RESIDUAL_LABEL = "잔차";
+
+/** The residual's fixed caption (owner spec). */
+export const RESIDUAL_CAPTION = "컨벡시티(+베이시스)";
 
 /** KRD tenor column → market pillar available in a MarketDataResponse
  * snapshot. EXACT matches only (no interpolated risk):
@@ -78,8 +94,10 @@ export interface ContributionRow {
 }
 
 /** M3 = M1 × M2 cell-wise: contribution_₩[sector][tenor] =
- * KRD@D−1[sector][tenor] × Δbp[tenor]. A null Δbp yields a null cell —
- * excluded from every sum, never treated as zero. */
+ * KRD@D−1[sector][tenor] × (−Δbp[tenor]) — the first-order P&L convention
+ * the realized buckets themselves use ([CHANGED, FB3] sign fix; see module
+ * header — the old ×(+Δbp) inverted the whole Assumed leg). A null Δbp
+ * yields a null cell — excluded from every sum, never treated as zero. */
 export function contributionRows(
   columns: readonly string[],
   pvbpRows: Array<Record<string, unknown>>,
@@ -94,7 +112,7 @@ export function contributionRows(
       if (d == null) {
         cells[c] = null;
       } else {
-        const v = krd * d;
+        const v = krd * -d;
         cells[c] = v;
         total += v;
       }
@@ -120,12 +138,20 @@ export function excludedTenors(
   return out;
 }
 
-export interface ClosureFooter {
-  /** Σ_tenor 합계KRD@D−1 × Δbp over mapped tenors. */
+/** FB3 — the bridge ladder's five terms. Identities (pinned ±₩1):
+ * expected ≡ theta + assumed; realized ≡ theta + bondMtm + swapMtm;
+ * residual ≡ realized − expected (≡ (bondMtm+swapMtm) − assumed). */
+export interface BridgeLadder {
+  /** T−1 기지값 — the engine's deterministic pre-open P&L (Total row theta:
+   * bond accrued roll + swap leg theta + windowed settlement cash). */
+  theta: number;
+  /** Σ_tenor 합계KRD@D−1 × (−Δbp) over mapped tenors. */
   assumed: number;
-  /** 채권평가 + 스왑평가 as of D (full-revaluation MtM buckets). */
+  /** 테타 + Assumed — the ladder's 예상 PnL. */
+  expected: number;
+  /** 테타 + 채권평가 + 스왑평가 (the compared bucket; funding excluded). */
   realized: number;
-  /** realized − assumed. The whole point of the panel. */
+  /** realized − expected — 잔차 (컨벡시티+베이시스). */
   residual: number;
   /** residual as a share of |realized|; null when realized == 0. */
   residualPct: number | null;
@@ -207,16 +233,26 @@ export function netSwapSettlements(
  * same bound. */
 export const SETTLEMENT_TOLERANCE_KRW = 1;
 
-/** Footer arithmetic. Callers must only invoke this when BOTH realized
- * buckets are known and complete — an unknown bucket disables the footer with
- * an honest message instead (component responsibility, pinned there). A class
- * genuinely absent from the book (no swaps) contributes 0, which is a
- * different fact from "unknown" and is the caller's distinction to make. */
-export function closureFooter(assumed: number, bondMtm: number, swapMtm: number): ClosureFooter {
-  const realized = bondMtm + swapMtm;
-  const residual = realized - assumed;
+/** FB3 ladder arithmetic. Callers must only invoke this when BOTH realized
+ * valuation buckets are known and complete — an unknown bucket disables the
+ * footer with an honest message instead (component responsibility, pinned
+ * there). A class genuinely absent from the book (no swaps) contributes 0,
+ * which is a different fact from "unknown" and is the caller's distinction
+ * to make. Theta is always deterministic (T−1 기지값) so it carries no
+ * completeness state of its own. */
+export function bridgeLadder(
+  theta: number,
+  assumed: number,
+  bondMtm: number,
+  swapMtm: number,
+): BridgeLadder {
+  const expected = theta + assumed;
+  const realized = theta + bondMtm + swapMtm;
+  const residual = realized - expected;
   return {
+    theta,
     assumed,
+    expected,
     realized,
     residual,
     residualPct: realized !== 0 ? (residual / Math.abs(realized)) * 100 : null,

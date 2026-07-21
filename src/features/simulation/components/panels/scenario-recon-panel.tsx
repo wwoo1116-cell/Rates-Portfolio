@@ -25,9 +25,10 @@ import type { IrsDailyReconRow } from "../../api/simulate-dto";
 import { getSimulationChartTheme } from "../../lib/chart-theme";
 import { buildPathMatrix } from "../../lib/recon/path-matrix";
 import {
-  ASSUMED_LABEL,
-  ENGINE_LABEL,
+  EXPECTED_LABEL,
   LINEARITY_CAPTION,
+  REALIZED_LABEL,
+  RESIDUAL_CAPTION,
   RESIDUAL_LABEL,
   buildScenarioRecon,
 } from "../../lib/recon/scenario-recon";
@@ -84,7 +85,8 @@ export function ScenarioReconPanel() {
     <div className="bg-bg-secondary p-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-h2 text-fg-primary">시나리오 대사</h2>
-        <div className="w-72">
+        {/* FB3 F4b: wide enough that 경로 매트릭스/정산 CF fit un-wrapped. */}
+        <div className="w-96 max-w-full">
           <SegmentedButtons
             choices={VIEWS}
             value={view}
@@ -151,10 +153,16 @@ export function ScenarioReconPanel() {
               formatCell={formatBpCell}
               leadHeader="일자"
               totalHeader={null}
+              // FB3 F4a — M2 cells are MEASUREMENTS of the designed path: a
+              // genuine 0.0 (e.g. the 1D/3M short end without 금통위 events)
+              // renders 0.0, never the unmapped em-dash.
+              zeroAsDash={false}
             />
             <p className="mt-2 text-micro text-fg-dim">
               설계 경로(국채 커브)의 일자 × 테너 누적 Δbp — 웨이포인트/온라인 보간 경로를 각
-              테너가 실제로 따르는 값 (시계열형 미리보기와 동일한 원천). 영업일만 표시.
+              테너가 실제로 따르는 값 (시계열형 미리보기와 동일한 원천). 영업일만 표시. 단기
+              필러(1D/3M)는 금통위 이벤트로만 이동하도록 설계되어, 이벤트가 없는 시나리오에서는
+              실제 적용 충격이 0.0입니다 (— 아님).
             </p>
           </>
         )
@@ -271,16 +279,18 @@ function ReconView({
   reconRows: IrsDailyReconRow[];
 }) {
   const t = getSimulationChartTheme();
+  // FB3 ladder lanes: 예상 (테타+가정) vs 실현 (테타+평가) vs 잔차 — the 잔차
+  // series itself is byte-identical to the pre-ladder engine−assumed (pinned).
   const series: LwSeriesDef[] = [
     {
-      color: t.previewPalette[0], // Ocean — assumed (designed linear path)
+      color: t.previewPalette[0], // Ocean — 예상 경로 (테타 + 가정 선형 경로)
       lineWidth: 2,
-      data: recon.points.map((p) => ({ time: dayToTime(baseDate, p.day), value: p.assumed })),
+      data: recon.points.map((p) => ({ time: dayToTime(baseDate, p.day), value: p.expected })),
     },
     {
-      color: t.previewPalette[2], // Tangerine — engine valuation path
+      color: t.previewPalette[2], // Tangerine — 실현 경로 (테타 + 엔진 평가)
       lineWidth: 2,
-      data: recon.points.map((p) => ({ time: dayToTime(baseDate, p.day), value: p.engine })),
+      data: recon.points.map((p) => ({ time: dayToTime(baseDate, p.day), value: p.realized })),
     },
     {
       color: t.previewPalette[4], // Purple — 잔차, dashed (a derived gap, not a P&L lane)
@@ -289,6 +299,7 @@ function ReconView({
       data: recon.points.map((p) => ({ time: dayToTime(baseDate, p.day), value: p.residual })),
     },
   ];
+  const last = recon.points[recon.points.length - 1];
 
   return (
     <>
@@ -296,10 +307,18 @@ function ReconView({
         <LwLineChart series={series} zeroLine formatValue={formatKrwAxisSigned} />
       </div>
       <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-micro">
-        <LegendSwatch color={t.previewPalette[0]} label={ASSUMED_LABEL} />
-        <LegendSwatch color={t.previewPalette[2]} label={ENGINE_LABEL} />
+        <LegendSwatch color={t.previewPalette[0]} label={EXPECTED_LABEL} />
+        <LegendSwatch color={t.previewPalette[2]} label={REALIZED_LABEL} />
         <LegendSwatch color={t.previewPalette[4]} label={RESIDUAL_LABEL} dashed />
       </div>
+      {last && (
+        <p data-num className="mt-1.5 text-center text-micro text-fg-muted">
+          만기 브리지: 테타 {formatKrwAxisSigned(last.theta)} + 가정(PVBP×Δbp){" "}
+          {formatKrwAxisSigned(last.assumed)} = 예상 {formatKrwAxisSigned(last.expected)} vs 실현{" "}
+          {formatKrwAxisSigned(last.realized)} → {RESIDUAL_LABEL}{" "}
+          {formatKrwAxisSigned(last.residual)} ({RESIDUAL_CAPTION})
+        </p>
+      )}
       <p className="mt-1.5 text-micro text-fg-dim">{LINEARITY_CAPTION}</p>
       {recon.swapsExcluded && (
         <p className="mt-1 text-micro text-fg-dim">

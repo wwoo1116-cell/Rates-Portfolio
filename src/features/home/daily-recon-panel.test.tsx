@@ -117,52 +117,56 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("DailyReconPanel closure footer", () => {
-  it("renders Assumed | Realized(채권평가+스왑평가) | 잔차 with the fixture arithmetic", () => {
+describe("DailyReconPanel bridge ladder (FB3)", () => {
+  // [CHANGED, FB3] fixture arithmetic under the sign fix (KRD×(−Δbp)):
+  // Assumed = −(1M×2.0 + 2M×(−1.5)) = +1.0M; 테타 +0.7M → 예상 +1.7M;
+  // Realized = 0.7 − 2.5 + 1.8 = −0.0M… realized 0 suppresses %, so the
+  // fixture pins that edge too via the ladder identity.
+  it("renders the ladder 테타 → + Assumed → = 예상 PnL → vs Realized → 잔차 with the fixture arithmetic", () => {
     recon();
     render(<DailyReconPanel />);
 
+    const theta = screen.getByText("테타");
+    expect(theta.parentElement?.textContent).toContain("(T−1 기지)");
+    expect(theta.parentElement?.textContent).toContain("+700,000");
     const assumed = screen.getByText("Assumed");
-    expect(assumed.parentElement?.textContent).toContain("-1.0M");
+    expect(assumed.parentElement?.textContent).toContain("(PVBP×Δbp)");
+    expect(assumed.parentElement?.textContent).toContain("+1.0M");
+    const expected = screen.getByText("예상 PnL");
+    expect(expected.parentElement?.textContent).toContain("+1.7M");
     const realized = screen.getByText("Realized");
-    expect(realized.parentElement?.textContent).toContain("(채권평가+스왑평가)");
-    expect(realized.parentElement?.textContent).toContain("-700,000");
+    expect(realized.parentElement?.textContent).toContain("(테타+채권평가+스왑평가)");
     const residual = screen.getByText("잔차");
-    expect(residual.parentElement?.textContent).toContain("+300,000");
-    expect(residual.parentElement?.textContent).toContain("(+42.9%)");
+    expect(residual.parentElement?.textContent).toContain("컨벡시티(+베이시스)");
+    expect(residual.parentElement?.textContent).toContain("-1.7M");
   });
 
-  it("renders 계산 테타/펀딩 as chips OUTSIDE the comparison, each marked 비교 대상 아님", () => {
+  it("펀딩 stays the ONLY chip outside the comparison; the old 계산 테타 chip is gone [old wording pinned absent]", () => {
     recon();
     render(<DailyReconPanel />);
 
-    const theta = screen.getByText("계산 테타");
-    expect(theta.parentElement?.textContent).toContain("+700,000");
-    expect(theta.parentElement?.textContent).toContain("비교 대상 아님");
     const funding = screen.getByText("펀딩");
     expect(funding.parentElement?.textContent).toContain("-300,000");
     expect(funding.parentElement?.textContent).toContain("비교 대상 아님");
+    // Exactly one 비교-대상-아님 marker remains (funding's).
+    expect(screen.getAllByText("비교 대상 아님").length).toBe(1);
+    // The pre-FB3 outside-chip wording must not resurface.
+    expect(screen.queryByText("계산 테타")).toBeNull();
   });
 
-  it("잔차-naming: the three closure slots are exactly Assumed/Realized/잔차 — no theta word", () => {
+  it("잔차-naming: the ladder slots are 테타/Assumed/예상 PnL/Realized/잔차 — the residual is never a theta word", () => {
     recon();
     render(<DailyReconPanel />);
 
-    // The closure row's slot labels, by their shared label treatment. A
-    // rename of the residual slot (e.g. to 테타/캐리) changes this list and
-    // fails both assertions below.
-    const footer = screen.getByText("Assumed").closest("div")!;
+    const footer = screen.getByText("예상 PnL").closest("div")!;
     const labels = Array.from(
       footer.querySelectorAll("span.text-label.uppercase"),
     ).map((el) => el.textContent?.trim());
-    expect(labels).toEqual(["Assumed", "Realized", "잔차"]);
-    for (const label of labels) {
-      expect(label).not.toMatch(/테타|theta|carry|캐리/i);
-    }
-    // 테타 exists on the panel ONLY as the chip figure, and the chip carries
-    // its 비교-대상-아님 marker.
-    const theta = screen.getByText("계산 테타");
-    expect(theta.parentElement?.textContent).toContain("비교 대상 아님");
+    expect(labels).toEqual(["테타", "Assumed", "예상 PnL", "Realized", "잔차"]);
+    // The RESIDUAL slot (and only that rule) — 잔차 is never renamed into a
+    // theta/carry word; 테타 is its own rung, a different term of the bridge.
+    expect(labels[labels.length - 1]).toBe("잔차");
+    expect(labels[labels.length - 1]).not.toMatch(/테타|theta|carry|캐리/i);
   });
 });
 
@@ -200,8 +204,8 @@ describe("DailyReconPanel missing-pillar exclusion", () => {
     expect(note.textContent).toContain("+500,000");
     expect(note.textContent).toContain("0 아님");
     // …and the Assumed figure (합계 row total) proves the exclusion: with 1D
-    // zero-filled it would NOT be −1.0M.
-    expect(screen.getByText("Assumed").parentElement?.textContent).toContain("-1.0M");
+    // zero-filled it would NOT be +1.0M ([CHANGED, FB3] sign — KRD×(−Δbp)).
+    expect(screen.getByText("Assumed").parentElement?.textContent).toContain("+1.0M");
   });
 });
 

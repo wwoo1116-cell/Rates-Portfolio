@@ -71,7 +71,7 @@ export function ReconRangeStrip() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-label font-bold uppercase text-fg-muted">
           {view === "table"
-            ? `${RESIDUAL_LABEL} 시계열 (일별 Assumed vs Realized)`
+            ? `${RESIDUAL_LABEL} 시계열 (일별 예상 vs Realized 브리지)`
             : "M2 Δbp 시계열 (일별 테너별 금리 변동)"}
         </span>
         <div className="flex items-center gap-2">
@@ -83,7 +83,7 @@ export function ReconRangeStrip() {
                 aria-pressed={view === v}
                 onClick={() => setView(v)}
                 className={cn(
-                  "px-2 py-0.5 text-micro",
+                  "px-2 py-0.5 text-micro label-nowrap",
                   view === v
                     ? "bg-sem-info-ghost text-sem-info shadow-[inset_0_0_0_1px_var(--sem-info)]"
                     : "text-fg-muted",
@@ -102,7 +102,7 @@ export function ReconRangeStrip() {
             <button
               type="button"
               onClick={widen}
-              className="border border-border-dim px-2 py-0.5 text-micro text-fg-muted transition-colors hover:bg-bg-tertiary"
+              className="border border-border-dim px-2 py-0.5 text-micro text-fg-muted transition-colors hover:bg-bg-tertiary label-nowrap"
             >
               +20일 확장
             </button>
@@ -111,7 +111,7 @@ export function ReconRangeStrip() {
             type="button"
             onClick={run}
             disabled={!canRun || running}
-            className="border border-sem-info bg-sem-info-ghost px-2 py-0.5 text-micro text-sem-info transition-colors hover:bg-sem-info-soft disabled:opacity-50"
+            className="border border-sem-info bg-sem-info-ghost px-2 py-0.5 text-micro text-sem-info transition-colors hover:bg-sem-info-soft disabled:opacity-50 label-nowrap"
           >
             {rows ? "재계산" : "계산"}
           </button>
@@ -133,14 +133,16 @@ export function ReconRangeStrip() {
         <div className="overflow-x-auto">
           <table
             className="w-full border-collapse text-body"
-            style={{ tableLayout: "fixed", fontSize: 12, minWidth: 560 }}
+            style={{ tableLayout: "fixed", fontSize: 12, minWidth: 760 }}
           >
             <colgroup>
               <col style={{ width: 100 }} />
-              <col style={{ minWidth: 92 }} />
-              <col style={{ minWidth: 92 }} />
-              <col style={{ minWidth: 92 }} />
-              <col style={{ minWidth: 64 }} />
+              <col style={{ minWidth: 84 }} />
+              <col style={{ minWidth: 84 }} />
+              <col style={{ minWidth: 84 }} />
+              <col style={{ minWidth: 84 }} />
+              <col style={{ minWidth: 84 }} />
+              <col style={{ minWidth: 56 }} />
               <col />
             </colgroup>
             <thead>
@@ -149,7 +151,13 @@ export function ReconRangeStrip() {
                   평가일 (D)
                 </th>
                 <th className="py-1.5 text-right text-label text-fg-muted font-bold uppercase">
+                  테타
+                </th>
+                <th className="py-1.5 text-right text-label text-fg-muted font-bold uppercase">
                   Assumed
+                </th>
+                <th className="py-1.5 text-right text-label text-fg-muted font-bold uppercase">
+                  예상
                 </th>
                 <th className="py-1.5 text-right text-label text-fg-muted font-bold uppercase">
                   Realized
@@ -170,7 +178,13 @@ export function ReconRangeStrip() {
                 <tr key={r.asOf} className="border-t border-border-subtle">
                   <td className="py-1 text-label text-fg-muted font-mono tabular-nums">{r.asOf}</td>
                   <td className="py-1 text-right">
+                    <SignedCell value={r.theta} />
+                  </td>
+                  <td className="py-1 text-right">
                     <SignedCell value={r.assumed} />
+                  </td>
+                  <td className="py-1 text-right">
+                    <SignedCell value={r.expected} />
                   </td>
                   <td className="py-1 text-right">
                     <SignedCell value={r.realized} />

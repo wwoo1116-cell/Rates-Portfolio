@@ -45,6 +45,13 @@ export interface MatrixGridProps {
   leadHeader: string;
   /** Total column header; omit the column by passing null. */
   totalHeader?: string | null;
+  /** FB3 F4a — the honest-display rule. Default true = the Home PVBP grammar
+   * (a ZERO KRD MASS keeps its em-dash: nothing to show). Pass false on
+   * surfaces whose cells are MEASUREMENTS (e.g. the M2 path matrix): a
+   * genuine 0.0 renders as 0.0; only `null` cells (unmapped/absent) keep the
+   * em-dash. Same rule the daily recon's SectorTenorMatrix carries (48a6b15
+   * zero-vs-unmapped fix). */
+  zeroAsDash?: boolean;
 }
 
 const defaultFormat = (v: number) =>
@@ -54,13 +61,17 @@ function Cell({
   value,
   range,
   format,
+  zeroAsDash,
 }: {
   value: number | null;
   range: number;
   format: (v: number) => string;
+  zeroAsDash: boolean;
 }) {
   const v = value ?? 0;
-  const zero = v === 0;
+  // null = absent/unmapped — ALWAYS an em-dash. A numeric 0 dashes only under
+  // the mass grammar (zeroAsDash); measurement surfaces render it as a value.
+  const dash = value === null || (zeroAsDash && v === 0);
   const bg = heatRampFill(v, range);
   return (
     <span
@@ -69,14 +80,14 @@ function Cell({
         textAlign: "right",
         padding: "2px 6px",
         background: bg,
-        color: zero ? "var(--fg-dim)" : "var(--chart-heat-text)",
+        color: dash || v === 0 ? "var(--fg-dim)" : "var(--chart-heat-text)",
         fontFamily: "var(--font-mono)",
         fontVariantNumeric: "tabular-nums",
         fontWeight: 600,
         fontSize: 11,
       }}
     >
-      {zero ? "—" : format(v)}
+      {dash ? "—" : format(v)}
     </span>
   );
 }
@@ -88,6 +99,7 @@ export function MatrixGrid({
   formatCell = defaultFormat,
   leadHeader,
   totalHeader = "Total",
+  zeroAsDash = true,
 }: MatrixGridProps) {
   const minWidth =
     LABEL_COL_PX + columns.length * VALUE_COL_PX + (totalHeader ? TOTAL_COL_PX : 0);
@@ -131,12 +143,17 @@ export function MatrixGrid({
               <td className="py-1.5 text-label text-fg-muted uppercase truncate">{row.label}</td>
               {row.cells.map((v, i) => (
                 <td key={columns[i]} className="py-1">
-                  <Cell value={v} range={cellRange} format={formatCell} />
+                  <Cell value={v} range={cellRange} format={formatCell} zeroAsDash={zeroAsDash} />
                 </td>
               ))}
               {totalHeader && (
                 <td className="py-1">
-                  <Cell value={row.total ?? null} range={cellRange} format={formatCell} />
+                  <Cell
+                    value={row.total ?? null}
+                    range={cellRange}
+                    format={formatCell}
+                    zeroAsDash={zeroAsDash}
+                  />
                 </td>
               )}
             </tr>

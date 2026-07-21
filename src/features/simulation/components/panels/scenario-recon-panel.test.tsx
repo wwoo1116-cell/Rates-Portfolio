@@ -68,22 +68,28 @@ describe("ScenarioReconPanel (RECON-SCEN M1–M3)", () => {
     expect(screen.getByText("시나리오 대사")).toBeTruthy();
     expect(screen.getByTestId("recon-chart")).toBeTruthy();
 
-    // Three series: assumed (solid), engine (solid), 잔차 (dashed).
+    // [CHANGED, FB3] ladder lanes: 예상 (solid), 실현 (solid), 잔차 (dashed).
     expect(lwProps!.series.length).toBe(3);
     expect(lwProps!.series[2].dashed).toBe(true);
 
-    // Series data == the lib selectors, point for point.
+    // Series data == the lib selectors, point for point — and the 잔차
+    // series is byte-identical to the pre-ladder engine−assumed values.
     const { request, response } = loadFixture("linear");
     const { points } = buildScenarioRecon(request, response);
-    expect(lwProps!.series[0].data.map((p) => p.value)).toEqual(points.map((p) => p.assumed));
-    expect(lwProps!.series[1].data.map((p) => p.value)).toEqual(points.map((p) => p.engine));
+    expect(lwProps!.series[0].data.map((p) => p.value)).toEqual(points.map((p) => p.expected));
+    expect(lwProps!.series[1].data.map((p) => p.value)).toEqual(points.map((p) => p.realized));
     expect(lwProps!.series[2].data.map((p) => p.value)).toEqual(points.map((p) => p.residual));
+    expect(points.map((p) => p.residual)).toEqual(points.map((p) => p.engine - p.assumed));
 
-    // Legend + caption.
-    expect(screen.getByText("가정 경로")).toBeTruthy();
-    expect(screen.getByText("엔진 평가 경로")).toBeTruthy();
+    // Legend (ladder labels) + terminal bridge line + caption.
+    expect(screen.getByText("예상 경로")).toBeTruthy();
+    expect(screen.getByText("실현 경로 (테타+평가)")).toBeTruthy();
     expect(screen.getByText("잔차")).toBeTruthy();
+    expect(screen.getByText(/만기 브리지/)).toBeTruthy();
     expect(screen.getByText(/기준일 KRD 고정/)).toBeTruthy();
+    // [old wording pinned absent]
+    expect(screen.queryByText("엔진 평가 경로")).toBeNull();
+    expect(screen.queryByText("가정 경로")).toBeNull();
 
     // Surfaced SIM2-4 machinery table with its lane headers.
     expect(screen.getByText(/엔진 내부 머시너리/)).toBeTruthy();
@@ -91,13 +97,16 @@ describe("ScenarioReconPanel (RECON-SCEN M1–M3)", () => {
     expect(screen.getByText("실제 P&L")).toBeTruthy();
   });
 
-  it("naming guard in the RENDERED DOM: the 잔차 lane is never captioned 테타/carry", () => {
+  it("naming guard in the RENDERED DOM: the 잔차 lane keeps its own name — 테타 appears only as a ladder term", () => {
     seedRun();
     render(<ScenarioReconPanel />);
     const legendItem = screen.getByText("잔차").closest("span");
     expect(legendItem?.textContent).toBe("잔차");
+    // The caption may DESCRIBE the theta rung (it states the bridge), but the
+    // residual clause names 잔차 as 컨벡시티(+베이시스), never as a theta.
     const caption = screen.getByText(/선형 근사/);
-    expect(/테타|carry|캐리|theta/i.test(caption.textContent ?? "")).toBe(false);
+    expect(caption.textContent).toContain("잔차 = 컨벡시티(+베이시스)");
+    expect(caption.textContent).not.toMatch(/잔차[^.]*(테타|carry|캐리|theta)\s*(이|로|입니다)/);
   });
 
   it("M1 subtab: full pillar columns, sector rows, emphasized 합계", () => {
@@ -123,6 +132,42 @@ describe("ScenarioReconPanel (RECON-SCEN M1–M3)", () => {
     expect(screen.getByText(/시계열형 미리보기와 동일한 원천/)).toBeTruthy();
   });
 
+  it("FB3 F4a — M2 renders the genuinely-zero short end as 0.0, never the unmapped — (0.0-vs-— rule)", () => {
+    // Live-app regime: no 금통위 events → the FE-built curves pin the short
+    // nodes at 0 (the committed fixture ships an explicit flat short end, so
+    // its request curves are patched here to the FE's no-event form — the
+    // matrix reads the request's own curves).
+    seedRun();
+    const fx = cloneFixture(loadFixture("linear"));
+    for (const nodes of [
+      ...Object.values(fx.request.shockCurves.bondCurves),
+      fx.request.shockCurves.swapCurve,
+    ]) {
+      for (const n of nodes as { t: number; val: number }[]) {
+        if (n.t <= 0.25) n.val = 0;
+      }
+    }
+    useSimulationDataStore.setState({ lastRun: fx.response, lastRunRequest: fx.request });
+    render(<ScenarioReconPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "경로 매트릭스" }));
+
+    const row = screen.getByText("2026-04-02").closest("tr")!;
+    const cells = Array.from(row.querySelectorAll("td")).map((td) => td.textContent?.trim());
+    // Layout: [일자, ...15 pillar cells]. 1D and 3M are MEASURED zeros of the
+    // designed path (short end moves only via 금통위 events — by design),
+    // while 3Y carries the ramped value.
+    expect(cells[1]).toBe("+0.0"); // 1D — a value, not the unmapped em-dash
+    expect(cells[2]).toBe("+0.0"); // 3M
+    expect(cells[8]).not.toBe("—"); // 3Y carries a value
+    expect(screen.getByText(/금통위 이벤트로만 이동/)).toBeTruthy();
+
+    // …and the KRD grid (M1) keeps the mass grammar: zero-mass cells still —.
+    fireEvent.click(screen.getByRole("button", { name: "KRD 그리드" }));
+    const ktbRow = screen.getByText("국고채").closest("tr")!;
+    const ktbCells = Array.from(ktbRow.querySelectorAll("td")).map((td) => td.textContent?.trim());
+    expect(ktbCells[1]).toBe("—"); // 1D — no KRD mass there in the fixture
+  });
+
   it("T4b 정산 CF subtab: settlement rows in the CashflowTable grammar + engine-lane 대사 line", () => {
     seedRun();
     render(<ScenarioReconPanel />);
@@ -146,6 +191,17 @@ describe("ScenarioReconPanel (RECON-SCEN M1–M3)", () => {
     render(<ScenarioReconPanel />);
     fireEvent.click(screen.getByRole("button", { name: "정산 CF" }));
     expect(screen.getByText(/구간 내 스왑 정산일 없음/)).toBeTruthy();
+  });
+
+  it("FB3 F4b — subtab labels carry the shared label-nowrap utility (경로 매트릭스 never breaks mid-word)", () => {
+    seedRun();
+    render(<ScenarioReconPanel />);
+    for (const name of ["대사", "KRD 그리드", "경로 매트릭스", "정산 CF"]) {
+      expect(
+        (screen.getByRole("button", { name }) as HTMLButtonElement).className,
+        name,
+      ).toContain("label-nowrap");
+    }
   });
 
   it("honest empty: a run without decompositionDaily explains itself instead of charting nothing", () => {

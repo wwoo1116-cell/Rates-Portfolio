@@ -384,3 +384,16 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─────────────────────────────────────────────
+   LABEL NOWRAP (FB3 F4b — shared utility)
+   Korean control labels (tab/subtab/chip/button captions) must never break
+   mid-word ("경로 매트릭스" wrapping inside a SegmentedButtons segment was
+   the live defect). One utility, applied at label surfaces; word-break
+   keep-all guards any residual multi-word case. Owned by FB3-RECON — lane A
+   coordinates via FB3_RECON_REPORT.md before touching this block.
+   ───────────────────────────────────────────── */
+.label-nowrap {
+  white-space: nowrap;
+  word-break: keep-all;
+}

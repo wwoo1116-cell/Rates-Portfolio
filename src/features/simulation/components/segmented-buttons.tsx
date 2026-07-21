@@ -41,7 +41,9 @@ export function SegmentedButtons<T extends string | number>({
           onClick={() => onChange(c)}
           data-num
           className={cn(
-            "min-w-0 flex-1 px-0 text-micro",
+            // FB3 F4b: Korean labels never break mid-word (label-nowrap,
+            // globals.css) — hosts size the group to fit the longest label.
+            "min-w-0 flex-1 px-0 text-micro label-nowrap",
             value === c
               ? "bg-sem-info-ghost text-sem-info shadow-[inset_0_0_0_1px_var(--sem-info)]"
               : "text-fg-muted",

@@ -22,7 +22,7 @@ import { useCombinedPositions } from "@/hooks/use-portfolio-analytics";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   assumedTotal,
-  closureFooter,
+  bridgeLadder,
   deltaBpByTenor,
   realizedFromByClass,
 } from "@/lib/daily-recon-math";
@@ -37,7 +37,11 @@ export interface ReconRangeRow {
   asOf: string;
   /** The close D−1 the assumed leg priced off. */
   close: string;
+  /** FB3 ladder terms — 테타 (T−1 기지) and 예상 = 테타 + Assumed. */
+  theta: number | null;
   assumed: number | null;
+  expected: number | null;
+  /** 테타 + 채권평가 + 스왑평가 (the compared bucket; funding excluded). */
   realized: number | null;
   residual: number | null;
   residualPct: number | null;
@@ -111,7 +115,9 @@ export function useReconRange() {
             out.push({
               asOf,
               close,
+              theta: null,
               assumed: null,
+              expected: null,
               realized: null,
               residual: null,
               residualPct: null,
@@ -126,21 +132,26 @@ export function useReconRange() {
             const assumed = assumedTotal(TENOR_COLS, pvbpRows, deltaBp);
             const totalRow = daily.by_book.find((r) => r.book === "Total");
             const realized = realizedFromByClass(totalRow?.by_class);
+            const theta = totalRow?.theta ?? null;
             if (assumed === undefined) {
               out.push({
-                asOf, close, assumed: null, realized: null, residual: null,
-                residualPct: null, note: "KRD 합계 행 없음", deltaBp,
+                asOf, close, theta, assumed: null, expected: null, realized: null,
+                residual: null, residualPct: null, note: "KRD 합계 행 없음", deltaBp,
               });
             } else if ("disabledReason" in realized) {
+              // 테타/Assumed are deterministic — retained; the ladder's
+              // comparison side is the unknowable part.
               out.push({
-                asOf, close, assumed, realized: null, residual: null,
-                residualPct: null, note: realized.disabledReason, deltaBp,
+                asOf, close, theta, assumed,
+                expected: theta !== null ? theta + assumed : null,
+                realized: null, residual: null, residualPct: null,
+                note: realized.disabledReason, deltaBp,
               });
             } else {
-              const f = closureFooter(assumed, realized.bondMtm, realized.swapMtm);
+              const f = bridgeLadder(theta ?? 0, assumed, realized.bondMtm, realized.swapMtm);
               out.push({
-                asOf, close, assumed: f.assumed, realized: f.realized,
-                residual: f.residual, residualPct: f.residualPct, deltaBp,
+                asOf, close, theta: f.theta, assumed: f.assumed, expected: f.expected,
+                realized: f.realized, residual: f.residual, residualPct: f.residualPct, deltaBp,
               });
             }
           }

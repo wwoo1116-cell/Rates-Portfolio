@@ -160,7 +160,7 @@ export function ReconDeltaBpChart({ rows }: { rows: ReconRangeRow[] }) {
             onMouseLeave={() => setHighlighted((cur) => (cur === col ? null : cur))}
             data-num
             className={cn(
-              "border border-border-subtle px-1.5 py-0.5 text-micro",
+              "border border-border-subtle px-1.5 py-0.5 text-micro label-nowrap",
               selected.includes(col)
                 ? "bg-sem-info-ghost text-sem-info shadow-[inset_0_0_0_1px_var(--sem-info)]"
                 : "text-fg-muted",
