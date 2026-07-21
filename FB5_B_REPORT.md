@@ -151,5 +151,125 @@ hardcoded `rating: null` in `useSectorInputQuotes` for RATED sectors.**
 4. **Pins.** Every enabled chip draws ≥1 series; disabled chips carry the reason; chip labels
    pinned against `SECTOR_ORDER`.
 
-*(B2 same-source evidence, B3 tie-out numbers, and final test enumeration appended after the
-fix commits.)*
+### B1 decision note (for the landing pass / owner)
+
+The owner enumerated all seven PVBP sectors. Ruling ③ permits a no-curve sector to be
+**either absent OR disabled-with-reason**. I chose **absent** for `통안채`/`특은채` because:
+(a) it matches the **Rate History selector exactly** (ruling ② parity — that selector also
+omits them, since the credit-matrix snapshot has no distinct curve for either); (b) it is the
+**already-landed, tested** behavior (`carried`-only chips — the FB4 pin "통안 deliberately
+ABSENT"); and (c) both fold to `국고채`/`공사채` in the shock model too, so a disabled chip
+would explain an absence that the RV selector never surfaces. **If the owner prefers all
+seven visible**, flip `familyRoster` to render `PREVIEW_FAMILIES` unfiltered with a
+`disabled` + `스냅샷에 커브 없음` state on the non-`carried` ones — the honesty rule is
+satisfied either way; this is a one-line roster change, no data work.
+
+The **representative-rating** choice (`ratings[0]`) is the RV `LegPicker` default (highest
+tier). It is disclosed on-screen (`기준 등급: 회사채 AAA (공모) …`) so a single-tier curve is
+never passed off as the whole sector.
+
+---
+
+## B2 — 시계열형 crosshair Δbp readout (owner feedback ④)
+
+`LwLineChart` now `subscribeCrosshairMove`s and reports a per-series readout to the panel.
+The values are read from **lightweight-charts' own `param.seriesData`** — the exact points
+the lines are drawn from — paired to each series def by index (`seriesRef` order ≡ `series`
+prop order). **Same-source pin:** the panel renders those values verbatim (only `formatBpAxis`
+for display); it never re-evaluates the path. A series with **no point on a whitespace day**
+is simply absent from `seriesData` → `value: null` → the readout shows `—` (never a
+fabricated `+0.0bp`). The old single price-axis badge (`+296.6bp`) thus generalizes to a
+labeled+colored per-series row under the crosshair date. Handler is registered once (create
+effect); the latest defs/callback are mirrored into refs in a **commit-phase effect** (never
+during render — satisfies the slice's react rule).
+
+Evidence: `curve-view-panel.test.tsx` — "B2: crosshair readout shows each visible series' Δbp
+… — on a whitespace day" feeds a readout the way the real chart does and asserts the rendered
+row (date `2026-08-14`, `+5.0bp`, and `—` for the null series, with `+0.0bp` pinned ABSENT);
+"B2: crosshair leaving the data (null readout) hides the readout row".
+
+---
+
+## B3 — 시나리오 대사 기여 (M3) grid (owner feedback ⑤)
+
+New **기여** view on the 시나리오 대사 (between 경로 매트릭스 and 정산 CF), in the **same
+`MatrixGrid` grammar** as M1/M2 (reused, not forked). A **day selector** (Slider, default =
+terminal day, navigable across the run's business-day axis) drives
+`buildContributionGrid(req, resp, day)`.
+
+**Tie-out (by construction, not coincidence):** `buildContributionGrid` reuses
+`buildScenarioRecon`'s **same** KRD grid (`buildKrdGrid`), **same** evaluator
+(`createPathEvaluator`), **same** engine P&L sign (`−KRD × cumΔbp`), and **same** swap-exclusion
+rule. So Σ over every grid cell **is** `assumed(day)`:
+
+| fixture | day | grid book total | ScenarioRecon `assumed(day)` | agree |
+| --- | --- | --- | --- | --- |
+| shaped | terminal | `buildContributionGrid…bookTotal` | `points.at(-1).assumed` | `toBeCloseTo(…, 6)` ✓ |
+| shaped | mid | ” | `points[mid].assumed` | `toBeCloseTo(…, 6)` ✓ |
+| linear | 0 | `0` | `0` | exact ✓ (all cumΔbp 0) |
+
+Row totals = Σ tenor cells; column totals = Σ sector cells; grid closes to the book total.
+Zero/dash per FB3 T2: a carried cell whose designed cumΔbp is 0 (1D/3M without 금통위) is a
+genuine `0.0` (`zeroAsDash={false}`); only a tenor the sector doesn't carry is the em-dash.
+The caption states the tie ("합계 … = 시나리오 대사의 가정(Assumed) … 동일 선형화, 반올림
+오차 내 일치").
+
+Evidence: `scenario-recon.test.ts` — book-total tie (terminal + mid), grid closure, sign +
+genuine-zero; `scenario-recon-panel.test.tsx` — 기여 subtab columns/합계/day-selector/tie
+caption + the selector moving to day 0.
+
+---
+
+## Gates (all re-derived from the checkout)
+
+| Gate | Baseline | After FB5-B |
+| --- | --- | --- |
+| `tsc --noEmit` | clean | **clean** ✓ |
+| `eslint .` | 13E / 21W | **13E / 21W** ✓ (unchanged; all 13 pre-existing, outside touched files) |
+| `vitest run` | 423 / 56 files | **433 / 56 files** ✓ (**+10**: B1 ×3, B2 ×2, B3 lib ×3, B3 panel ×2) |
+| `check:contrast` | pass | **pass** ✓ (readout/grid use existing sector + `--fg-*` tokens only) |
+| matrix-grid anti-fork | — | reused `@/components/ui/matrix-grid` (0 diffs) ✓ |
+| tree clean · no build · no push | — | ✓ / ✓ / ✓ |
+
+### Forbidden-surface proof — `git diff --name-only 0471ed4..HEAD` (excl. this report)
+
+```
+src/features/simulation/components/charts/lw-line-chart.tsx
+src/features/simulation/components/panels/curve-view-panel.test.tsx
+src/features/simulation/components/panels/curve-view-panel.tsx
+src/features/simulation/components/panels/scenario-recon-panel.test.tsx
+src/features/simulation/components/panels/scenario-recon-panel.tsx
+src/features/simulation/components/stages/configure-stage.tsx
+src/features/simulation/hooks/use-input-curves.ts
+src/features/simulation/lib/recon/scenario-recon.test.ts
+src/features/simulation/lib/recon/scenario-recon.ts
+```
+
+Every path is under `src/features/simulation/`. **Untouched** (verified): `features/rates-history/`
+(incl. the shared `instrument-selector.tsx` — read only), `features/home/` (the shared
+daily-recon component + `sector-tenor-matrix.tsx` + `daily-recon-panel.tsx`),
+`@/components/ui/matrix-grid.tsx`. BE `krw-fi-pms-backend` @ `11a4daf` — 0 changes.
+
+## Instrument-selector handoff notes (lane A)
+
+- **No interface change requested.** B1 reuses the shared selector's **option source**
+  (`creditCurveApi.taxonomy()` + the `ratings[0]` default convention), not the widget — the
+  `InstrumentSelector`/`LegPicker` component was read only, never imported or edited. Lane A's
+  label-removal edit there does not collide with anything in this lane.
+- Informational only: this lane now consumes `TaxonomySectorOut.ratings` (already present) to
+  pick a representative rating. If lane A's rates-history work changes the taxonomy shape or
+  ordering, the 커브형 roster and rep-rating follow it automatically (data-driven) — no code
+  coupling, but worth a glance at merge.
+
+## Commits (on `fb5/sim-recon-display`, off `0471ed4`)
+
+```
+df283c2 docs(fb5-b): B1 Phase-1 diagnosis
+164296b fix(fb5-b):  B1 — PVBP taxonomy chips + representative-rating base curve
+ac70659 feat(fb5-b): B2 — 시계열형 per-series crosshair Δbp readout
+9da2840 feat(fb5-b): B3 — 시나리오 대사 기여 (M3) contribution grid
+<chore>   restore .impeccable/hook.cache.json to base
+```
+
+Worktree `wt-fb5-sim` left in place for the landing pass (no build, no restart, no push).
+
