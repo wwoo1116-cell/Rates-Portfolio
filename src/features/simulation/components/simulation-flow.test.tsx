@@ -80,14 +80,25 @@ describe("SimulationFlow (s15 staged flow)", () => {
     expect(screen.getByText("시나리오 조건 설정")).toBeTruthy();
   });
 
-  it("shows the Running interstitial with engine stages, elapsed clock and cancel", () => {
+  it("shows the simplified Running interstitial: title, honesty line, elapsed clock, cancel", () => {
     renderFlow();
     act(() => useSimulationDataStore.getState().markRunning());
-    expect(screen.getByText("엔진 계산 중")).toBeTruthy();
-    expect(screen.getByText("커브 부트스트랩")).toBeTruthy();
-    expect(screen.getByText("시나리오 프라이싱")).toBeTruthy();
-    expect(screen.getByText("분위수 구성")).toBeTruthy();
+    expect(screen.getByText("시뮬레이션 계산 중")).toBeTruthy();
+    expect(screen.getByText(/경과 시간이 실제 신호/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "취소" })).toBeTruthy();
+  });
+
+  it("owner ruling: the σ-fan-era stage list is gone — no 분위수/팬/quantile wording, no stage items", () => {
+    renderFlow();
+    act(() => useSimulationDataStore.getState().markRunning());
+    // The deleted fan's copy must never resurface on the Running screen.
+    expect(screen.queryByText(/분위수/)).toBeNull();
+    expect(screen.queryByText(/팬 밴드/)).toBeNull();
+    expect(screen.queryByText(/quantile/i)).toBeNull();
+    // No fake progress stages either (the old 3-item pipeline list).
+    expect(screen.queryByText("커브 부트스트랩")).toBeNull();
+    expect(screen.queryByText("시나리오 프라이싱")).toBeNull();
+    expect(screen.queryByRole("list")).toBeNull();
   });
 
   it("cancel returns to Configure and keeps the previous result untouched", () => {

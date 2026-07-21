@@ -20,6 +20,7 @@ import { formatKrwAxisSigned } from "@/lib/format";
 
 import { useSimulationPort } from "../../hooks/use-simulation";
 import { ComponentCurvesPanel } from "../panels/component-curves-panel";
+import { ScenarioReconPanel } from "../panels/scenario-recon-panel";
 import { PnlWaterfall, type WaterfallItem } from "../charts/pnl-waterfall";
 
 /** Marquee two-tone chip: uppercase label segment on bg-tertiary, mixed-case
@@ -195,6 +196,10 @@ export function ResultsStage({ onEdit }: { onEdit: () => void }) {
           <p className="mt-2 text-micro text-chart-pnl-pos" data-num>손익분기점 도달: D+{s.breakEvenDay}</p>
         )}
       </div>
+
+      {/* ── RECON-SCEN: 시나리오 대사 (M1 KRD 그리드 · M2 경로 매트릭스 ·
+             M3 assumed vs engine vs 잔차) ── */}
+      <ScenarioReconPanel />
     </div>
   );
 }
