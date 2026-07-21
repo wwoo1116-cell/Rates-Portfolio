@@ -18,6 +18,7 @@ import type { SimulateRequest, SimulateResponse } from "../api/simulate-dto";
 import {
   DEFAULT_SCENARIO_PARAMS,
   EMPTY_SIMULATION_INPUTS,
+  type AnchorTenor,
   type RunStatus,
   type ScenarioParams,
   type SimulationInputs,
@@ -28,6 +29,12 @@ interface SimulationDataState {
   params: ScenarioParams;
   lastRun: SimulateResponse | null;
   lastRunRequest: SimulateRequest | null;
+  /** N1 — the anchor pillar `lastRunRequest` was DESIGNED on (the wire itself
+   * stays 3Y-normalized). Set by runCurrent on arrival; null before any run.
+   * Results reconstructs the anchor-native target X from the wire's 국채
+   * curve at this pillar. */
+  lastRunAnchorTenor: AnchorTenor | null;
+  setLastRunAnchorTenor: (anchor: AnchorTenor) => void;
   status: RunStatus;
   error: string | null;
 
@@ -68,6 +75,8 @@ export const useSimulationDataStore = create<SimulationDataState>((set) => ({
   params: DEFAULT_SCENARIO_PARAMS,
   lastRun: null,
   lastRunRequest: null,
+  lastRunAnchorTenor: null,
+  setLastRunAnchorTenor: (anchor) => set({ lastRunAnchorTenor: anchor }),
   status: "idle",
   error: null,
 

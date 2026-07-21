@@ -10,7 +10,7 @@
  *  - previewMode survives unmount/remount (store-level, stage navigation).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { buildSimulateRequest } from "../../lib/scenario-curves";
@@ -328,5 +328,37 @@ describe("CurveViewPanel 커브형/시계열형 (SIM2-1)", () => {
     expect(
       (screen.getByRole("button", { name: "시계열형" }) as HTMLButtonElement).getAttribute("aria-pressed"),
     ).toBe("true");
+  });
+});
+
+describe("CurveViewPanel — N1 anchor-driven gating", () => {
+  it("anchor 5Y: its tenor chip auto-selects, drag caption names the anchor, markers ride it", () => {
+    seed("path", {
+      params: { ...DEFAULT_SCENARIO_PARAMS, anchorTenor: "5Y" },
+    });
+    render(<CurveViewPanel />);
+
+    // The 5Y chip is pressed (auto-selected for the anchor)…
+    const chip5y = screen.getAllByRole("button", { name: "5Y" })[0] as HTMLButtonElement;
+    expect(chip5y.getAttribute("aria-pressed")).toBe("true");
+    // …the caption names the anchor pillar…
+    expect(screen.getByText(/국고 5Y 드래그 가능/)).toBeTruthy();
+    // …and waypoint markers exist (anchor visible ⇒ dots have a host series).
+    expect(lwProps?.markers?.length).toBeGreaterThan(0);
+  });
+
+  it("anchor switch AFTER mount adds the new anchor chip without deselecting the old", () => {
+    seed("path");
+    render(<CurveViewPanel />);
+    expect((screen.getAllByRole("button", { name: "3Y" })[0] as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+
+    act(() => {
+      useSimulationDataStore.setState((s) => ({
+        params: { ...s.params, anchorTenor: "10Y" },
+      }));
+    });
+    expect((screen.getAllByRole("button", { name: "10Y" })[0] as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getAllByRole("button", { name: "3Y" })[0] as HTMLButtonElement).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText(/국고 10Y 드래그 가능|드래그는 국고 10Y 표시 중에만/)).toBeTruthy();
   });
 });

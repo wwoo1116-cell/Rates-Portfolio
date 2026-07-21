@@ -100,7 +100,10 @@ export interface DistributionBand {
  * keyed to their generating RATE-quantile scenario — they are NOT outcome
  * ranks and may cross on non-monotone books; render them as per-scenario
  * LINES labeled by scenario (금리 P95 시나리오), never as rank bands.
- * `ratePaths` carries each scenario's 국채 3Y cumulative-bp path — rates are
+ * `ratePaths` carries each scenario's 국채 **3Y-관측** cumulative-bp path (the
+ * 3.0-year cross-section of the shocked 국채 curve, chart.py `_ktb3y_bp`) —
+ * N1/T2: this stays a 3Y OBSERVATION under any designed anchor; a revived
+ * consumer must label it "3Y 관측", never as the designed-anchor path. Rates are
  * monotone in the quantile by construction, so THOSE bands never cross and
  * P5..P95 labels are truthful there. Optional: older cached responses lack it. */
 export interface SimulationDistribution {

@@ -158,3 +158,35 @@ describe("ScenarioReconPanel (RECON-SCEN M1–M3)", () => {
     expect(screen.queryByTestId("recon-chart")).toBeNull();
   });
 });
+
+describe("F-VMP-1 — 불일치 raw-difference transparency", () => {
+  it("formatRawDeltaKrw: sub-won drift prints its magnitude, never a rounded 0", async () => {
+    const { formatRawDeltaKrw } = await import("./scenario-recon-panel");
+    expect(formatRawDeltaKrw(0.42)).toBe("+0.42");
+    expect(formatRawDeltaKrw(-0.42)).toBe("-0.42");
+    expect(formatRawDeltaKrw(1234.5)).toBe("+1,234.5");
+    expect(formatRawDeltaKrw(-2)).toBe("-2");
+    // The VMP failure mode: drift below 0.005 must not display as 0.00.
+    expect(formatRawDeltaKrw(0.0004)).toBe("+0.0004");
+    expect(formatRawDeltaKrw(-0.0004)).toBe("-0.0004");
+  });
+
+  it("a 불일치 window renders the raw signed Δ next to the verdict (threshold untouched)", () => {
+    seedRun();
+    const fx = cloneFixture(loadFixture("linear"));
+    // Nudge one engine window by ₩2.42 — beyond the ±₩1 pin, but far below
+    // the 억/만 display grain (both printed sides would look identical: the
+    // exact VMP observation the raw Δ exists to explain).
+    const recon = (fx.response.irsDailyReconciliation ?? []).find((r) => r.settleCf !== 0)!;
+    recon.settleCf += 2.42;
+    useSimulationDataStore.setState({ lastRun: fx.response, lastRunRequest: fx.request });
+    render(<ScenarioReconPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "정산 CF" }));
+
+    const line = screen.getByText(/엔진 정산-현금 레인과 불일치/);
+    expect(line.textContent).toMatch(/\(Δ ₩-2\.42\)/);
+    // Verdict threshold unchanged: the other window still reconciles, so the
+    // all-match line is gone but no math was altered (projected side intact).
+    expect(screen.queryByText(/창구별 대사 일치/)).toBeNull();
+  });
+});

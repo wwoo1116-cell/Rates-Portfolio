@@ -215,3 +215,47 @@ describe("ConfigureStage (s15 staged flow — configure)", () => {
     expect(params.waypoints.some((w) => w.day === 120)).toBe(false);
   });
 });
+
+describe("ConfigureStage — N1 anchor selector", () => {
+  it("renders the four owner choices with 3Y pressed by default and 3Y wording intact", () => {
+    renderStage();
+    const group = screen.getByRole("group", { name: "목표 앵커 테너" });
+    const labels = Array.from(group.querySelectorAll("button")).map((b) => b.textContent);
+    expect(labels).toEqual(["1Y", "3Y", "5Y", "10Y"]);
+    const pressed = Array.from(group.querySelectorAll('button[aria-pressed="true"]')).map(
+      (b) => b.textContent,
+    );
+    expect(pressed).toEqual(["3Y"]);
+    // Default anchor keeps the legacy copy verbatim (identity path).
+    expect(screen.getByLabelText("국채 3Y 목표 변동")).toBeTruthy();
+    expect(screen.getByText("경로 설정 (국채 3Y 웨이포인트)")).toBeTruthy();
+  });
+
+  it("selecting 5Y re-labels the design surfaces to the anchor (spread label stays vs 3Y)", () => {
+    renderStage();
+    fireEvent.click(screen.getByRole("group", { name: "목표 앵커 테너" }).querySelectorAll("button")[2]);
+    expect(useSimulationDataStore.getState().params.anchorTenor).toBe("5Y");
+    expect(screen.getByLabelText("국채 5Y 목표 변동")).toBeTruthy();
+    expect(screen.getByText("경로 설정 (국채 5Y 웨이포인트)")).toBeTruthy();
+    expect(screen.getByText(/국채 5Y 기준 금리 경로 설계/)).toBeTruthy();
+    // Owner ruling: 테너 스프레드 stays DEFINED vs 3Y — label must not move.
+    expect(screen.getByText("국고채 테너 스프레드 (vs 국채 3Y)")).toBeTruthy();
+  });
+
+  it("degenerate anchor conversion blocks the run and names the cause (0.5bp floor)", () => {
+    useSimulationDataStore.setState((s) => ({
+      inputs: { ...s.inputs, positions: [{ id: "p" } as never] },
+      params: { ...s.params, anchorTenor: "10Y", spread10y: "12", baseShockBp: "12" },
+    }));
+    renderStage();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toMatch(/상쇄/);
+    expect(alert.textContent).toMatch(/0.5bp/);
+    const run = screen.getByRole("button", { name: /시뮬레이션 실행/ }) as HTMLButtonElement;
+    expect(run.disabled).toBe(true);
+    // Clearing the degeneracy re-enables the run (positions present).
+    fireEvent.change(screen.getByLabelText("국채 10Y 목표 변동"), { target: { value: "30" } });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect((screen.getByRole("button", { name: /시뮬레이션 실행/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});

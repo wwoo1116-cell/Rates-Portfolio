@@ -19,7 +19,8 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-import { toNum } from "../../lib/scenario-curves";
+import { anchorConversionError, toNum } from "../../lib/scenario-curves";
+import { ANCHOR_TENOR_CHOICES } from "../../types/simulation-port";
 import {
   WAYPOINT_STEP_BP,
   buildWaypointPatch,
@@ -185,7 +186,11 @@ function BaseDateControl({ baseDate }: { baseDate: string }) {
 
 export function ConfigureStage() {
   const { params, inputs, status, patchParams, runCurrent } = useSimulationPort();
-  const canRun = inputs.positions.length > 0 && status !== "running";
+  // N1 — the designed anchor pillar (absent ≡ 3Y for pre-N1 param states) and
+  // its degeneracy validation (the honest reason a conversion can't run).
+  const anchorTenor = params.anchorTenor ?? "3Y";
+  const anchorError = anchorConversionError(params);
+  const canRun = inputs.positions.length > 0 && status !== "running" && !anchorError;
 
   // Regenerate intermediate waypoints (every 30d) when horizon/target changes.
   // SIM2-2 (ruling ①): an UNTOUCHED intermediate defaults to the on-the-line
@@ -240,7 +245,7 @@ export function ConfigureStage() {
     <div className="flex h-full w-full flex-col p-4">
       <div className="mb-4">
         <h2 className="text-h2 text-fg-primary">시나리오 조건 설정</h2>
-        <p className="text-micro text-fg-muted mt-1">국채 3Y 기준 금리 경로 설계 · 포트 연동</p>
+        <p className="text-micro text-fg-muted mt-1">국채 {anchorTenor} 기준 금리 경로 설계 · 포트 연동</p>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto lg:grid-cols-[minmax(320px,420px)_1fr] lg:overflow-hidden">
@@ -262,10 +267,23 @@ export function ConfigureStage() {
             <div data-num className="mt-1 text-right text-body-strong text-sem-info">{params.simDays} Days</div>
           </div>
 
+          {/* 1b. N1 — 목표 앵커 테너: which 국고 pillar the target/path/drag
+              design. Owner-fixed choices; the wire stays 3Y-정규화 (재표현). */}
+          <div>
+            <label className="mb-2 block text-label uppercase text-fg-muted">목표 앵커 테너 (국고)</label>
+            <SegmentedButtons
+              choices={ANCHOR_TENOR_CHOICES}
+              value={anchorTenor}
+              onChange={(v) => patchParams({ anchorTenor: v })}
+              format={(v) => v}
+              label="목표 앵커 테너"
+            />
+          </div>
+
           {/* 2. Base 충격 */}
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <label className="text-label uppercase text-fg-muted">국채 3Y 목표 변동</label>
+              <label className="text-label uppercase text-fg-muted">국채 {anchorTenor} 목표 변동</label>
               <span className="bg-bg-tertiary px-2 py-0.5 text-micro text-fg-muted">D+{params.simDays} 고정</span>
             </div>
             <div className="flex items-center gap-2">
@@ -273,7 +291,7 @@ export function ConfigureStage() {
                 <Input
                   type="text"
                   inputMode="decimal"
-                  aria-label="국채 3Y 목표 변동"
+                  aria-label={`국채 ${anchorTenor} 목표 변동`}
                   value={params.baseShockBp}
                   onChange={(e) => patchParams({ baseShockBp: e.target.value })}
                   data-num
@@ -282,6 +300,14 @@ export function ConfigureStage() {
               </div>
               <span className="text-body text-fg-muted">bp</span>
             </div>
+            {/* N1 degeneracy floor — the run is blocked (canRun) AND the cause
+                is named where the offending inputs live. Never a silent
+                customPath-disable via this route. */}
+            {anchorError && (
+              <p className="mt-1.5 text-micro text-sem-danger" role="alert">
+                {anchorError}
+              </p>
+            )}
           </div>
 
           {/* 분포 σ input removed for the demo two-pane (trader feedback):
@@ -296,7 +322,7 @@ export function ConfigureStage() {
             {/* 3a. 경로 설정 (waypoints) */}
             <details className="py-1.5">
               <summary className="flex cursor-pointer list-none items-center justify-between text-body-strong text-fg-secondary hover:text-fg-primary">
-                <span>경로 설정 (국채 3Y 웨이포인트)</span>
+                <span>경로 설정 (국채 {anchorTenor} 웨이포인트)</span>
                 {waypointCount > 0 && (
                   <span data-num className="text-micro text-sem-info">{waypointCount}개 조정</span>
                 )}
