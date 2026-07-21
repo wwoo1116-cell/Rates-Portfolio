@@ -99,14 +99,23 @@ export function useSwapInputQuotes(baseDate: string, enabled = true) {
  * —, never +0). Generalizes the old 국고채-only hook: same query shape, the
  * sector is part of the cache key, and `carried` reports whether the credit
  * taxonomy offers the sector at all (chip renders only when it does). */
-export function useSectorInputQuotes(sector: string, baseDate: string, enabled = true) {
+export function useSectorInputQuotes(
+  sector: string,
+  baseDate: string,
+  enabled = true,
+  ratingOverride?: string | null,
+) {
   const taxonomy = useCreditTaxonomy(enabled);
 
   const sectorDef = taxonomy.data?.sectors.find((s) => s.sector === sector);
   const tenors = sectorDef?.tenors ?? [];
   // FB5 B1 — resolve the sector's representative rating (ratings[0]) so a RATED
   // sector fetches a real curve instead of the silent-blank rating:null series.
-  const repRating = representativeRating(sectorDef);
+  // FB5R R2 (owner amendment): a host may OVERRIDE the tier the curve reflects
+  // (the preview's live 등급 dropdown). `undefined` = keep the B1 default; an
+  // explicit rating (or null for 국고채) picks that tier. The rating is part of
+  // the bondQuotes cache key, so switching tiers refetches and redraws.
+  const repRating = ratingOverride !== undefined ? ratingOverride : representativeRating(sectorDef);
 
   const series = useQuery({
     queryKey: INPUT_CURVE_KEYS.bondQuotes(baseDate, sector, repRating),

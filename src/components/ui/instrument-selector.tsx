@@ -38,6 +38,13 @@ interface LegPickerProps {
   sectors: TaxonomySectorOut[];
   filter: string;
   onChange: (leg: Leg | null) => void;
+  /** FB5R R2 — force the 등급 dropdown to N/A (emit rating:null) regardless of
+   * the sector's ratings. The 시계열형 preview path is family-based (rating has
+   * no effect), so it locks this slot off. Default false = RH behavior. */
+  ratingDisabled?: boolean;
+  /** FB5R R2 — force the 테너 dropdown to N/A (emit tenor:""). The 커브형
+   * preview picks a whole family/curve, not a tenor. Default false = RH. */
+  tenorDisabled?: boolean;
 }
 
 /** One sector/rating/tenor picker. Emits a complete Leg via onChange whenever
@@ -46,7 +53,7 @@ interface LegPickerProps {
  * fallback to the sector's first option (and re-validated when the sector
  * changes), so no cascading setState-in-effect is needed to keep the three
  * dropdowns consistent. */
-function LegPicker({ sectors, filter, onChange }: LegPickerProps) {
+function LegPicker({ sectors, filter, onChange, ratingDisabled = false, tenorDisabled = false }: LegPickerProps) {
   const [sectorSel, setSectorSel] = useState("");
   const [ratingSel, setRatingSel] = useState("");
   const [tenorSel, setTenorSel] = useState("");
@@ -58,20 +65,27 @@ function LegPicker({ sectors, filter, onChange }: LegPickerProps) {
   const sectorDef = useMemo(() => sectors.find((s) => s.sector === sector), [sectors, sector]);
   const ratings = sectorDef?.ratings ?? [];
   const tenors = sectorDef?.tenors ?? [];
-  const hasRatings = ratings.length > 0;
+  // A rated sector still resolves N/A when the host locks the rating slot
+  // (시계열형): the leg then emits rating:null and the dropdown reads N/A.
+  const ratingActive = ratings.length > 0 && !ratingDisabled;
 
-  const rating = hasRatings ? (ratings.includes(ratingSel) ? ratingSel : ratings[0]) : "";
+  const rating = ratingActive ? (ratings.includes(ratingSel) ? ratingSel : ratings[0]) : "";
   const tenor = tenors.includes(tenorSel) ? tenorSel : (tenors[0] ?? "");
 
   // Emit the current leg to the parent (an external-state sync -- the only
-  // effect here, and it never sets this component's own state).
+  // effect here, and it never sets this component's own state). A locked slot
+  // (rating N/A / tenor N/A) is not required for the leg to be complete.
   useEffect(() => {
-    if (!sector || !tenor || (hasRatings && !rating)) {
+    if (!sector || (!tenorDisabled && !tenor) || (ratingActive && !rating)) {
       onChange(null);
       return;
     }
-    onChange({ sector, rating: hasRatings ? rating : null, tenor });
-  }, [sector, rating, tenor, hasRatings, onChange]);
+    onChange({
+      sector,
+      rating: ratingActive ? rating : null,
+      tenor: tenorDisabled ? "" : tenor,
+    });
+  }, [sector, rating, tenor, ratingActive, tenorDisabled, onChange]);
 
   const setSector = setSectorSel;
   const setRating = setRatingSel;
@@ -81,6 +95,7 @@ function LegPicker({ sectors, filter, onChange }: LegPickerProps) {
   return (
     <div className="flex items-center gap-1.5">
       <HTMLSelect
+        aria-label="자산군"
         value={sector}
         onChange={(e) => setSector(e.currentTarget.value)}
         style={selectStyle}
@@ -91,12 +106,13 @@ function LegPicker({ sectors, filter, onChange }: LegPickerProps) {
       </HTMLSelect>
 
       <HTMLSelect
-        value={hasRatings ? rating : NO_RATING_LABEL}
-        disabled={!hasRatings}
+        aria-label="등급"
+        value={ratingActive ? rating : NO_RATING_LABEL}
+        disabled={!ratingActive}
         onChange={(e) => setRating(e.currentTarget.value)}
         style={{ ...selectStyle, minWidth: 120 }}
       >
-        {hasRatings ? (
+        {ratingActive ? (
           filtered(sectorDef?.ratings ?? [], filter, rating).map((r) => (
             <option key={r} value={r}>{r}</option>
           ))
@@ -106,13 +122,19 @@ function LegPicker({ sectors, filter, onChange }: LegPickerProps) {
       </HTMLSelect>
 
       <HTMLSelect
-        value={tenor}
+        aria-label="테너"
+        value={tenorDisabled ? NO_RATING_LABEL : tenor}
+        disabled={tenorDisabled}
         onChange={(e) => setTenor(e.currentTarget.value)}
         style={{ ...selectStyle, minWidth: 80 }}
       >
-        {filtered(sectorDef?.tenors ?? [], filter, tenor).map((t) => (
-          <option key={t} value={t}>{t}</option>
-        ))}
+        {tenorDisabled ? (
+          <option value={NO_RATING_LABEL}>{NO_RATING_LABEL}</option>
+        ) : (
+          filtered(sectorDef?.tenors ?? [], filter, tenor).map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))
+        )}
       </HTMLSelect>
     </div>
   );
@@ -149,10 +171,38 @@ interface InstrumentSelectorProps {
   selected: SelectedInstrument[];
   onAdd: (inst: SelectedInstrument) => void;
   onRemove: (id: string) => void;
+  /** FB5R R2 — which builder modes to offer. Default both (RH). A single-mode
+   * host (the preview: outright-only) hides the Outright/Spread toggle entirely
+   * and locks to that mode. */
+  modes?: readonly ("outright" | "spread")[];
+  /** FB5R R2 — render the free-text filter box. Default true (RH). The preview
+   * roster is a handful of families, so it hides the filter. */
+  showFilter?: boolean;
+  /** FB5R R2 — lock the outright 등급 slot to N/A (시계열형 path is rating-
+   * independent). Default false = RH. */
+  ratingDisabled?: boolean;
+  /** FB5R R2 — lock the outright 테너 slot to N/A (커브형 = whole family/curve).
+   * Default false = RH. */
+  tenorDisabled?: boolean;
+  /** FB5R R2 — chip swatch color per instrument. Default colorForId(inst.id)
+   * (RH). The preview colors chips by their PVBP sector token so a chip matches
+   * the curve/series it draws. */
+  colorOf?: (inst: SelectedInstrument) => string;
 }
 
-export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: InstrumentSelectorProps) {
-  const [mode, setMode] = useState<"outright" | "spread">("outright");
+export function InstrumentSelector({
+  taxonomy,
+  selected,
+  onAdd,
+  onRemove,
+  modes = ["outright", "spread"],
+  showFilter = true,
+  ratingDisabled = false,
+  tenorDisabled = false,
+  colorOf,
+}: InstrumentSelectorProps) {
+  const colorForInst = colorOf ?? ((inst: SelectedInstrument) => colorForId(inst.id));
+  const [mode, setMode] = useState<"outright" | "spread">(modes[0] ?? "outright");
   const [filter, setFilter] = useState("");
   const [outrightLeg, setOutrightLeg] = useState<Leg | null>(null);
   // 2-leg stays the default; 3 turns the expression into a fly.
@@ -203,26 +253,36 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <SegmentedControl
-          small
-          options={[
-            { label: "Outright", value: "outright" },
-            { label: "Spread", value: "spread" },
-          ]}
-          value={mode}
-          onValueChange={(v) => setMode(v as "outright" | "spread")}
-        />
-        <input
-          type="text"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter…"
-          className="h-7 w-32 border border-border-subtle bg-bg-elevated px-2 text-body text-fg-primary placeholder:text-fg-dim"
-        />
+        {modes.length > 1 && (
+          <SegmentedControl
+            small
+            options={[
+              { label: "Outright", value: "outright" },
+              { label: "Spread", value: "spread" },
+            ]}
+            value={mode}
+            onValueChange={(v) => setMode(v as "outright" | "spread")}
+          />
+        )}
+        {showFilter && (
+          <input
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter…"
+            className="h-7 w-32 border border-border-subtle bg-bg-elevated px-2 text-body text-fg-primary placeholder:text-fg-dim"
+          />
+        )}
 
         {mode === "outright" ? (
           <>
-            <LegPicker sectors={sectors} filter={filter} onChange={setOutrightLeg} />
+            <LegPicker
+              sectors={sectors}
+              filter={filter}
+              onChange={setOutrightLeg}
+              ratingDisabled={ratingDisabled}
+              tenorDisabled={tenorDisabled}
+            />
             <Button variant="secondary" size="sm" onClick={handleAddOutright} disabled={!outrightLeg}>
               Add
             </Button>
@@ -268,7 +328,7 @@ export function InstrumentSelector({ taxonomy, selected, onAdd, onRemove }: Inst
             >
               <span
                 className="inline-block h-2 w-2 rounded-full"
-                style={{ backgroundColor: colorForId(inst.id) }}
+                style={{ backgroundColor: colorForInst(inst) }}
               />
               <span className="text-body text-fg-primary">{instrumentLabel(inst)}</span>
               {inst.kind === "spread" && (

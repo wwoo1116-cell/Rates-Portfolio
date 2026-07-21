@@ -23,9 +23,11 @@ import { CHART_CHROME_COLORS } from "@/lib/chart-colors";
 import {
   SeriesChart,
   type SeriesChartClickContext,
+  type SeriesChartReadout,
   type SeriesChartSeriesDef,
 } from "@/components/charts/series-chart";
-import { InstrumentSelector } from "@/features/rates-history/instrument-selector";
+import { rateFormatter } from "@/components/charts/series-defaults";
+import { InstrumentSelector } from "@/components/ui/instrument-selector";
 import { useCreditCurveSeries, useCreditCurveTaxonomy, useMarketDataRange, useRateHistory } from "@/hooks/use-api";
 import {
   buildInstrumentSeries,
@@ -54,6 +56,14 @@ function defaultOutright(tenor: string): SelectedInstrument {
 }
 const DEFAULT_INSTRUMENTS: SelectedInstrument[] = [defaultOutright("3Y"), defaultOutright("10Y")];
 
+// FB5R R1 — the IRS 3Y/10Y benchmark pair the crosshair readout ALWAYS surfaces
+// (owner ruling ②): the tenor + the outright id it would carry if charted, so a
+// benchmark whose series is already on the chart is shown once (as the colored
+// series) rather than duplicated. Values come from the already-loaded
+// rate-history points (no new endpoint) — honest — when a tenor has no quote.
+const BENCHMARK_TENORS = ["3Y", "10Y"] as const;
+const benchmarkId = (tenor: string) => outrightId({ sector: "IRS", rating: null, tenor });
+
 interface RateHistoryChartProps {
   api?: DockviewApi | null;
 }
@@ -69,6 +79,14 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
   const taxonomyQuery = useCreditCurveTaxonomy();
 
   const [instruments, setInstruments] = useState<SelectedInstrument[]>(DEFAULT_INSTRUMENTS);
+
+  // FB5R R1 — the crosshair-bound rate readout (owner ruling ②). `hover` tracks
+  // the live crosshair; `pinned` holds the last clicked/traced date so the row
+  // persists after the cursor leaves. Both carry the chart's OWN plotted values
+  // (SeriesChart sources them from param.seriesData); the benchmark pair is
+  // layered on from `points` at render. hover wins while it exists.
+  const [hoverReadout, setHoverReadout] = useState<SeriesChartReadout | null>(null);
+  const [pinnedReadout, setPinnedReadout] = useState<SeriesChartReadout | null>(null);
 
   // Only the credit (non-IRS) legs need a backend fetch; IRS legs come from
   // the rate-history data already loaded above.
@@ -106,8 +124,12 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
   // SeriesChart keeps the latest onClick in a ref, so this callback can read
   // fresh state directly — no instrumentsRef/pointsRef/apiRef dance.
   const handleClick = useCallback(
-    ({ date, nearest }: SeriesChartClickContext) => {
-      if (!date || !api) return;
+    ({ date, nearest, readout }: SeriesChartClickContext) => {
+      if (!date) return;
+      // Pin the readout to the clicked date so the row survives the cursor
+      // leaving the chart (same-source values from the click's param.seriesData).
+      setPinnedReadout(readout);
+      if (!api) return;
       const reference = api.getPanel(RATES_PANEL_ID);
       const position = reference
         ? ({ referencePanel: RATES_PANEL_ID, direction: "right" } as const)
@@ -156,6 +178,25 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
     setInstruments((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
+  // FB5R R1 — compose the crosshair readout row: the IRS 3Y/10Y BENCHMARK pair
+  // (from the already-loaded points, always shown — deduped against any charted
+  // series of the same tenor so a benchmark that IS charted appears once, as its
+  // colored series) plus EVERY charted series' own value (drawn from the chart's
+  // param.seriesData via SeriesChart, so it is same-source with the lines). hover
+  // wins over the pinned (traced-date) row while the cursor is on the chart.
+  const active = hoverReadout ?? pinnedReadout;
+  const readoutRow = useMemo(() => {
+    if (!active?.date) return null;
+    const chartedIds = new Set(active.points.map((p) => p.id));
+    const point = points.find((p) => p.valuation_date === active.date);
+    const benchmarks = BENCHMARK_TENORS.filter((t) => !chartedIds.has(benchmarkId(t))).map((t) => {
+      const v = point?.tenor_rates?.[t];
+      const val = v != null && Number.isFinite(v) ? v : null;
+      return { id: benchmarkId(t), label: `IRS ${t}`, text: val == null ? null : rateFormatter(val) };
+    });
+    return { date: active.date, benchmarks, series: active.points };
+  }, [active, points]);
+
   const isLoading = rangeQuery.isLoading || historyQuery.isLoading;
   const isError = rangeQuery.isError || historyQuery.isError;
 
@@ -182,7 +223,7 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
           on hover; the detached window re-mounts this same panel and refetches
           from the shared query cache (no snapshot needed). */}
       <ChartFrame chartId="rates-history" title="Rate History" className="min-h-0 flex-1">
-        <SeriesChart series={chartSeries} onClick={handleClick} />
+        <SeriesChart series={chartSeries} onClick={handleClick} onCrosshairMove={setHoverReadout} />
 
         {isLoading && !isError && (
           <div
@@ -211,6 +252,51 @@ export function RateHistoryChart({ api }: RateHistoryChartProps) {
           </div>
         )}
       </ChartFrame>
+
+      {/* FB5R R1 (owner ruling ②) — crosshair-bound rate readout AT the chart:
+          hovering shows the crosshair date's IRS 3Y/10Y benchmark pair + every
+          charted series' own rate (label + color); clicking a date pins it. The
+          strip is always present (reserved, discoverable) with an idle hint, so
+          it never reads as "nothing there". */}
+      <div
+        data-testid="rh-rate-readout"
+        className="flex min-h-[1.75rem] flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-subtle px-1 pt-2 text-micro"
+      >
+        {readoutRow ? (
+          <>
+            <span className="font-bold tabular-nums text-fg-primary">{readoutRow.date}</span>
+            {readoutRow.benchmarks.length > 0 && (
+              <span className="inline-flex items-center gap-2 label-nowrap">
+                <span className="text-label uppercase text-fg-dim">기준</span>
+                {readoutRow.benchmarks.map((b) => (
+                  <span key={b.id} className="inline-flex items-center gap-1 label-nowrap">
+                    <span className="text-fg-muted">{b.label}</span>
+                    <span className="tabular-nums text-fg-secondary">{b.text ?? "—"}</span>
+                  </span>
+                ))}
+              </span>
+            )}
+            {readoutRow.series.length > 0 && (
+              <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+                {readoutRow.series.map((s) => (
+                  <span key={s.id} className="inline-flex items-center gap-1.5 label-nowrap">
+                    <span
+                      className="inline-block h-2 w-2 shrink-0 border border-border-subtle"
+                      style={{ backgroundColor: s.color }}
+                    />
+                    <span className="text-fg-muted">{s.label}</span>
+                    <span className="tabular-nums text-fg-primary">{s.text ?? "—"}</span>
+                  </span>
+                ))}
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="text-fg-dim">
+            차트에 커서를 올리거나 날짜를 클릭하면 그 날짜의 IRS 3Y·10Y 기준금리와 각 계열 금리가 표시됩니다
+          </span>
+        )}
+      </div>
     </div>
   );
 }

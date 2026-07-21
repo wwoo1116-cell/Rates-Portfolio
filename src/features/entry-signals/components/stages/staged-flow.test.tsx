@@ -62,7 +62,7 @@ vi.mock("../panels/zscore-oscillator-panel", () => ({ ZScoreOscillatorPanel: () 
 vi.mock("../panels/equity-curve-panel", () => ({ EquityCurvePanel: () => <div data-testid="equity" /> }));
 vi.mock("../panels/signal-grid-panel", () => ({ SignalGridPanel: () => <div data-testid="signals" /> }));
 vi.mock("../panels/backtest-panel", () => ({ BacktestPanel: () => <div data-testid="backtest-block" /> }));
-vi.mock("@/features/rates-history/instrument-selector", () => ({
+vi.mock("@/components/ui/instrument-selector", () => ({
   InstrumentSelector: () => <div data-testid="instrument-selector" />,
 }));
 

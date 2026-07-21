@@ -12,7 +12,7 @@ import { useMemo, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { AllCommunityModule, ModuleRegistry, type ColDef, type GetRowIdParams, type RowClassParams, type RowClickedEvent } from "ag-grid-community";
 import { SegmentedControl } from "@blueprintjs/core";
-import { InstrumentSelector } from "@/features/rates-history/instrument-selector";
+import { InstrumentSelector } from "@/components/ui/instrument-selector";
 import { deriveSignal, latestStats } from "@/lib/math/rolling-stats";
 import { instrumentLabel } from "@/lib/rv-instruments";
 import { useEntrySignalsStore } from "@/stores/entry-signals-store";
