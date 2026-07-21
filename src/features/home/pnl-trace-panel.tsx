@@ -45,6 +45,14 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
 
   const npvTrace = useNpvTrace();
   const [traceChart, setTraceChart] = useState<IChartApi | null>(null);
+  // FB3 F1 — the LIVE chart, recorded synchronously in onChartReady. The
+  // `traceChart` STATE can be one render stale: when a re-trace's data
+  // arrival remounts the chart block (mutation data resets to undefined in
+  // flight, unmounting/disposing the chart), the data effect fires in the
+  // remount commit with the disposed instance still in state. The effect
+  // gates on state === live and skips the stale run — the queued
+  // setTraceChart re-render re-runs it against the live chart.
+  const liveChartRef = useRef<IChartApi | null>(null);
   const traceSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const traceMarkersRef = useRef<ISeriesMarkersPluginApi<any> | null>(null);
   const [hoverData, setHoverData] = useState<
@@ -124,7 +132,12 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
   }, [canTrace, startDate, maturityDate, displayedIrsRatePct, notional100M, payFixed, endDate]);
 
   useEffect(() => {
-    if (!npvTrace.data || !traceChart) return;
+    // Liveness gate (FB3 F1): never touch a chart that isn't the CURRENT
+    // mount's instance — a mismatch means it was disposed by a conditional
+    // unmount and a re-render with the live one is already queued. Without
+    // this, the series attaches to the dead chart and the visible pane stays
+    // blank (owner repro: change conditions → empty pane, header updating).
+    if (!npvTrace.data || !traceChart || traceChart !== liveChartRef.current) return;
     if (!traceSeriesRef.current) {
       traceSeriesRef.current = traceChart.addSeries(LineSeries, {
         color: CHART_CHROME_COLORS.accentLine, // --sem-info (canvas can't resolve CSS custom properties)
@@ -194,7 +207,16 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
     
     traceChart.subscribeCrosshairMove(handleCrosshair);
 
-    return () => traceChart.unsubscribeCrosshairMove(handleCrosshair);
+    return () => {
+      // The chart may already be disposed when this cleanup runs (block
+      // unmount disposes it before state catches up) — unsubscribing a dead
+      // chart must not throw the whole commit down.
+      try {
+        traceChart.unsubscribeCrosshairMove(handleCrosshair);
+      } catch {
+        /* disposed — nothing to unsubscribe */
+      }
+    };
   }, [npvTrace.data, traceChart]);
 
   const lastPoint = npvTrace.data?.points.at(-1);
@@ -364,7 +386,16 @@ export function PnlTracePanel(props: IDockviewPanelProps<PnlTracePanelParams>) {
             detachState={() => ({ point })}
             className="min-h-0 flex-1"
           >
-            <LwChartBase onChartReady={(chart) => { setTraceChart(chart); traceSeriesRef.current = null; }} />
+            <LwChartBase
+              onChartReady={(chart) => {
+                // Live ref FIRST (synchronous) — the liveness gate reads it in
+                // the same commit, before the state update lands.
+                liveChartRef.current = chart;
+                setTraceChart(chart);
+                traceSeriesRef.current = null;
+                traceMarkersRef.current = null;
+              }}
+            />
             <CrosshairReticle
               point={hoverData ? { x: hoverData.x, y: hoverData.y } : null}
               date={hoverData?.point.valuation_date}
