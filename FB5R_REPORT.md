@@ -208,3 +208,16 @@ Evidence: `fb5r-evidence/` (5 captures listed above).
 - `src/features/simulation/hooks/use-input-curves.ts` — `ratingOverride` on
   `useSectorInputQuotes` (live 커브형 tier).
 - `scripts/check_preview_selector_reuse.test.ts` — new reuse guard.
+
+## Landed + pushed
+
+- Deliverable commit `76bbe83` on `fb5r/exact-rulings`, merged `--no-ff` into
+  mainline `feat/simulation-migration` → **head `d62adc0`**, tag **`fb5r` @
+  `d62adc0`**.
+- Pushed to `origin` (GitHub `wwoo1116-cell/Rates-Portfolio`) — `--all` +
+  `--tags`; remote verified: `refs/heads/feat/simulation-migration` = `d62adc0`,
+  `refs/tags/fb5r` = `d62adc0`. **Backup semantics — no `.vercel` git
+  integration present (re-verified), so no deploy triggered.**
+- `:3000` was built from this exact tree (deliverable commit content) and
+  restarted on it (PID 20380, health 200); `:8000` (BE `11a4daf`, PID 12596)
+  never touched. Owner eye-verify pending.
