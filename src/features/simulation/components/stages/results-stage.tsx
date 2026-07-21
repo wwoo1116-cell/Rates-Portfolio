@@ -19,9 +19,13 @@ import { Button } from "@/components/ui/button";
 import { formatKrwAxisSigned } from "@/lib/format";
 
 import { useSimulationPort } from "../../hooks/use-simulation";
+import { useSimulationDataStore } from "../../store/simulation-data-store";
 import { ComponentCurvesPanel } from "../panels/component-curves-panel";
 import { ScenarioReconPanel } from "../panels/scenario-recon-panel";
 import { PnlWaterfall, type WaterfallItem } from "../charts/pnl-waterfall";
+
+/** N1 — years for the anchor pillar's exact 국채 shock-curve node. */
+const ANCHOR_YEARS = { "1Y": 1, "3Y": 3, "5Y": 5, "10Y": 10 } as const;
 
 /** Marquee two-tone chip: uppercase label segment on bg-tertiary, mixed-case
  * value segment on bg-secondary — the fill pair IS the boundary (no border). */
@@ -43,6 +47,7 @@ function SummaryChip({ label, value, tone }: { label: string; value: string; ton
 
 export function ResultsStage({ onEdit }: { onEdit: () => void }) {
   const { lastRun, lastRunRequest } = useSimulationPort();
+  const lastRunAnchorTenor = useSimulationDataStore((s) => s.lastRunAnchorTenor);
   if (!lastRun) return null;
 
   const s = lastRun.summary;
@@ -53,9 +58,20 @@ export function ResultsStage({ onEdit }: { onEdit: () => void }) {
   const chips: { label: string; value: string; tone?: "pos" | "neg" }[] = [];
   if (lastRunRequest) {
     chips.push({ label: "기간", value: `D+${lastRunRequest.simDays}` });
+    // N1/T2 — the chip shows the DESIGNED anchor verbatim ("국고 5Y +30bp"),
+    // never the 3Y-normalized wire figure. X is reconstructed from the wire's
+    // 국채 shock curve at the anchor pillar (exact node, no interpolation —
+    // terminal(τa) = base_wire + s_rel(τa) = the designed X by construction).
+    // Pre-N1 results (lastRunAnchorTenor null) label as 3Y, where the wire
+    // baseShockBp IS the designed target — same value either way.
+    const anchor = lastRunAnchorTenor ?? "3Y";
+    const anchorX =
+      lastRunRequest.shockCurves?.bondCurves?.국채?.find(
+        (p) => p.t === ANCHOR_YEARS[anchor],
+      )?.val ?? lastRunRequest.baseShockBp;
     chips.push({
-      label: "목표 변동",
-      value: `${lastRunRequest.baseShockBp >= 0 ? "+" : ""}${lastRunRequest.baseShockBp}bp`,
+      label: `국고 ${anchor} 목표`,
+      value: `${anchorX >= 0 ? "+" : ""}${parseFloat(anchorX.toFixed(2))}bp`,
     });
     // HARDEN-1 (owner ruling): the σ/fan design left the Simulation surface —
     // no σ chip. The REQUEST still carries sigma_bp (default 2.0, pinned by

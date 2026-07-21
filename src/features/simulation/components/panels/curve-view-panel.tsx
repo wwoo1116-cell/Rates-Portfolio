@@ -34,7 +34,7 @@
  * below, never a silent +0; a missing snapshot renders the whole curve as
  * absent with an explicit notice.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 
 import { sectorColor } from "@/lib/chart-colors";
@@ -75,7 +75,9 @@ const PATH_FAMILIES = [
 type PathFamilyKey = (typeof PATH_FAMILIES)[number]["key"];
 
 const ANCHOR_FAMILY: PathFamilyKey = "국고";
-const ANCHOR_TENOR = "3Y";
+// N1: the anchor TENOR is no longer a constant — it follows
+// params.anchorTenor (default 3Y). The family stays 국고 (owner choice set is
+// 국고 pillars only).
 
 /** "+12.5bp" axis/badge format for the path view (rate-fan formatBpAxis
  * pattern; applied to every series — z-order formatter rule). */
@@ -130,11 +132,21 @@ export function CurveViewPanel() {
   const setPreviewMode = useSimulationDataStore((s) => s.setPreviewMode);
   const isPath = previewMode === "path";
 
-  // F2 — panel-local series selection; the anchor 국고 3Y is the default.
-  const [selTenors, setSelTenors] = useState<string[]>([ANCHOR_TENOR]);
+  // N1 — the designed anchor pillar (params-driven; absent ≡ 3Y).
+  const anchorTenor = params.anchorTenor ?? "3Y";
+
+  // F2 — panel-local series selection; the anchor (국고 × anchorTenor) is the
+  // default.
+  const [selTenors, setSelTenors] = useState<string[]>([anchorTenor]);
   const [selFamilies, setSelFamilies] = useState<PathFamilyKey[]>([ANCHOR_FAMILY]);
   const toggleIn = <T,>(list: T[], v: T): T[] =>
     list.includes(v) ? (list.length > 1 ? list.filter((x) => x !== v) : list) : [...list, v];
+  // N1 — switching the anchor auto-selects its tenor chip: the waypoint dots
+  // and drag must always have their honest host series available one click
+  // after an anchor change (existing selections are kept, nothing deselects).
+  useEffect(() => {
+    setSelTenors((sel) => (sel.includes(anchorTenor) ? sel : [...sel, anchorTenor]));
+  }, [anchorTenor]);
 
   // SIM2-3 — live chart/series refs for the drag overlay, via the
   // onSeriesRebuilt seam. Stable callback: the series effect lists it as a dep.
@@ -179,7 +191,7 @@ export function CurveViewPanel() {
     return { evaluator: createPathEvaluator(req), days: samplePathDays(req) };
   }, [isPath, params, inputs]);
 
-  const anchorVisible = selFamilies.includes(ANCHOR_FAMILY) && selTenors.includes(ANCHOR_TENOR);
+  const anchorVisible = selFamilies.includes(ANCHOR_FAMILY) && selTenors.includes(anchorTenor);
 
   const pathSeries = useMemo<LwSeriesDef[]>(() => {
     if (!isPath || !pathModel) return [];
@@ -190,7 +202,7 @@ export function CurveViewPanel() {
       PATH_PILLARS.filter((p) => selTenors.includes(p.label)).map((p) => ({
         family: f,
         pillar: p,
-        isAnchor: f.key === ANCHOR_FAMILY && p.label === ANCHOR_TENOR,
+        isAnchor: f.key === ANCHOR_FAMILY && p.label === anchorTenor,
       })),
     );
     // Anchor first: markers, the zero line, and the drag overlay ride series[0].
@@ -335,7 +347,9 @@ export function CurveViewPanel() {
           </div>
           <p data-num className="mt-0.5 text-center text-micro text-fg-dim">
             테너 {selTenors.join("/")} 경로
-            {anchorVisible ? " · 점 = 웨이포인트 (국고 3Y 드래그 가능)" : " · 웨이포인트 드래그는 국고 3Y 표시 중에만"}
+            {anchorVisible
+              ? ` · 점 = 웨이포인트 (국고 ${anchorTenor} 드래그 가능)`
+              : ` · 웨이포인트 드래그는 국고 ${anchorTenor} 표시 중에만`}
             {hasPolicy ? " · 점선 = 기준금리 누적 변동" : ""}
           </p>
         </>
