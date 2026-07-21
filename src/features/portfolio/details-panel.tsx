@@ -36,7 +36,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function CashflowTable({ cashflows }: { cashflows: PortfolioCashFlowOut[] }) {
+/** Exported for reuse (RECON-DAILY T4a): the Rates History swap-cashflow
+ * reconciliation renders its settlement window through THIS table — a second
+ * cashflow table implementation is a fork and fails the guard
+ * (scripts/check_cashflow_component_reuse.test.ts). */
+export function CashflowTable({ cashflows }: { cashflows: PortfolioCashFlowOut[] }) {
   if (cashflows.length === 0) {
     return (
       <div className="flex h-16 items-center justify-center rounded bg-bg-tertiary text-micro text-fg-dim">

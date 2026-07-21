@@ -37,6 +37,7 @@ import { formatKrwCompact } from "./pnl-format";
 import { SectorTenorMatrix, type MatrixRow } from "./sector-tenor-matrix";
 import { TENOR_COLS, toMatrixRows } from "./pvbp-sensitivity-table";
 import { ReconRangeStrip } from "./recon-range-strip";
+import { SwapCashflowRecon } from "./swap-cashflow-recon";
 
 /** Same saturation cap as the PVBP Sensitivity panel (±10M ₩/bp). */
 const KRD_CELL_RANGE = 10_000_000;
@@ -122,6 +123,7 @@ export function DailyReconPanel({ showRange = false }: { showRange?: boolean } =
     picked,
     setPicked,
     resolvedClose,
+    closeSnapshot,
     asOf,
     asOfAvailable,
     pvbpRows,
@@ -273,6 +275,12 @@ export function DailyReconPanel({ showRange = false }: { showRange?: boolean } =
               Same lib arithmetic as the footer above — a strip row and the
               single-date view cannot disagree about a date. */}
           {showRange && <ReconRangeStrip />}
+
+          {/* T4a (Rates History mount only): scheduled vs realized swap
+              settlements for the same (D−1, D] window. */}
+          {showRange && (
+            <SwapCashflowRecon closeSnapshot={closeSnapshot} asOf={asOf} totalRow={totalRow} />
+          )}
         </div>
       )}
     </div>

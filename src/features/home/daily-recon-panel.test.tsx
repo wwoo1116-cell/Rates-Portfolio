@@ -20,9 +20,14 @@ vi.mock("@/hooks/use-daily-recon", () => ({
 // in the import graph via pvbp-sensitivity-table → use-portfolio-analytics
 // but never called here.
 const mockRange = vi.fn();
-vi.mock("@/hooks/use-api", () => ({
+vi.mock("@/hooks/use-api", async (importOriginal) => ({
+  // Spread the real module: the T4a cashflow section pulls details-panel's
+  // wide use-api surface into the import graph. Only what this panel's own
+  // chrome calls is overridden; the price query stays idle (no request).
+  ...(await importOriginal<typeof import("@/hooks/use-api")>()),
   useMarketDataRange: () => mockRange(),
   useMarketDataSnapshot: () => ({ data: undefined, isLoading: false, isError: false }),
+  usePortfolioPriceQuery: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
 // Range strip's compute hook — idle fixture; its own behavior is pinned in
 // recon-range-strip.test.tsx.

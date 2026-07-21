@@ -12,7 +12,7 @@
  * its own — both mounts render these functions' outputs, so two mounts can
  * never disagree about the same date.
  */
-import type { DailyPnlFigures, MarketDataResponse } from "@/lib/api-types";
+import type { DailyPnlFigures, MarketDataResponse, PortfolioCashFlowOut } from "@/lib/api-types";
 
 /** The residual slot's label. Exported so the naming pin can assert on the
  * single source: the residual is 잔차 (what the first-order KRD estimate does
@@ -167,6 +167,45 @@ export function assumedTotal(
   const rows = contributionRows(columns, pvbpRows, deltaBp);
   return rows.find((r) => r.sector === "합계")?.total;
 }
+
+/** T4a — scheduled swap net settlements in the window (close, asOf], from a
+ * price response's cashflow schedule (priced off the CLOSE snapshot, so
+ * payments inside the window are still on the schedule and their floating
+ * amounts are the D−1-known fixings — s6/s10 conventions, `is_known`).
+ *
+ * Sign mirrors the engine's _realized_swap_cash exactly: CashFlowDetail
+ * amounts are unsigned per leg; receive-fixed nets fixed − floating,
+ * pay-fixed the reverse. A cashflow with a null amount (unknown future
+ * fixing) inside the window would make the net unknowable — flagged rather
+ * than skipped, because skipping would silently understate the settlement. */
+export function netSwapSettlements(
+  cashflows: PortfolioCashFlowOut[],
+  payFixedById: Record<string, boolean>,
+  close: string,
+  asOf: string,
+): { totalNet: number; byPosition: Record<string, number>; unknownCount: number } {
+  const byPosition: Record<string, number> = {};
+  let totalNet = 0;
+  let unknownCount = 0;
+  for (const cf of cashflows) {
+    if (!(cf.payment_date > close && cf.payment_date <= asOf)) continue;
+    if (cf.cashflow == null) {
+      unknownCount += 1;
+      continue;
+    }
+    const receiveFixed = !payFixedById[cf.position_id];
+    const sign = (cf.leg === "fixed") === receiveFixed ? 1 : -1;
+    const amt = sign * cf.cashflow;
+    byPosition[cf.position_id] = (byPosition[cf.position_id] ?? 0) + amt;
+    totalNet += amt;
+  }
+  return { totalNet, byPosition, unknownCount };
+}
+
+/** s11 tolerance: the daily identity holds to within ₩1 at position and
+ * aggregate level, so scheduled-vs-realized settlement equality uses the
+ * same bound. */
+export const SETTLEMENT_TOLERANCE_KRW = 1;
 
 /** Footer arithmetic. Callers must only invoke this when BOTH realized
  * buckets are known and complete — an unknown bucket disables the footer with

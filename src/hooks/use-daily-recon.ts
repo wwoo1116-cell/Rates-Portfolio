@@ -126,6 +126,9 @@ export function useDailyRecon() {
     picked,
     setPicked,
     resolvedClose,
+    /** T4a — the swap-cashflow recon prices its schedule off this same close
+     * snapshot, so scheduled and realized legs share one D−1. */
+    closeSnapshot,
     asOf,
     asOfAvailable,
     pvbpRows: pvbpQuery.data as Array<Record<string, unknown>> | undefined,

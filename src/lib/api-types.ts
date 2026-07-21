@@ -540,6 +540,13 @@ export interface DailyPnlFigures {
   funding: number;
   /** False when any constituent position's MtM is still unknown. */
   mtm_complete: boolean;
+  /** (close, T] realized net cash ALREADY INCLUDED in theta (the coupon
+   * detachment correction, s11): lets consumers reconstruct the identity
+   * ΔNPV(dirty) = total − realized_cash when mtm_complete. The backend has
+   * always sent it (_aggregate/_sums); typed here for RECON-DAILY T4a, which
+   * reconciles the swap class's figure against the scheduled settlements.
+   * Optional for fixtures predating the field. */
+  realized_cash?: number;
 }
 
 export interface DailyPnlBookRow extends DailyPnlFigures {
