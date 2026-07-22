@@ -55,10 +55,23 @@ import type {
   TradeOut,
 } from "./api-types";
 
-// In dev, default to the backend's standalone uvicorn port. Override via
-// NEXT_PUBLIC_API_BASE_URL for any deployment where frontend/backend are on
-// different origins (see .env.local.example).
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+// Base origin for all /api/* calls. Same-origin ("") is the default in every
+// shipped build so the browser hits Next's /api/* rewrite (which proxies to
+// BACKEND_ORIGIN server-side) — a visitor's browser must NEVER target itself.
+//
+// Resolution (deploy/vercel-readiness):
+//   • var SET (incl. empty string "")  → honor it verbatim; "" = same-origin.
+//   • var UNSET + non-production (dev/test) → 127.0.0.1:8000 convenience fallback.
+//   • var UNSET + production build      → "" (same-origin), NEVER 127.0.0.1.
+// The localhost literal sits behind `NODE_ENV !== "production"`, which Next
+// statically folds to `false` in a production build, dead-code-eliminating the
+// string so no `:8000` target survives in the served client bundle.
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL !== undefined
+    ? process.env.NEXT_PUBLIC_API_BASE_URL
+    : process.env.NODE_ENV !== "production"
+      ? "http://127.0.0.1:8000"
+      : "";
 
 const NETWORK_ERROR_MESSAGE = "Cannot reach the pricing server -- confirm it is running.";
 
@@ -314,11 +327,16 @@ export const uploadApi = {
     form.set("bok_base_rate", files.bokBaseRate);
     form.set("portfolio", files.portfolioData);
     
-    // Bypass Next.js proxy specifically for large multipart uploads to avoid ECONNRESET / socket hang ups.
-    // Use window.location.hostname to ensure the request is routed to the correct server IP
-    // without triggering Chrome's Private Network Access block (which happens if we hardcode 127.0.0.1).
-    const baseUrl = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://127.0.0.1:8000";
-    const res = await fetch(`${baseUrl}/api/upload/market-data`, {
+    // Large multipart upload (~100 MB workbooks). Default: same-origin through
+    // Next's /api/* rewrite — a rewrite is the CDN router, NOT a serverless
+    // function, so Vercel's 4.5 MB function-body cap does not apply and it can
+    // carry the whole workbook. Locally the rewrite honors
+    // next.config's proxyClientMaxBodySize:100mb. If a deployment's rewrite
+    // can't stream the body, set NEXT_PUBLIC_UPLOAD_BASE_URL to the tunnel
+    // origin to send the browser straight to the backend (bypassing the rewrite).
+    // No hardcoded host:port here — nothing must ship a self-targeting literal.
+    const uploadBase = process.env.NEXT_PUBLIC_UPLOAD_BASE_URL ?? "";
+    const res = await fetch(`${uploadBase}/api/upload/market-data`, {
       method: "POST",
       body: form,
     }).catch(() => {
