@@ -51,12 +51,31 @@ time**, a hostname change requires updating `BACKEND_ORIGIN` in Vercel **and a r
 plain-rewrite lanes do not.) Acceptable for testing; the production fix is a named tunnel
 on a domain (stable `api.<domain>`).
 
-**Cloudflare quick-tunnel wall:** a quick tunnel also imposes its own ~100s
-request wall — **below** both the 120s rewrite and 300s function budgets (wall order:
-~100 < 120 < 300). A cold full-book run (~106–118s) can therefore 524 at the *tunnel*
-layer even though Vercel would allow it. Remedy on record: make simulate an async
-`StreamingResponse` with periodic heartbeats so the tunnel sees bytes flowing (BE-side
-fix; requires a :8000 restart to go live). Not exercised this session — runs were warm.
+**Cloudflare ~100s wall — analysis (not hit today, but real for heavier runs):**
+Cloudflare's origin-response timeout (**Error 524**) is **~100s and edge-wide on the
+Free/Pro plans** — it governs *all* Cloudflare-proxied traffic, **not** just quick tunnels.
+A **named tunnel on a domain behaves identically on the free plan**: it still terminates at
+Cloudflare's edge, so the same ~100s 524 applies. A named tunnel fixes hostname *rotation*,
+**not** the timeout. (Raising it needs Enterprise "Proxy Read Timeout".) Wall order:
+~100 (CF) < 120 (rewrite) < 300 (route handler). Today's cold run was 4.36s → far under,
+so no 524. It becomes a risk only if a cold run exceeds ~100s.
+
+**Mitigations (if a run ever exceeds ~100s), weakest→strongest:**
+1. *Warmup call after restart* — fire a localhost full-book simulate post-restart to warm
+   the workers before public traffic. Simple, but 4 round-robin workers need several calls;
+   partial.
+2. *Cache pre-warm on startup* — bootstrap curves during app lifespan so no request is cold.
+   Trades slow startup for fast first-request. Not needed now (startup is ~2s, cold req ~4s).
+3. *Reduce cold compute* — further engine/cache tuning. Not needed now.
+4. **Async streaming with heartbeats (recommended, wall-agnostic)** — make simulate a
+   `StreamingResponse` emitting whitespace every ~30s. Because 524 fires only on *no bytes
+   within ~100s*, any trickle keeps it alive for the full compute — works on the free plan
+   and is future-proof against heavier books. This fix exists on record (BE `570a2ff`);
+   adopt it during hardening. Requires a :8000 restart to go live.
+
+**Recommendation:** no action required now (cold full-book ~4s). Keep the route handler
+(maxDuration 300) as cheap insurance; adopt the async-streaming simulate (mitigation 4)
+when hardening, since it — not a named tunnel — is what actually defeats the 100s wall.
 
 ## Step-5 live verification (against `rates-portfolio.vercel.app`)
 
@@ -65,12 +84,20 @@ fix; requires a :8000 restart to go live). Not exercised this session — runs w
 | 1 | Deployment serves current build | ✅ route handler present, env wired (dashboard Ready-status is owner-eyeball) | — |
 | 2 | URL serves app, no SSO wall | ✅ 200, app shell, API returns data (no Protection wall) | — |
 | 3 | Data path deployed→tunnel→BE | ✅ `funding-rate` real numbers `{policy_base_rate:0.0275,…}` | ~0.5s |
-| 4 | Full-book simulate via route handler | ✅ 200, 79,111 B intact, no 504 | **4.8s (WARM cache)** |
+| 4 | Full-book simulate via route handler | ✅ 200, 79,111 B intact, no 504 | 4.8s warm / **4.36s COLD** |
 | 5 | Side-by-side vs local `:3000` | ✅ byte-identical (`finalTotal -8978122036`) | :3000 2.2s |
 | 6 | Deployed bundle clean | ✅ 0× `127.0.0.1` / `:8000` in served chunks | — |
 
-Note on #4: the BE cache was warm from this session, so 4.8s is not the cold ~110s case.
-A genuine cold test needs a :8000 restart (and would risk the tunnel wall above).
+**Cold-run finding (item 4, verified 2026-07-22):** after a `:8000` restart (empty cache,
+confirmed via the fresh BE log — workers install an empty cache and reach "startup
+complete" in ~2s with **no pre-warm**), the first full-book simulate **from the production
+URL** completed in **4.36s, HTTP 200, 79,112 B intact — no 524, no Cloudflare wall hit.**
+The historical 106–118s **does not reproduce** with the current book (649 pos, baseDate
+2026-07-22, ramp/matrix, simDays 180): the post-s21 curve cache + this book's key
+distribution make cold bootstrap cheap. **Implication:** the route handler's 300s budget
+is not stressed by today's workload — even the plain 120s rewrite would pass — but it stays
+as cheap insurance against a heavier future run (larger book, s18-style frozen curves, or
+much larger simDays).
 
 ## Branch model now in force
 
