@@ -17,7 +17,7 @@
  * "MTM = pvbp * (-sbp)"; long DV01 loses when yields rise). The previous
  * KRD × (+Δbp) inverted the Assumed leg: on 2026-07-14 (live-reproduced)
  * the swap grid said +218.1M vs realized −219.8M — sign-corrected, the swap
- * 잔차 is −1.7M. See FB3_RECON_REPORT.md for the full decomposition.
+ * 잔차 is −1.7M. See docs/history/FB3_RECON_REPORT.md for the full decomposition.
  *
  * Everything here is pure and fixture-testable (daily-recon-math.test.ts).
  * The component (features/home/daily-recon-panel.tsx) does no arithmetic of
