@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-06T00:00:00.000Z",
+  "title": "Design System: KRW IRS NPV Pricer",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Coinbase Blue",
+        "canonical": "oklch(0.528 0.263 262.9)",
+        "hex": "#0052FF",
+        "tonalRamp": ["oklch(0.15 0.263 262.9)", "oklch(0.27 0.263 262.9)", "oklch(0.39 0.263 262.9)", "oklch(0.51 0.263 262.9)", "oklch(0.63 0.263 262.9)", "oklch(0.75 0.263 262.9)", "oklch(0.87 0.263 262.9)", "oklch(0.95 0.263 262.9)"]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(0.872 0.009 258.3)",
+        "hex": "#D1D5DB",
+        "tonalRamp": ["oklch(0.15 0.009 258.3)", "oklch(0.27 0.009 258.3)", "oklch(0.39 0.009 258.3)", "oklch(0.51 0.009 258.3)", "oklch(0.63 0.009 258.3)", "oklch(0.75 0.009 258.3)", "oklch(0.87 0.009 258.3)", "oklch(0.95 0.009 258.3)"]
+      },
+      "positive": {
+        "role": "semantic",
+        "displayName": "Ledger Green",
+        "canonical": "oklch(0.500 0.153 160.9)",
+        "hex": "#007C45",
+        "tonalRamp": ["oklch(0.15 0.153 160.9)", "oklch(0.27 0.153 160.9)", "oklch(0.39 0.153 160.9)", "oklch(0.51 0.153 160.9)", "oklch(0.63 0.153 160.9)", "oklch(0.75 0.153 160.9)", "oklch(0.87 0.153 160.9)", "oklch(0.95 0.153 160.9)"]
+      },
+      "negative": {
+        "role": "semantic",
+        "displayName": "Ledger Red",
+        "canonical": "oklch(0.557 0.200 27.7)",
+        "hex": "#CF2B27",
+        "tonalRamp": ["oklch(0.15 0.2 27.7)", "oklch(0.27 0.2 27.7)", "oklch(0.39 0.2 27.7)", "oklch(0.51 0.2 27.7)", "oklch(0.63 0.2 27.7)", "oklch(0.75 0.2 27.7)", "oklch(0.87 0.2 27.7)", "oklch(0.95 0.2 27.7)"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The single Net NPV headline figure only." },
+      "title": { "displayName": "Title", "purpose": "Secondary stat values (Payer NPV, Receiver NPV)." },
+      "headline": { "displayName": "Headline", "purpose": "Section titles (포지션 입력, 가격 결과, Historical PnL)." },
+      "label": { "displayName": "Label", "purpose": "Field labels and deliberate eyebrow captions." }
+    },
+    "shadows": [
+      { "name": "overlay", "value": "0 4px 16px rgb(0 0 0 / 0.12)", "purpose": "Calendar date-picker popover only." },
+      { "name": "tooltip", "value": "0 2px 8px rgb(0 0 0 / 0.08)", "purpose": "Chart crosshair tooltip only." }
+    ],
+    "motion": [],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled, unbordered surface — reserved for the single most important action per view.",
+      "html": "<button class=\"ds-btn-primary\">포트폴리오 계산</button>",
+      "css": ".ds-btn-primary { background: oklch(0.528 0.263 262.9); color: #fff; padding: 8px 16px; height: 36px; border-radius: 8px; border: none; font-weight: 500; font-size: 14px; transition: background 0.15s; } .ds-btn-primary:hover { background: oklch(0.47 0.24 262.9); } .ds-btn-primary:focus-visible { outline: 2px solid oklch(0.528 0.263 262.9); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }"
+    },
+    {
+      "name": "Segmented Toggle",
+      "kind": "custom",
+      "refersTo": "segmented-toggle",
+      "description": "Pay/Receive, True-Data/CCP-Data, chart-type switches. Fill communicates selection; no border in either state.",
+      "html": "<div class=\"ds-toggle\"><button class=\"ds-toggle-item is-active\">고정지급</button><button class=\"ds-toggle-item\">고정수취</button></div>",
+      "css": ".ds-toggle { display: flex; gap: 4px; } .ds-toggle-item { padding: 6px 10px; border-radius: 8px; border: none; background: transparent; color: oklch(0.480 0.020 255); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; transition: background 0.15s, color 0.15s; } .ds-toggle-item:hover { background: oklch(0.960 0.019 263.0); } .ds-toggle-item.is-active { background: oklch(0.528 0.263 262.9); color: #fff; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "1px hairline box at rest; border shifts to Coinbase Blue on focus, no glow ring.",
+      "html": "<input class=\"ds-input\" placeholder=\"10,000,000,000\" />",
+      "css": ".ds-input { height: 36px; width: 100%; border-radius: 8px; border: 1px solid oklch(0.872 0.009 258.3); background: oklch(0.985 0.004 247.9); color: oklch(0.240 0.020 255); padding: 0 12px; font-size: 14px; transition: border-color 0.15s; } .ds-input:focus-visible { outline: none; border-color: oklch(0.528 0.263 262.9); } .ds-input::placeholder { color: oklch(0.480 0.020 255); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat surface, separated from the page by a single 1px hairline border — no shadow.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">가격 결과</div><div class=\"ds-card-body\">Net NPV +1,240,000 KRW</div></div>",
+      "css": ".ds-card { background: #fff; border: 1px solid oklch(0.872 0.009 258.3); border-radius: 8px; padding: 20px; } .ds-card-title { font-size: 14px; font-weight: 600; color: oklch(0.240 0.020 255); margin-bottom: 12px; } .ds-card-body { font-variant-numeric: tabular-nums; font-family: ui-monospace, SF Mono, monospace; font-size: 14px; color: oklch(0.240 0.020 255); }"
+    },
+    {
+      "name": "NPV Figure",
+      "kind": "custom",
+      "refersTo": "display-figure",
+      "description": "The single Display-scale element in the system: the headline Net NPV number.",
+      "html": "<div class=\"ds-npv\">+1,240,000<span class=\"ds-npv-unit\">KRW</span></div>",
+      "css": ".ds-npv { font-family: ui-monospace, SF Mono, monospace; font-variant-numeric: tabular-nums; font-size: 30px; font-weight: 700; color: oklch(0.500 0.153 160.9); } .ds-npv-unit { margin-left: 6px; font-size: 13px; font-weight: 400; color: oklch(0.480 0.020 255); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Trading Terminal",
+    "overview": "This is a desk tool, not a marketing surface: a trader reads a number, trusts it, and moves on. The system is built around one rule — surfaces are flat, separated only by a hairline border or a shift in background tone, never by a shadow. The only saturated color in the whole interface is a single confident blue, spent on the handful of things that are actually actionable; everything else is ink, paper, and hairline gray. Numbers are always tabular so a column of rates or a book of NPVs lines up and scans in a glance, the way a real terminal does.",
+    "keyCharacteristics": [
+      "Flat by default; no shadow except on true floating overlays (popover, tooltip)",
+      "One accent color (Coinbase Blue), spent sparingly and only on actionable elements",
+      "Hairline (1px solid) borders as the only separator between adjacent surfaces",
+      "All monetary/rate figures set in tabular numerals",
+      "8px corner radius as the single, uniform rounding value across buttons, inputs, and cards"
+    ],
+    "rules": [
+      { "name": "The One Blue Rule", "body": "Coinbase Blue appears only on elements the user can act on (submit, active toggle, focus ring, active nav). If it's not clickable or currently selected, it isn't blue.", "section": "colors" },
+      { "name": "The Tabular Rule", "body": "Any element displaying a monetary amount, a rate, or a P&L figure sets font-variant-numeric: tabular-nums so stacked figures align column-for-column.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "If it sits in the document flow, it gets a hairline border, not a shadow. Shadows are earned only by elements that visually float above the page.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use exactly one hairline border color (#D1D5DB) for every structural separator.",
+      "Do round every interactive surface to the same 8px radius.",
+      "Do set font-variant-numeric: tabular-nums on every monetary/rate/P&L value.",
+      "Do reserve Coinbase Blue for actionable/selected elements only.",
+      "Do separate related rows within one panel with a hairline divide-y, not nested cards."
+    ],
+    "donts": [
+      "Don't nest a bordered card inside another bordered card.",
+      "Don't add a drop shadow to any card, panel, button, or badge that isn't a genuine floating overlay.",
+      "Don't use a gradient background or gradient text anywhere.",
+      "Don't glue a tiny uppercase tracked eyebrow label above every section reflexively.",
+      "Don't show related totals as identical equal-weight boxes instead of an expressed hierarchy.",
+      "Don't color-code positive/negative values by hue alone; always pair with a leading sign."
+    ]
+  }
+}

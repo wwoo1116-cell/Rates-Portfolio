@@ -1,0 +1,115 @@
+"""Unit-contract guard for the CD fixing at the engine boundary.
+
+This is the test that would have caught the 2026-07 PnL-Trace cliff on day
+one (DIAG_PNL_TRACE.md): the fixing store is DECIMAL, and value_booked_trade
+must consume it verbatim. The floating settlement is asserted against a
+hand-computed analytic value at tight tolerance, so EITHER failure mode of
+the percent/decimal contract moves the result by ~100x and fails loudly:
+
+  - a double division (engine divides an already-decimal fixing by 100):
+    settlement collapses to ~1/100 of the analytic value;
+  - a missing division (engine treats the decimal as percent and scales up,
+    or a caller pre-multiplies by 100): settlement balloons to ~100x.
+
+Fixture arithmetic (all hand-computed, no engine helpers):
+  trade 2025-04-15 -> effective (T+1 KR business day) 2025-04-16
+  reset R = 2025-04-16 -> fixing date F(R) = R - 1 Seoul BD = 2025-04-15
+  quarterly schedule -> first pay 2025-07-16, i.e. accrual = 91/365 ACT/365
+  notional 10bn, CD fixing 2.51% == 0.0251 decimal
+  floating stub settlement = 10e9 * 0.0251 * 91/365 = 62,578,082.19 KRW
+"""
+
+from __future__ import annotations
+
+from datetime import date
+
+import pytest
+
+from irs_pricer.config import DATA_DIR
+from irs_pricer.core.market_data import MarketSnapshot, RateQuote
+from irs_pricer.engine.curve import build_curve
+from irs_pricer.engine.instruments import VanillaSwap
+from irs_pricer.engine.mtm_valuation import value_booked_trade
+
+NOTIONAL = 10_000_000_000.0
+FIXING_DECIMAL = 0.0251  # 2.51%, as load_fixings() returns it
+FIXING_DATE = date(2025, 4, 15)  # F(R) for the 2025-04-16 effective date
+FIXINGS = {FIXING_DATE: FIXING_DECIMAL}
+ACCRUAL = 91.0 / 365.0   # 2025-04-16 -> 2025-07-16, ACT/365
+ANALYTIC_STUB_SETTLEMENT = NOTIONAL * FIXING_DECIMAL * ACCRUAL  # 62,578,082.19
+
+
+def _flat_snapshot(valuation_date: date, rate: float = 0.025) -> MarketSnapshot:
+    return MarketSnapshot(
+        valuation_date=valuation_date,
+        cd_rate=rate,
+        swap_quotes=[RateQuote(t, rate) for t in (1, 2, 3, 5)],
+    )
+
+
+def _swap() -> VanillaSwap:
+    return VanillaSwap(
+        tenor_years=0.5,
+        notional=NOTIONAL,
+        fixed_rate=0.03,
+        pay_fixed=True,
+        trade_date=date(2025, 4, 15),
+        maturity_date=date(2025, 10, 15),
+    )
+
+
+def _stub_cashflow(result):
+    stubs = [c for c in result.cashflows if c.leg == "floating" and c.is_known]
+    assert len(stubs) == 1, "exactly one current (known) floating stub expected"
+    return stubs[0]
+
+
+def test_floating_settlement_matches_hand_computed_value():
+    """The core guard: decimal fixing in -> analytic settlement out, tight."""
+    curve = build_curve(_flat_snapshot(date(2025, 7, 1)))
+    result = value_booked_trade(_swap(), curve, FIXINGS)
+
+    stub = _stub_cashflow(result)
+    # 62,578,082.19 KRW; a double division gives ~625,781, a missing division
+    # gives ~6,257,808,219 -- both are >50x outside this tolerance.
+    assert stub.cashflow == pytest.approx(ANALYTIC_STUB_SETTLEMENT, rel=1e-9)
+    assert stub.payment_date == date(2025, 7, 16)
+    assert stub.accrual_start == date(2025, 4, 16)
+
+
+def test_stub_rate_is_the_fixing_verbatim():
+    """The engine must consume the decimal fixing without rescaling it."""
+    curve = build_curve(_flat_snapshot(date(2025, 7, 1)))
+    result = value_booked_trade(_swap(), curve, FIXINGS)
+
+    stub = _stub_cashflow(result)
+    assert stub.rate == pytest.approx(FIXING_DECIMAL, rel=1e-12)
+    # F4.1 from DIAG_PNL_TRACE.md: the stub rate may never sit ~100x off the
+    # CD fixing. Redundant with the equality above, kept as the explicit
+    # invariant the diagnosis called for.
+    assert 0.5 * FIXING_DECIMAL <= stub.rate <= 2.0 * FIXING_DECIMAL
+
+
+def test_forward_fallback_is_decimal():
+    """fixings=None -> the engine's own forward estimate, which must also be
+    decimal (~0.025 on a flat 2.5% curve, never ~2.5). The period is honestly
+    marked is_known=False: an estimated stub is not a fixing."""
+    curve = build_curve(_flat_snapshot(date(2025, 7, 1)))
+    result = value_booked_trade(_swap(), curve, None)
+
+    stub = [c for c in result.cashflows if c.leg == "floating"][0]
+    assert not stub.is_known
+    assert 0.001 < stub.rate < 0.2
+    assert stub.rate == pytest.approx(0.025, rel=0.05)
+
+
+@pytest.mark.skipif(not DATA_DIR.exists(), reason="real Data/ workbooks not present")
+def test_loader_contract_fixings_are_decimal():
+    """The other end of the contract (F4.6): every value the fixing loader
+    emits is a plausible decimal KRW rate, never a percent."""
+    from irs_pricer.loaders.true_data import load_fixing_history_xlsx
+
+    history = load_fixing_history_xlsx(DATA_DIR)
+    assert len(history) > 1000
+    bad = {d: v for d, v in history.items() if not (0.001 < v < 0.2)}
+    assert not bad, f"non-decimal fixing values: {dict(list(bad.items())[:5])}"

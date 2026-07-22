@@ -1,0 +1,180 @@
+@import "tailwindcss";
+
+/* ─── Light mode: The Trading Terminal (see DESIGN.md) ───────────────────── */
+/* Coinbase Blue is the one accent (The One Blue Rule); every surface border
+   is the same Hairline gray (The Flat-By-Default Rule -- 1px solid, never a
+   shadow, on structural elements). */
+:root {
+  --background:          oklch(0.985 0.004 247.9);
+  --foreground:          oklch(0.240 0.020 255);
+
+  --card:                oklch(1 0 0);
+  --card-foreground:     oklch(0.240 0.020 255);
+
+  --popover:             oklch(1 0 0);
+  --popover-foreground:  oklch(0.240 0.020 255);
+
+  --primary:             oklch(0.528 0.263 262.9); /* Coinbase Blue #0052FF */
+  --primary-foreground:  oklch(1 0 0);
+
+  --secondary:           oklch(0.960 0.006 247.9);
+  --secondary-foreground: oklch(0.240 0.020 255);
+
+  --muted:               oklch(0.960 0.006 247.9);
+  --muted-foreground:    oklch(0.480 0.020 255);
+
+  --accent:              oklch(0.960 0.019 263.0); /* Accent Tint: pale blue, brand-hue hover state */
+  --accent-foreground:   oklch(0.240 0.020 255);
+
+  --destructive:         oklch(0.557 0.200 27.7);
+
+  --positive:            oklch(0.500 0.153 160.9); /* Ledger Green, darkened from #00B67A to clear 4.5:1 on white */
+  --negative:            oklch(0.557 0.200 27.7);  /* Ledger Red #CF2B27 */
+  /* Error text set directly on --primary (e.g. header market-data-error banner):
+     --negative itself is ~1.1:1 there (unreadable), so this near-white red tint
+     clears 4.5:1 against both the light- and dark-mode --primary values. */
+  --negative-on-primary: oklch(0.98 0.02 27.7);
+
+  --border:              oklch(0.872 0.009 258.3); /* Hairline #D1D5DB -- deliberately visible */
+  --input:               oklch(0.872 0.009 258.3);
+  --ring:                oklch(0.528 0.263 262.9);
+
+  /* Chart shades: five stops across the new hue family */
+  --chart-1: oklch(0.528 0.263 262.9);
+  --chart-2: oklch(0.500 0.153 160.9);
+  --chart-3: oklch(0.700 0.150 70);
+  --chart-4: oklch(0.557 0.200 27.7);
+  --chart-5: oklch(0.480 0.020 255);
+
+  --radius: 0.5rem; /* 8px, per Impeccable Coinbase theme */
+
+  --sidebar:                        oklch(1 0 0);
+  --sidebar-foreground:             oklch(0.240 0.020 255);
+  --sidebar-primary:                oklch(0.528 0.263 262.9);
+  --sidebar-primary-foreground:     oklch(1 0 0);
+  --sidebar-accent:                 oklch(0.960 0.019 263.0);
+  --sidebar-accent-foreground:      oklch(0.240 0.020 255);
+  --sidebar-border:                 oklch(0.872 0.009 258.3);
+  --sidebar-ring:                   oklch(0.528 0.263 262.9);
+
+  /* Plain hex, read via getComputedStyle() for lightweight-charts (canvas
+     rendering can't consume OKLCH or Tailwind classes) -- not bridged into
+     @theme inline since they're never used as Tailwind utility classes. */
+  --chart-bg: #ffffff;
+  --chart-text: #131722;
+  --chart-border: #d1d5db;
+}
+
+/* ─── Dark mode: same terminal, same rules ───────────────────────────────── */
+.dark {
+  --background:          oklch(0.160 0.018 258);
+  --foreground:          oklch(0.930 0.006 247.9);
+
+  --card:                oklch(0.195 0.020 258);
+  --card-foreground:     oklch(0.930 0.006 247.9);
+
+  --popover:             oklch(0.205 0.020 258);
+  --popover-foreground:  oklch(0.930 0.006 247.9);
+
+  --primary:             oklch(0.550 0.200 262.9); /* Coinbase Blue, lifted for dark bg -- capped so white button text clears 4.5:1 */
+  --primary-foreground:  oklch(0.990 0.002 247.9);
+
+  --secondary:           oklch(0.240 0.020 258);
+  --secondary-foreground: oklch(0.930 0.006 247.9);
+
+  --muted:               oklch(0.220 0.018 258);
+  --muted-foreground:    oklch(0.620 0.020 255);
+
+  --accent:              oklch(0.300 0.050 262.9); /* dark-mode Accent Tint */
+  --accent-foreground:   oklch(0.930 0.006 247.9);
+
+  --destructive:         oklch(0.700 0.190 27.7);
+
+  --positive:            oklch(0.740 0.160 160.9);
+  --negative:            oklch(0.700 0.190 27.7);
+
+  --border:              oklch(1 0 0 / 16%); /* Hairline -- visible, not the old 10% whisper */
+  --input:               oklch(1 0 0 / 16%);
+  --ring:                oklch(0.550 0.200 262.9);
+
+  --chart-1: oklch(0.550 0.200 262.9);
+  --chart-2: oklch(0.740 0.160 160.9);
+  --chart-3: oklch(0.780 0.150 70);
+  --chart-4: oklch(0.700 0.190 27.7);
+  --chart-5: oklch(0.620 0.020 255);
+
+  --sidebar:                        oklch(0.195 0.020 258);
+  --sidebar-foreground:             oklch(0.930 0.006 247.9);
+  --sidebar-primary:                oklch(0.550 0.200 262.9);
+  --sidebar-primary-foreground:     oklch(0.990 0.002 247.9);
+  --sidebar-accent:                 oklch(0.300 0.050 262.9);
+  --sidebar-accent-foreground:      oklch(0.930 0.006 247.9);
+  --sidebar-border:                 oklch(1 0 0 / 16%);
+  --sidebar-ring:                   oklch(0.550 0.200 262.9);
+
+  --chart-bg: #131722;
+  --chart-text: #d1d4dc;
+  --chart-border: #2a2e39;
+}
+
+/* ─── Tailwind v4 theme bridge ───────────────────────────────────────────── */
+@theme inline {
+  /* Inter first for Latin/numeric glyphs (GS Marquee look), Pretendard Variable
+     for Korean text (loaded via CDN in index.html), then system fallbacks. */
+  --font-sans: "Inter", "Pretendard Variable", "Apple SD Gothic Neo", "AppleGothic",
+               -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+
+  --color-background:            var(--background);
+  --color-foreground:            var(--foreground);
+  --color-card:                  var(--card);
+  --color-card-foreground:       var(--card-foreground);
+  --color-popover:               var(--popover);
+  --color-popover-foreground:    var(--popover-foreground);
+  --color-primary:               var(--primary);
+  --color-primary-foreground:    var(--primary-foreground);
+  --color-secondary:             var(--secondary);
+  --color-secondary-foreground:  var(--secondary-foreground);
+  --color-muted:                 var(--muted);
+  --color-muted-foreground:      var(--muted-foreground);
+  --color-accent:                var(--accent);
+  --color-accent-foreground:     var(--accent-foreground);
+  --color-destructive:           var(--destructive);
+  --color-positive:              var(--positive);
+  --color-negative:              var(--negative);
+  --color-negative-on-primary:   var(--negative-on-primary);
+  --color-border:                var(--border);
+  --color-input:                 var(--input);
+  --color-ring:                  var(--ring);
+  --color-sidebar:               var(--sidebar);
+  --color-sidebar-foreground:    var(--sidebar-foreground);
+  --color-sidebar-primary:       var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-border:        var(--sidebar-border);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 4px);
+}
+
+/* ─── Base reset ─────────────────────────────────────────────────────────── */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--foreground);
+    background: var(--background);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  p  { margin: 0; }
+  ul { margin: 0; padding: 0; list-style: none; }
+  a  { color: inherit; text-decoration: none; }
+  button { font-family: inherit; cursor: pointer; border: none; background: none; }
+  h1, h2, h3, h4 { margin: 0; font-weight: 600; }
+}

@@ -1,0 +1,11 @@
+ irs_pricer/api/app.py            |  15 ++-
+ irs_pricer/engine/curve_cache.py |  80 +++++++++++++--
+ tests/test_curve_cache.py        | 206 ++++++++++++++++++++++++++++++++++++++-
+ 3 files changed, 286 insertions(+), 15 deletions(-)
+ M irs_pricer/api/app.py
+ M irs_pricer/engine/curve_cache.py
+ M tests/test_curve_cache.py
+?? REPORT_s21.md
+?? docs/
+?? scripts/s21_fixture_ab.py
+?? scripts/s21_fullbook_profile.py

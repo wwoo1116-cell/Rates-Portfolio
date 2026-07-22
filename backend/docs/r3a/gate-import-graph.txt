@@ -1,0 +1,30 @@
+family-internal import graph (module -> deps):
+  aggregates           -> ['daily_valuation', 'models']
+  chart                -> ['daily_valuation', 'kr_calendar', 'models']
+  constants            -> []
+  daily_valuation      -> ['models']
+  distribution         -> ['chart', 'models']
+  enrichment           -> ['kr_calendar', 'models']
+  kr_calendar          -> []
+  models               -> []
+  orchestrator         -> ['aggregates', 'chart', 'constants', 'distribution', 'enrichment', 'kr_calendar', 'models', 'profiling', 'swap_inputs']
+  profiling            -> ['chart']
+  swap_inputs          -> ['kr_calendar', 'models']
+  simulation_service   -> ['aggregates', 'chart', 'constants', 'daily_valuation', 'distribution', 'enrichment', 'kr_calendar', 'models', 'orchestrator', 'profiling', 'swap_inputs']
+topological order (deps first): constants -> kr_calendar -> models -> daily_valuation -> enrichment -> swap_inputs -> aggregates -> chart -> distribution -> profiling -> orchestrator -> simulation_service
+ACYCLIC: yes
+
+fresh-interpreter import of each module:
+  irs_pricer.services.simulation.aggregates: OK
+  irs_pricer.services.simulation.chart: OK
+  irs_pricer.services.simulation.constants: OK
+  irs_pricer.services.simulation.daily_valuation: OK
+  irs_pricer.services.simulation.distribution: OK
+  irs_pricer.services.simulation.enrichment: OK
+  irs_pricer.services.simulation.kr_calendar: OK
+  irs_pricer.services.simulation.models: OK
+  irs_pricer.services.simulation.orchestrator: OK
+  irs_pricer.services.simulation.profiling: OK
+  irs_pricer.services.simulation.swap_inputs: OK
+  irs_pricer.services.simulation_service: OK
+ALL MODULES IMPORT CLEAN

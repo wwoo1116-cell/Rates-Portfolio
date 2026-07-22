@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "irs-pricer"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    # Pricing engine: hand-rolled Full-Revaluation (quant_engine.py). QuantLib
+    # fully removed -- the engine bootstraps zero curves and prices IRS/OIS
+    # with numpy/scipy only.
+    "numpy",
+    "scipy",
+    "holidays",
+    "fastapi",
+    "uvicorn[standard]",
+    "openpyxl",
+    "xlwings",
+    "requests",
+    "python-dateutil",
+    "sqlalchemy>=2.0",
+    "pymysql",
+    "alembic",
+    "python-multipart",
+]
+
+[tool.setuptools]
+packages = ["irs_pricer"]
