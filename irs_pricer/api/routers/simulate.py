@@ -12,10 +12,11 @@ with `SimulationChartPoint` left open (extra="allow") because the per-day rows
 carry a varying set of series keys plus an optional bokBreakdown block, exactly
 as the frontend DTO models it ([key: string]: unknown).
 
-`def`, not `async def`: one simulate call is seconds of numpy/engine work (a
-full-revaluation path per IRS position plus a per-business-day KRD rebuild).
-See the NOTE in portfolio_analytics.py — an `async def` here would run that on
-the event loop and stall every other endpoint for the duration.
+The engine run itself is seconds of numpy/engine work (a full-revaluation path
+per IRS position plus a per-business-day KRD rebuild) and must never touch the
+event loop — see the NOTE in portfolio_analytics.py. This endpoint is `async
+def` only to interleave Cloudflare/Vercel keepalive heartbeats; the actual run
+still executes in a worker thread via run_in_executor (see the endpoint NOTE).
 
 Errors: engine crashes surface as the source's ValueError("FM Engine Crash …")
 and deliberately stay 500s (via app.py's catch-all middleware, which keeps the
@@ -25,7 +26,10 @@ bad-input ValueErrors the other routers map.
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from ...services import simulation_service
@@ -242,21 +246,67 @@ class SimulateResponse(BaseModel):
     fundingBasis: FundingBasisOut
 
 
-@router.post("/simulate", response_model=SimulateResponse)
-def simulate(req: SimulateRequest) -> dict:
-    return simulation_service.run_simulation(
-        positions=req.positions,
-        shock_curves=req.shockCurves,
-        daily_shock_curves=req.dailyShockCurves,
-        funding_rate=req.fundingRate,
-        funding_events=req.fundingEvents,
-        sim_days=req.simDays,
-        shock_type=req.shockType,
-        shock_mode=req.shockMode,
-        base_shock_bp=req.baseShockBp,
-        base_date=req.baseDate,
-        irs_curves=req.irsCurves,
-        custom_path=req.customPath,
-        sigma_bp=req.sigma_bp,
-        funding_stepping=req.fundingStepping,
+# The Cloudflare tunnel that fronts this backend in the Vercel deployment enforces
+# a ~100s origin-response wall (HTTP 524, not tunable below an Enterprise plan) that
+# fires under even Vercel's 120s rewrite / 300s function budgets. So simulate is
+# STREAMED: it flushes response headers + a whitespace byte immediately and again
+# every HEARTBEAT_INTERVAL_S while the (seconds-to-minutes) engine run computes in a
+# worker thread, keeping bytes flowing so neither Cloudflare (524) nor Vercel (504)
+# times out for a run of any length. The client's res.json() ignores the leading
+# whitespace, so the payload stays parse-identical to the golden; serialization
+# still routes through SimulateResponse below, preserving the frozen contract shape.
+#
+# NOTE: `async def` here is deliberate and is NOT the event-loop-blocking anti-pattern
+# the other CPU-bound routers avoid — run_simulation runs in loop.run_in_executor (a
+# worker thread, exactly as a plain `def` endpoint would), while this coroutine only
+# awaits and yields heartbeats. Do NOT call run_simulation() directly in this
+# coroutine: that WOULD stall the event loop for the whole run.
+#
+# Error semantics changed by streaming: engine crashes ("FM Engine Crash …") now
+# occur after the 200 headers are already on the wire, so they abort the stream
+# (truncated body) instead of the app.py catch-all's clean 500. Request-validation
+# 422s are unaffected — FastAPI validates the body before this handler runs.
+HEARTBEAT_INTERVAL_S = 30.0
+
+
+@router.post("/simulate")
+async def simulate(req: SimulateRequest) -> StreamingResponse:
+    loop = asyncio.get_running_loop()
+    fut = loop.run_in_executor(
+        None,
+        lambda: simulation_service.run_simulation(
+            positions=req.positions,
+            shock_curves=req.shockCurves,
+            daily_shock_curves=req.dailyShockCurves,
+            funding_rate=req.fundingRate,
+            funding_events=req.fundingEvents,
+            sim_days=req.simDays,
+            shock_type=req.shockType,
+            shock_mode=req.shockMode,
+            base_shock_bp=req.baseShockBp,
+            base_date=req.baseDate,
+            irs_curves=req.irsCurves,
+            custom_path=req.customPath,
+            sigma_bp=req.sigma_bp,
+            funding_stepping=req.fundingStepping,
+        ),
     )
+
+    async def body_stream():
+        # First byte now: locks 200 + flushes headers so the ~100s TTFB 524 can't
+        # fire; a leading space is ignored by any JSON parser downstream.
+        yield b" "
+        while True:
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.shield(fut), HEARTBEAT_INTERVAL_S
+                )
+                break
+            except asyncio.TimeoutError:
+                yield b" "  # keepalive while the engine run is still in flight
+        # Serialize through the frozen response model so the payload shape and
+        # typing match what response_model=SimulateResponse used to emit. An engine
+        # crash re-raises out of wait_for here (headers already sent) → stream aborts.
+        yield SimulateResponse.model_validate(result).model_dump_json().encode("utf-8")
+
+    return StreamingResponse(body_stream(), media_type="application/json")

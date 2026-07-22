@@ -171,9 +171,21 @@ def _fan_fixture_request():
 
 
 def _run_simulate(payload) -> None:
+    # simulate is now an async streaming endpoint (Cloudflare 524 heartbeat fix):
+    # awaiting it returns a StreamingResponse whose body_iterator, when drained,
+    # awaits the run_in_executor engine future to completion. Driving it this way
+    # exercises the real endpoint path (not just run_simulation) so the curve_cache
+    # key assertions below still measure what /api/simulate actually does.
+    import asyncio
+
     from irs_pricer.api.routers.simulate import SimulateRequest, simulate
 
-    simulate(SimulateRequest(**payload))
+    async def _drive() -> None:
+        resp = await simulate(SimulateRequest(**payload))
+        async for _chunk in resp.body_iterator:
+            pass
+
+    asyncio.run(_drive())
 
 
 def test_simulate_bootstrap_keys_are_swap_independent(uninstalled):

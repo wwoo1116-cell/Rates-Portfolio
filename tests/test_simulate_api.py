@@ -126,17 +126,34 @@ def test_response_matches_frontend_contract_shape(representative_response: dict)
     }
 
 
-def test_route_is_sync_and_typed() -> None:
-    """The two regressions this repo has already been bitten by: analytics
-    routes without a response_model, and CPU-bound handlers declared
-    `async def` (which would run seconds of engine work on the event loop --
-    see test_api_robustness.py)."""
+def test_route_streams_and_offloads_the_engine() -> None:
+    """simulate now STREAMS (Cloudflare tunnel ~100s 524 fix): the endpoint is
+    an `async def` returning a StreamingResponse that flushes keepalive bytes
+    while the run computes. Two properties still matter and are asserted here:
+
+    1. It carries no declarative response_model (StreamingResponse can't be
+       validated against one) — payload typing is instead preserved by
+       serializing through SimulateResponse inside the handler, and the response
+       *shape* is pinned by test_response_shape / the golden parity tests.
+    2. The CPU-bound engine work must NOT run on the event loop. We can't prove
+       run_in_executor structurally, but we guard the specific regression that
+       would reintroduce blocking: the source module must reference
+       `run_in_executor` (offload the run) rather than awaiting/calling
+       run_simulation directly in the coroutine."""
+    import inspect as _inspect
+
+    from irs_pricer.api.routers import simulate as simulate_mod
+
     route = next(
         r for r in _walk(app.routes)
         if isinstance(r, APIRoute) and r.path == "/api/simulate"
     )
-    assert route.response_model is not None
-    assert not inspect.iscoroutinefunction(route.endpoint)
+    assert route.response_model is None
+    assert inspect.iscoroutinefunction(route.endpoint)
+    assert "run_in_executor" in _inspect.getsource(simulate_mod.simulate), (
+        "the engine run must be offloaded to a worker thread, never awaited "
+        "directly in the streaming coroutine (that would block the event loop)."
+    )
 
 
 def _walk(routes):
