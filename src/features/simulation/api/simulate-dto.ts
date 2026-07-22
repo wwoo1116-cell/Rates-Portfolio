@@ -51,6 +51,13 @@ export interface SimulateRequest {
    * funding STEPS at the request's 금통위 events (base = the policy constant
    * pair). false/omitted = the s15 constant, byte-identical. */
   fundingStepping?: boolean;
+  /** Whether the backend should compute the percentile fan (`distribution`).
+   * Omitted/true = legacy behaviour. FALSE is what this app ships: the fan costs
+   * FOUR extra full-book engine runs (the backend's "scenario-expansion (4 runs)"
+   * phase re-runs the whole chart build per percentile) and this UI no longer
+   * renders it — see components/panels/component-curves-panel.tsx. On the live
+   * book that was the difference between ~6 minutes and seconds. */
+  includeDistribution?: boolean;
 }
 
 export interface SimulationSummary {

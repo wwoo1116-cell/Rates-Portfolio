@@ -303,7 +303,8 @@
    }
   ],
   "sigma_bp": 2,
-  "fundingStepping": false
+  "fundingStepping": false,
+  "includeDistribution": false
  },
  "past-base-90d-shaped": {
   "positions": [],
@@ -622,7 +623,8 @@
    }
   ],
   "sigma_bp": 2,
-  "fundingStepping": false
+  "fundingStepping": false,
+  "includeDistribution": false
  },
  "cap-365d": {
   "positions": [],
@@ -928,7 +930,8 @@
    }
   ],
   "sigma_bp": 2,
-  "fundingStepping": false
+  "fundingStepping": false,
+  "includeDistribution": false
  },
  "non-preset-100d-anchor-5y": {
   "positions": [],
@@ -1234,6 +1237,7 @@
    }
   ],
   "sigma_bp": 2,
-  "fundingStepping": false
+  "fundingStepping": false,
+  "includeDistribution": false
  }
 }

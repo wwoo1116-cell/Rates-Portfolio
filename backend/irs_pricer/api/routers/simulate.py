@@ -67,6 +67,12 @@ class SimulateRequest(BaseModel):
     # 요청의 금통위 이벤트로 스테핑(base = 정책 상수 페어). 기본 False = 종전
     # 동작 바이트 동일. 명시적 fundingRate 경로(레거시 스테핑)에는 영향 없음.
     fundingStepping: bool = False
+    # 퍼센타일 팬(distribution) 계산 여부. 생략 시 True = 종전 동작 바이트 동일.
+    # False면 scenario-expansion 4회 런을 건너뛰고 distribution=null로 응답한다
+    # (SimulateResponse.distribution이 이미 nullable이라 계약상 합법). 이 4회가
+    # 요청 벽시계의 대부분이고 현재 FE는 결과를 렌더링하지 않으므로, FE는 이를
+    # false로 보낸다 — 실측 686 포지션/simDays 180에서 6분+ → 약 1/5.
+    includeDistribution: bool = True
 
 
 class SimulationChartPoint(BaseModel):
@@ -289,6 +295,7 @@ async def simulate(req: SimulateRequest) -> StreamingResponse:
             custom_path=req.customPath,
             sigma_bp=req.sigma_bp,
             funding_stepping=req.fundingStepping,
+            include_distribution=req.includeDistribution,
         ),
     )
 

@@ -212,6 +212,11 @@ export function buildSimulateRequest(inputs: SimulationInputs, params: ScenarioP
     // SIM2-5: additive opt-in; false is byte-equivalent to omitting it
     // backend-side (BE default False).
     fundingStepping: params.fundingStepping ?? false,
+    // Skip the percentile fan: it costs four extra full-book engine runs and
+    // nothing in this UI renders it (the fan was removed in HARDEN-1 but the
+    // backend kept computing it). Everything else in the response is unchanged;
+    // `distribution` simply arrives null, which the DTO already allows.
+    includeDistribution: false,
   };
 }
 

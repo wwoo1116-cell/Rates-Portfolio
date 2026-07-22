@@ -44,6 +44,15 @@ def run_simulation(
     # 요청의 금통위 이벤트로 스테핑(기존 calc_dynamic_funding_rate 메커니즘,
     # base = 정책 상수 페어). False(기본) = 종전과 바이트 동일.
     funding_stepping: bool = False,
+    # 분포 밴드(퍼센타일 팬) 계산 여부. True(기본) = 종전과 바이트 동일.
+    # False면 scenario-expansion 4회 런을 통째로 건너뛰고 distribution=None으로
+    # 응답한다 — 응답 모델이 이미 `SimulationDistribution | None`이라 계약상 합법.
+    # WHY: 이 4회는 base 런과 별개로 build_chart_data를 전 포지션 × 전 기간
+    # 재실행해 요청 1건의 벽시계 대부분을 차지하는데(실측: 686 포지션/simDays
+    # 180에서 6분+), 현재 FE는 그 결과를 렌더링하지 않는다
+    # (components/panels/component-curves-panel.tsx 주석 참조 — 팬 UI는
+    # HARDEN-1에서 제거됐고 백엔드 계산만 남아 있었다).
+    include_distribution: bool = True,
 ) -> dict:
     """POST /api/simulate 한 건의 전체 계산. 원본 엔드포인트 본문의 순서 그대로:
     커브 만기일 보정 → IRS 쇼크커브 명시적 빌드 → IRS 프라이싱 주입(enrich) →
@@ -71,6 +80,7 @@ def run_simulation(
             base_shock_bp=base_shock_bp, base_date=base_date,
             irs_curves=irs_curves, custom_path=custom_path, sigma_bp=sigma_bp,
             funding_stepping=funding_stepping,
+            include_distribution=include_distribution,
             _prof_t0=_prof_t0,
         )
     finally:
@@ -95,6 +105,7 @@ def _run_simulation_profiled(
     custom_path: list[dict],
     sigma_bp: float,
     funding_stepping: bool,
+    include_distribution: bool,
     _prof_t0: float,
 ) -> dict:
 
@@ -187,30 +198,33 @@ def _run_simulation_profiled(
         book_daily_pnls = build_book_daily_pnl(positions, daily_curves, funding_rate)
 
     # s11 T3 — 분포 밴드는 **추가** 필드다: 실패해도 기존 응답은 그대로 나간다.
+    # include_distribution=False면 아예 계산하지 않는다(위 파라미터 주석 참조):
+    # 4회 재실행이 통째로 사라져 요청 벽시계가 ~5분의 1로 떨어진다.
     distribution = None
-    try:
-        with _phase(_prof, "scenario-expansion (4 runs)"):
-            distribution = build_distribution_bands(
-                chart_data,
-                base_rate_path,
-                positions=positions,
-                shock_curves=shock_curves,
-                funding_rate=funding_rate,
-                funding_events=funding_events,
-                sim_days=sim_days,
-                shock_type=shock_type,
-                shock_mode=shock_mode,
-                base_shock_bp=base_shock_bp,
-                base_date_str=base_date,
-                irs_curves=irs_curves,
-                irs_shock_curve=irs_shock_curve,
-                custom_path=custom_path or None,
-                sigma_bp=sigma_bp,
-                funding_rate_fixed=funding_rate_fixed,
-                funding_stepping=funding_stepping,
-            )
-    except Exception:
-        logger.exception("[s11 T3] 분포 밴드 계산 실패 — distribution=null로 응답")
+    if include_distribution:
+        try:
+            with _phase(_prof, "scenario-expansion (4 runs)"):
+                distribution = build_distribution_bands(
+                    chart_data,
+                    base_rate_path,
+                    positions=positions,
+                    shock_curves=shock_curves,
+                    funding_rate=funding_rate,
+                    funding_events=funding_events,
+                    sim_days=sim_days,
+                    shock_type=shock_type,
+                    shock_mode=shock_mode,
+                    base_shock_bp=base_shock_bp,
+                    base_date_str=base_date,
+                    irs_curves=irs_curves,
+                    irs_shock_curve=irs_shock_curve,
+                    custom_path=custom_path or None,
+                    sigma_bp=sigma_bp,
+                    funding_rate_fixed=funding_rate_fixed,
+                    funding_stepping=funding_stepping,
+                )
+        except Exception:
+            logger.exception("[s11 T3] 분포 밴드 계산 실패 — distribution=null로 응답")
 
     if _prof is not None:
         _log_profile(

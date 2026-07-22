@@ -347,5 +347,6 @@
     }
   ],
   "sigma_bp": 3.5,
-  "fundingStepping": true
+  "fundingStepping": true,
+  "includeDistribution": false
 }

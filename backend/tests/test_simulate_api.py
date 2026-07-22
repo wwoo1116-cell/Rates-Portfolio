@@ -126,6 +126,40 @@ def test_response_matches_frontend_contract_shape(representative_response: dict)
     }
 
 
+def test_include_distribution_gate_skips_scenario_expansion(
+    client: TestClient, representative_response: dict
+) -> None:
+    """The percentile fan costs FOUR extra full-book engine runs (orchestrator's
+    literal "scenario-expansion (4 runs)" phase re-runs build_chart_data over
+    every position × every sim day), and the current UI does not render it --
+    see components/panels/component-curves-panel.tsx, whose comment records that
+    the fan was removed while the backend kept computing it. Measured on the live
+    book (273 bonds + 413 swaps, simDays 180) that made one request take 6+ min.
+
+    includeDistribution=False must skip those runs entirely: `distribution` comes
+    back null -- already legal, SimulateResponse.distribution is nullable and the
+    FE DTO types it optional -- while EVERY other field stays identical to the
+    default run. Omitting the flag keeps the old behaviour (fan present), which is
+    what keeps the golden-parity tests byte-identical."""
+    r = client.post(
+        "/api/simulate", json={**REPRESENTATIVE_REQUEST, "includeDistribution": False}
+    )
+    assert r.status_code == 200, r.text
+    gated = r.json()
+
+    assert representative_response["distribution"] is not None, (
+        "default run must still carry the fan -- otherwise the gate's default flipped"
+    )
+    assert gated["distribution"] is None
+
+    for key in representative_response:
+        if key == "distribution":
+            continue
+        assert gated[key] == representative_response[key], (
+            f"gating the distribution changed an unrelated field: {key}"
+        )
+
+
 def test_route_streams_and_offloads_the_engine() -> None:
     """simulate now STREAMS (Cloudflare tunnel ~100s 524 fix): the endpoint is
     an `async def` returning a StreamingResponse that flushes keepalive bytes
